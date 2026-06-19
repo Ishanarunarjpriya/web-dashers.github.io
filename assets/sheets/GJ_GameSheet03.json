@@ -9628,6 +9628,27 @@
                     }
                 },
                 {
+                    "filename": "GJ_secretLock_0001.png",
+                    "rotated": true,
+                    "trimmed": false,
+                    "sourceSize": {
+                        "w": 262,
+                        "h": 128
+                    },
+                    "spriteSourceSize": {
+                        "x": 0,
+                        "y": 0,
+                        "w": 262,
+                        "h": 100
+                    },
+                    "frame": {
+                        "x": 1153,
+                        "y": 405,
+                        "w": 262,
+                        "h": 100
+                    }
+                },
+                {
                     "filename": "lavaShardBig_001.png",
                     "rotated": false,
                     "trimmed": false,

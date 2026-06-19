@@ -118,7 +118,7 @@ class MacroBot {
 
     this.meta = {
       author: "Web Dashers",
-      level: "", // ill fix ts later
+      level: "", // ill fix ts later... FIX TS NOW!
       version: 1
     };
   }
@@ -286,6 +286,41 @@ class GameScene extends Phaser.Scene {
     });
   }
   create() {
+
+    try {
+      if (!Phaser.GameObjects.GameObject.prototype.__stretchXDefined) {
+        Object.defineProperty(Phaser.GameObjects.GameObject.prototype, 'stretchX', {
+          configurable: true,
+          get() { return !!this._stretchX; },
+          set(v) {
+            const enable = !!v;
+            const was = !!this._stretchX;
+            this._stretchX = enable;
+            if (enable && !was) {
+              this._origScaleX = (this.scaleX !== undefined ? this.scaleX : 1);
+              const factor = this._stretchFactor || 1.2;
+              if (typeof this.setScale === 'function') this.setScale(this._origScaleX * factor, this.scaleY || 1);
+            } else if (!enable && was) {
+              if (typeof this.setScale === 'function') this.setScale(this._origScaleX || 1, this.scaleY || 1);
+            }
+          }
+        });
+
+        Object.defineProperty(Phaser.GameObjects.GameObject.prototype, 'stretchFactor', {
+          configurable: true,
+          get() { return this._stretchFactor || 1.2; },
+          set(v) {
+            this._stretchFactor = Number(v) || 1.0;
+            if (this._stretchX) {
+              if (typeof this.setScale === 'function') this.setScale((this._origScaleX || 1) * this._stretchFactor, this.scaleY || 1);
+            }
+          }
+        });
+
+        Phaser.GameObjects.GameObject.prototype.__stretchXDefined = true;
+      }
+    } catch (e) {
+    }
     this._bgSpeedX = 0.1;
     this._bgSpeedY = 0.1;
     this._menuCameraX = -centerX;
@@ -305,6 +340,7 @@ class GameScene extends Phaser.Scene {
     this._level = new window.LevelObject(this, this._cameraXRef);
     this._orbGfx = null;
     this._orbGfxTimer = 0;
+    this._gravityArrow = null;
     this._player = new PlayerObject(this, this._state, this._level);
     this._state2 = new PlayerState();
     this._player2 = new PlayerObject(this, this._state2, this._level);
@@ -346,6 +382,7 @@ class GameScene extends Phaser.Scene {
       }
     }
     this._level.createEndPortal(this);
+    this._createGravityArrow();
     this._glitterCenterX = 0;
     this._glitterCenterY = T;
     this._glitterEmitter = this.add.particles(0, 0, "GJ_WebSheet", {
@@ -2532,6 +2569,409 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         }
       });
     };
+    this._openVaultMenu = () => {
+      if (this.spookybadmenu) return;
+
+      const sw = screenWidth;
+      const sh = screenHeight;
+      const cx = sw * 0.5;
+      const cy = sh * 0.5;
+
+      const overlay = this.add.container(0, 0).setDepth(310).setScrollFactor(0).setAlpha(0);
+      const overlayDestroy = overlay.destroy.bind(overlay);
+
+      const bg = this.add.image(cx, cy, "vaultBg").setDisplaySize(sw, sh).setScrollFactor(0).setDepth(311).setOrigin(0.5);
+
+      const backBtn = this.add.image(50, 50, "GJ_GameSheet03", "GJ_arrow_01_001.png")
+        .setScrollFactor(0)
+        .setDepth(315)
+        .setScale(1.05)
+        .setInteractive();
+
+      const titleText = this.add.bitmapText(cx, sh * 0.08, "goldFont", "The Vault", 50)
+        .setOrigin(0.5)
+        .setDepth(325)
+        .setTint(0xfff8a2);
+
+      const subtitleMessages = [
+        "Don't touch!",
+        "Just, stop.",
+        "No one seems to be home.",
+        "zzzZZZ...",
+        "Go away!",
+        "No!",
+        "It's a secret...",
+        "Stop it!",
+        "Not allowed!",
+        "Why u click?",
+        "Nothing to see here..."
+      ];
+      const subtitleText = this.add.bitmapText(cx, sh * 0.21, "bigFont", subtitleMessages[Math.floor(Math.random() * subtitleMessages.length)], 36)
+        .setOrigin(0.5)
+        .setDepth(315)
+        .setTint(0xffffff);
+
+      const inputWidth = sw * 0.38;
+      const inputHeight = 98;
+      const inputY = sh * 0.33;
+      const inputBox = this.add.graphics()
+        .fillStyle(0x000000, 0.45)
+        .fillRoundedRect(cx - inputWidth * 0.5, inputY - inputHeight * 0.5, inputWidth, inputHeight, 13)
+        .setDepth(315);
+
+      const placeholderLabel = this.add.bitmapText(cx, inputY, "bigFont", "...", 44)
+        .setOrigin(0.5)
+        .setDepth(315)
+        .setTint(0x44c7c7)
+        .setAlpha(0.9);
+
+      const typedLabel = this.add.bitmapText(cx, inputY, "bigFont", "", 44)
+        .setOrigin(0.5)
+        .setDepth(315)
+        .setTint(0xffffff)
+        .setVisible(false);
+
+      const inputCursor = this.add.text(cx + 8, inputY, "|", {
+        fontSize: "44px",
+        fontFamily: "Arial",
+        color: "#44c7c7"
+      }).setOrigin(0, 0.5).setDepth(315).setVisible(false);
+
+      const responseText = this.add.bitmapText(cx, sh * 0.82, "bigFont", "Type a code and press Enter...", 30)
+        .setOrigin(0.5)
+        .setDepth(315)
+        .setTint(0xdcdcff);
+
+      let secretPlayButton = null;
+      let secretPlayLabel = null;
+      let secretSubtitleIndex = 0;
+      const secretPlaySubtitles = [
+        "That level is still under construction...",
+        "Still not available!!!",
+        "Stop trying!!!!!!!!",
+        "Trust me, it'll be better than that Challenge thing!!",
+        "You need be patient... She's not- I mean... Ugh."
+      ];
+      const _brokentrip = () => {
+        if (secretPlayButton) {
+          secretPlayButton.off("pointerup");
+          secretPlayButton.destroy();
+          secretPlayButton = null;
+        }
+        if (secretPlayLabel) {
+          secretPlayLabel.destroy();
+          secretPlayLabel = null;
+        }
+      };
+
+      const _flashbang = () => {
+        const flash = this.add.graphics().setScrollFactor(0).setDepth(330);
+        flash.fillStyle(0xffffff, 1);
+        flash.fillRect(0, 0, sw, sh);
+        this.tweens.add({
+          targets: flash,
+          alpha: { from: 1, to: 0 },
+          duration: 360,
+          ease: "Linear",
+          onComplete: () => flash.destroy()
+        });
+      };
+
+      const _playsillysound = () => {
+        if (this._audio && typeof this._audio.playEffect === "function") {
+          this._audio.playEffect("highscoreGet02");
+        } else if (this.sound) {
+          try {
+            this.sound.play("highscoreGet02");
+          } catch (e) {}
+        }
+      };
+
+      const _bowertrip = () => {
+        _brokentrip();
+        const buttonX = sw - 140;
+        const buttonY = sh - 130;
+
+        secretPlayLabel = this.add.bitmapText(buttonX, buttonY - 110, "bigFont", "Power Trip", 40)
+          .setOrigin(0.5)
+          .setDepth(316)
+          .setTint(0xffffff);
+
+        secretPlayButton = this.add.image(buttonX, buttonY, "GJ_GameSheet03", "GJ_playBtn2_001.png")
+          .setScrollFactor(0)
+          .setDepth(316)
+          .setScale(0.85)
+          .setOrigin(0.5)
+          .setAngle(90)
+          .setFlipY(true)
+          .setInteractive();
+        this._makeBouncyButton(secretPlayButton, 0.95, () => {
+          subtitleText.setText(secretPlaySubtitles[secretSubtitleIndex]);
+          secretSubtitleIndex = (secretSubtitleIndex + 1) % secretPlaySubtitles.length;
+        });
+
+        overlay.add([secretPlayLabel, secretPlayButton]);
+      };
+
+      const lockSprite = this.add.image(cx, sh * 0.55, "GJ_GameSheet03", "GJ_secretLock_001.png")
+        .setScrollFactor(0)
+        .setDepth(0)
+        .setAngle(90)
+        .setOrigin(0.4)
+        .setFlipY(true)
+        .setScale(0.75)
+        .setInteractive();
+
+        lockSprite.stretchX = true; lockSprite.stretchFactor = 2;
+
+      const codeResponses = {
+        amethyst: "Fine, Fine. Take this level and leave!!!",
+        spooky: "WHAT!? How did you know my name!?!",
+        sparky: "My coin... NOO!!... Wait- Nevermind. It's right here.",
+        robotop: "So he told you?...",
+        lenny: "Noooooo!!!!",
+        blockbite: "How do you know my secrets!?",
+        mule: "Ah, right you are.",
+        ahead: "You learn quickly!",
+        gandalfpotter: "That was weird...",
+        neverending: "You're pretty good at this",
+        finalboss: "Maybe Rub should add some of these",
+        messycodelolz: "Stop looking through the awful code!!!",
+        nyaw: "...Excuse me?!",
+        fade: "Amethyst doesn't know how fade animations work.",
+        freeicon: "Achievement? What achievement?",
+        rohanis0000: "Yeah, no he sucks. I called Rub Rub to sic em earlier.",
+        pinkdev: "The absolute GOAT!!!!... I learned that word from him.",
+        bread: "Yum... Wait thats a person??"
+      };
+      const spookysays = [  
+        "How did you get in here?!", 
+        "You're here for my gold, aren't you?",
+        "I had a secret coin once",
+        "It was so beautiful",
+        "I called it, Sparky", 
+        "...",
+        "What are you poking around for?", 
+        "Don't you have better things to do?", 
+        "There is no spoon", 
+        "Go away!", 
+        "Don't tell RubRub, but I stole an icon",
+        "He will never notice...",
+        "I hid it with my name as the password",
+        "Muahahaha!",
+        "I should have hid this room better...", 
+        "You're not supposed to be in here...", 
+        "RubRub won't like this...", 
+        "zzzZZZZ...", 
+        "Ok, I will give you a hint.",
+        "Without it, I'm dead.",
+        "If I'm not, then I'm behind.",
+        "What am I?",
+        "That didn't go very well...",
+        "Don't touch that!", 
+        "Why U touch my stuff?", 
+        "RubRub better not find you in here...", 
+        "Can't you just leave?", 
+        "This is not the room you are looking for...", 
+        "Sneaky sneaky...", 
+        "It's my precious...", 
+        "You shall not pass!", 
+        "Don't push the button!", 
+        "You're gonna get me in trouble...", 
+        "This is getting ridiculus...", 
+        "Go collect some stars.", 
+        "Maybe there are new levels?", 
+        "Just, stop bothering me", 
+        "I'm gonna stop talking", 
+        "...", 
+        "......", 
+        "GAH!", 
+        "You're hopeless...", 
+        "Really, still here?", 
+        "Fine, press the button"
+      ];
+      let lockMessageIndex = 0;
+
+      const inputHitZone = this.add.zone(cx, inputY, inputWidth, inputHeight)
+        .setScrollFactor(0)
+        .setDepth(315)
+        .setInteractive();
+
+      let vaultInputText = "";
+      let inputFocused = true;
+      let cursorTimer = null;
+      let whatwasplayingbefore = false;
+
+      const _updateInputDisplay = () => {
+        typedLabel.setText(vaultInputText);
+        const isEmpty = vaultInputText.length === 0;
+        placeholderLabel.setVisible(isEmpty);
+        typedLabel.setVisible(!isEmpty);
+        typedLabel.setTint(isEmpty ? 0x44c7c7 : 0xffffff);
+        inputCursor.setVisible(inputFocused && !isEmpty);
+        inputCursor.x = cx + (isEmpty ? 8 : typedLabel.width * 0.5 + 8);
+      };
+
+      const _startCursorBlink = () => {
+        if (cursorTimer) return;
+        cursorTimer = this.time.addEvent({
+          delay: 500,
+          loop: true,
+          callback: () => {
+            inputCursor.setVisible(!inputCursor.visible);
+          }
+        });
+      };
+
+      const _stopCursorBlink = () => {
+        if (cursorTimer) {
+          cursorTimer.remove();
+          cursorTimer = null;
+        }
+        inputCursor.setVisible(false);
+      };
+
+      const _whatdidplayersay = (value) => {
+        const normalized = value.trim().toLowerCase();
+        if (!normalized) {
+          subtitleText.setText("...");
+          return;
+        }
+        if (codeResponses[normalized]) {
+          subtitleText.setText(codeResponses[normalized]);
+          if (normalized === "amethyst") {
+            _flashbang();
+            _playsillysound();
+            _bowertrip();
+          } else {
+            _brokentrip();
+          }
+        } else {
+          _brokentrip();
+          subtitleText.setText("...");
+        }
+      };
+
+      const _spookytalk = () => {
+        subtitleText.setText(spookysays[lockMessageIndex]);
+        lockMessageIndex = (lockMessageIndex + 1) % spookysays.length;
+      };
+
+      this._makeBouncyButton(lockSprite, 0.85, () => {
+        _spookytalk();
+      });
+      this._makeBouncyButton(backBtn, 1, () => {
+        this.lessbadmenu();
+      });
+
+      inputHitZone.on("pointerdown", () => {
+        inputFocused = true;
+        _startCursorBlink();
+        _updateInputDisplay();
+      });
+
+      backBtn.on("pointerup", () => {
+        this.lessbadmenu();
+      });
+
+      const _vaultKeyDown = (event) => {
+        if (!this.spookybadmenu || !inputFocused) return;
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          this.lessbadmenu();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.stopPropagation();
+          _whatdidplayersay(vaultInputText);
+          vaultInputText = "";
+          _updateInputDisplay();
+          return;
+        }
+        if (event.key === "Backspace") {
+          event.stopPropagation();
+          vaultInputText = vaultInputText.slice(0, -1);
+          _updateInputDisplay();
+          return;
+        }
+        if (event.key.length === 1) {
+          const allowed = "abcdefghijklmnopqrstuvwxyz0123456789";
+          const char = event.key.toLowerCase();
+          if (allowed.includes(char) && vaultInputText.length < 14) {
+            event.stopPropagation();
+            vaultInputText += char;
+            _updateInputDisplay();
+          }
+        }
+      };
+      window.addEventListener("keydown", _vaultKeyDown, true);
+
+      const _nomorebadmenu = () => {
+        window.removeEventListener("keydown", _vaultKeyDown, true);
+        _stopCursorBlink();
+        _brokentrip();
+        if (this._secretLoopSound) {
+          try {
+            this._secretLoopSound.stop();
+            this._secretLoopSound.destroy();
+          } catch (e) {}
+          this._secretLoopSound = null;
+        }
+        if (overlay) overlayDestroy();
+        this.spookybadmenu = null;
+        if (whatwasplayingbefore && this._audio) {
+          this._audio.startMenuMusic();
+        }
+      };
+
+      if (this._audio) {
+        whatwasplayingbefore = this._audio.isplaying();
+        this._audio.stopMusic();
+      }
+      if (this.cache.audio.exists("secretLoop")) {
+        if (this._secretLoopSound) {
+          try {
+            this._secretLoopSound.stop();
+            this._secretLoopSound.destroy();
+          } catch (e) {}
+        }
+        this._secretLoopSound = this.sound.add("secretLoop", {
+          loop: true,
+          volume: this._audio ? this._audio.getMusicVolume() : 1
+        });
+        this._secretLoopSound.play();
+      }
+
+      overlay.add([bg, backBtn, titleText, subtitleText, inputBox, placeholderLabel, typedLabel, inputCursor, lockSprite, responseText]);
+      overlay._nomorebadmenu = _nomorebadmenu;
+      this.spookybadmenu = overlay;
+      _updateInputDisplay();
+      this.tweens.add({ targets: overlay, alpha: 1, duration: 220, ease: "Linear" });
+    };
+
+    this.lessbadmenu = () => {
+      if (!this.spookybadmenu) return;
+      const overlay = this.spookybadmenu;
+      const sw = screenWidth;
+      const sh = screenHeight;
+      const fadeOut = this.add.graphics().setScrollFactor(0).setDepth(320).setAlpha(0);
+      fadeOut.fillStyle(0x000000, 1);
+      fadeOut.fillRect(0, 0, sw, sh);
+      this.tweens.add({
+        targets: fadeOut,
+        alpha: 1,
+        duration: 180,
+        ease: "Linear",
+        onComplete: () => {
+          if (overlay && overlay._nomorebadmenu) {
+            overlay._nomorebadmenu();
+          } else if (overlay && overlay.destroy) {
+            overlay.destroy();
+          }
+          fadeOut.destroy();
+        }
+      });
+    };
     this._positionMenuItems();
     //icon stuff sequel
     if (this._iconBtn) {
@@ -2626,6 +3066,10 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     this._escKey.on("down", () => {
       if (this._levelSelectOverlay) {
         this._closeLevelSelect();
+        return;
+      }
+      if (this.spookybadmenu) {
+        this.lessbadmenu();
         return;
       }
       if (this._iconOverlay) {
@@ -3924,6 +4368,25 @@ _buildSettingsPopup() {
             (v) => window.showObjectIds = v,
             null, 17
         );
+
+        createToggle(container, column2X, startY + (spacingY * 2),"Show Gravity", 
+            () => window.showGravityArrow, 
+            (v) => {
+                window.showGravityArrow = v,
+                localStorage.setItem("showGravityArrow", v.toString());
+                if (this._gravityArrow) {
+                    this._gravityArrow.setVisible(v);
+                }
+            }
+        );
+
+        const gravityInfoBtn = this.add.image(column2X - 157, startY + 109, "GJ_GameSheet03", "GJ_infoIcon_001.png")
+            .setScale(0.45)
+            .setAngle(90)
+            .setInteractive();
+        container.add(gravityInfoBtn);
+        this._makeBouncyButton(gravityInfoBtn, 0.55, () => this._buildGravityArrowInfoPopup());
+        //istg i have the messiest coding ever im having trouble reading my own code -amethyst
     };
 
     const buildPage = (idx) => {
@@ -3958,6 +4421,7 @@ _buildSettingsPopup() {
   _saveSettings() {
     const settings = {
         noclip: window.noClip,
+        showGravityArrow: window.showGravityArrow,
         showPercentage: window.showPercentage,
         percentDecimals: window.percentageDecimals,
         showHitboxes: window.showHitboxes,
@@ -3981,6 +4445,7 @@ _buildSettingsPopup() {
     const saved = localStorage.getItem("gd_settings");
     const defaults = {
         noclip: false,
+        showGravityArrow: false,
         showPercentage: true,
         percentDecimals: false,
         showHitboxes: false,
@@ -4002,6 +4467,7 @@ _buildSettingsPopup() {
     const data = saved ? JSON.parse(saved) : defaults;
 
     window.noClip = data.noclip;
+    window.showGravityArrow = data.showGravityArrow;
     window.showPercentage = data.showPercentage;
     window.percentageDecimals = data.percentDecimals;
     window.showHitboxes = data.showHitboxes;
@@ -4220,6 +4686,7 @@ _buildSettingsPopup() {
       { text: "breadbb, PinkDev, rohanis0000,", scale: 0.7, font: "goldFont" },
       { text: "bog, AntiMatter, arbstro, aloaf", scale: 0.7, font: "goldFont" },
       { text: "Contributors:", scale: 0.9, font: "bigFont" },
+      { text: "(ameth7st:3)", scale: 0.45, font: "goldFont" },
       { text: "t0nchi7 and Lasokar.", scale: 0.7, font: "goldFont" },
       { text: "© 2026 RobTop Games. All rights reserved.", scale: 0.4, font: "Arial", color: 0x000000 },
     ]; 
@@ -4521,6 +4988,9 @@ _buildSettingsPopup() {
       { text: "Credit to Altruist for making it", scale: 0.6 },
       { text: "is this update finally out?", scale: 0.65, color: 0xaaddff },
       { text: "- rohanis0000", scale: 0.65, color: 0xaaddff },
+      { text: "nope. also uhh-", scale: 0.65, color: 0xaaddff },
+      { text: "i hope this doesnt break anything!!", scale: 0.65, color: 0xaaddff },
+      { text: "- ameth7st", scale: 0.65, color: 0xaaddff },
     ]; 
     let yPos = 0;
     const lineItems = [];
@@ -4717,6 +5187,59 @@ _buildSettingsPopup() {
       this._featuredInfoPopup = null;
     }
   }
+  _buildGravityArrowInfoPopup() {
+    if (this._gravityArrowInfoPopup) {
+      return;
+    }
+    const xPos = screenWidth / 2;
+    const centerY = screenHeight / 2;
+    this._gravityArrowInfoPopup = this.add.container(0, 0).setScrollFactor(0).setDepth(1000);
+    const background = this.add.rectangle(xPos, centerY, screenWidth, screenHeight, 0, 100 / 255);
+    background.setInteractive();
+    this._gravityArrowInfoPopup.add(background);
+    this.input.keyboard.once('keydown-ESC', () => this._closeGravityArrowInfoPopup());
+    const bounceContainer = this.add.container(xPos, centerY).setScale(0);
+    this._gravityArrowInfoPopup.add(bounceContainer);
+    const cornerRadius = this.textures.get("square01_001").source[0].width * 0.325;
+    const panelBg = this._drawScale9(0, 0, 700, 300, "square01_001", cornerRadius, 16777215, 1);
+    bounceContainer.add(panelBg);
+    const title = this.add.bitmapText(0, -98, "goldFont", "Info", 46).setOrigin(0.5, 0.5);
+    bounceContainer.add(title);
+    const body = this.add.text(0, -5, "Adds an arrow above/below the player showing\n where the gravity is pointing currently.", {
+      fontSize: "30px",
+      fontFamily: "Arial",
+      color: "#ffffff",
+      align: "center",
+      lineSpacing: 4
+    }).setOrigin(0.5, 0.5);
+    bounceContainer.add(body);
+    const okGroup = this.add.container(-5, 95);
+    const okBtnW = 90, okBtnH = 55;
+    const okBtnBorder = this.textures.get("GJ_button01").source[0].width * 0.3;
+    const okBtn9 = this._drawScale9(0, 0, okBtnW, okBtnH, "GJ_button01", okBtnBorder, 0xffffff, 1);
+    const okBtn = this.add.rectangle(0, 0, okBtnW, okBtnH).setInteractive();
+    okGroup.add(okBtn9);
+    okGroup.add(okBtn);
+    const okLabel = this.add.bitmapText(-3, -4, "goldFont", "OK", 44).setOrigin(0.5, 0.5);
+    okGroup.add(okLabel);
+    bounceContainer.add(okGroup);
+    okBtn.on("pointerdown", () => { okGroup._pressed = true; this.tweens.killTweensOf(okGroup); this.tweens.add({ targets: okGroup, scaleX: 1.26, scaleY: 1.26, duration: 300, ease: "Bounce.Out" }); });
+    okBtn.on("pointerout", () => { if (okGroup._pressed) { okGroup._pressed = false; this.tweens.killTweensOf(okGroup); this.tweens.add({ targets: okGroup, scaleX: 1, scaleY: 1, duration: 400, ease: "Bounce.Out" }); } });
+    okBtn.on("pointerup", () => { if (okGroup._pressed) { okGroup._pressed = false; this.tweens.killTweensOf(okGroup); okGroup.setScale(1); this._closeGravityArrowInfoPopup(); } });
+    this.tweens.add({
+      targets: bounceContainer,
+      scale: { from: 0, to: 1 },
+      duration: 660,
+      ease: "Elastic.Out",
+      easeParams: [1, 0.6]
+    });
+  }
+  _closeGravityArrowInfoPopup() {
+    if (this._gravityArrowInfoPopup) {
+      this._gravityArrowInfoPopup.destroy();
+      this._gravityArrowInfoPopup = null;
+    }
+  }
   _expandHitArea(_0x122213, _0x37180a) {
     const _0x46ea45 = _0x122213.width;
     const _0x43b461 = _0x122213.height;
@@ -4725,36 +5248,63 @@ _buildSettingsPopup() {
     _0x122213.input.hitArea.setTo(-_0x960250, -_0x3f88a1, _0x46ea45 + _0x960250 * 2, _0x43b461 + _0x3f88a1 * 2);
   }
   _makeBouncyButton(textureX, _0x57b645, _0x2f13d0, _0xda0c21) {
-    const _0x396ca0 = _0x57b645 * 1.26;
+    const multiplier = 1.26;
+    const getBaseScales = (obj) => {
+      const scaleX = typeof obj.scaleX === 'number' ? obj.scaleX : _0x57b645;
+      const scaleY = typeof obj.scaleY === 'number' ? obj.scaleY : _0x57b645;
+      return {
+        baseX: scaleX,
+        baseY: scaleY
+      };
+    };
+
+    const getBounceFactor = (obj) => {
+      return (typeof obj.bouncyScaleFactor === 'number' && obj.bouncyScaleFactor > 0)
+        ? obj.bouncyScaleFactor
+        : multiplier;
+    };
+
     textureX.on("pointerdown", () => {
       if (!_0xda0c21 || !!_0xda0c21()) {
         textureX._pressed = true;
-        this.tweens.killTweensOf(textureX, "scale");
+        this.tweens.killTweensOf(textureX);
+        const { baseX, baseY } = getBaseScales(textureX);
+        textureX._bouncyBaseX = baseX;
+        textureX._bouncyBaseY = baseY;
+        const bounceFactor = getBounceFactor(textureX);
         this.tweens.add({
           targets: textureX,
-          scale: _0x396ca0,
+          scaleX: baseX * bounceFactor,
+          scaleY: baseY * bounceFactor,
           duration: 300,
           ease: "Bounce.Out"
         });
       }
     });
+
     textureX.on("pointerout", (pointer) => {
       if (textureX._pressed) {
         textureX._pressed = false;
-        this.tweens.killTweensOf(textureX, "scale");
+        this.tweens.killTweensOf(textureX);
+        const baseX = textureX._bouncyBaseX !== undefined ? textureX._bouncyBaseX : getBaseScales(textureX).baseX;
+        const baseY = textureX._bouncyBaseY !== undefined ? textureX._bouncyBaseY : getBaseScales(textureX).baseY;
         this.tweens.add({
           targets: textureX,
-          scale: _0x57b645,
+          scaleX: baseX,
+          scaleY: baseY,
           duration: 400,
           ease: "Bounce.Out"
         });
       }
     });
+
     textureX.on("pointerup", () => {
       if (textureX._pressed) {
         textureX._pressed = false;
         this.tweens.killTweensOf(textureX);
-        textureX.setScale(_0x57b645);
+        const baseX = textureX._bouncyBaseX !== undefined ? textureX._bouncyBaseX : getBaseScales(textureX).baseX;
+        const baseY = textureX._bouncyBaseY !== undefined ? textureX._bouncyBaseY : getBaseScales(textureX).baseY;
+        if (typeof textureX.setScale === 'function') textureX.setScale(baseX, baseY);
         _0x2f13d0();
       }
     });
@@ -6224,6 +6774,7 @@ _buildSettingsPopup() {
     if (this._isDual && !this._state2.isDead) {
       this._player2.syncSprites(this._cameraX, this._cameraY, deltaTime / 1000, this._getMirrorXOffset(playerScreenX));
     }
+    this._updateGravityArrow();
     this._applyMirrorEffect();
   }
 
@@ -7294,10 +7845,10 @@ _initEditorPauseMenu = () => {
         }, () => true);
     });
 
-    const createToggle = (container, x, y, label, getVal, setVal, callback = null) => {
+    const createToggle = (container, x, y, label, getVal, setVal, callback = null, fontSize = 25) => {
         const getTex = () => getVal() ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png";
         const check = this.add.image(x - 120, y, "GJ_GameSheet03", getTex()).setScale(0.8).setInteractive();
-        const txt = this.add.bitmapText(x - 70, y, "bigFont", label, 25).setOrigin(0, 0.5);
+        const txt = this.add.bitmapText(x + textOffset, y, "bigFont", label, fontSize).setOrigin(0, 0.5);
         container.add([check, txt]);
 
         this._makeBouncyButton(check, 0.8, () => {
@@ -7586,6 +8137,7 @@ _applyMirrorEffect() {
   }
 
     _triggerEndPortal() {
+    this._fadeOutGravityArrow();
     this._player.playEndAnimation(this._level.endXPos, () => this._levelComplete(), this._endPortalGameY);
   }
   _levelComplete() {
@@ -7613,8 +8165,26 @@ _applyMirrorEffect() {
     for (let _0x481f7c = 0; _0x481f7c < 5; _0x481f7c++) {
       this.time.delayedCall(_0x481f7c * 50, () => circleEffect(this, _0x356782, _0x2d967b, 10, screenWidth, 500, false, true, window.mainColor));
     }
+    this._fadeOutGravityArrow();
     circleEffect(this, _0x356782, _0x2d967b, 10, 1000, 500, true, false, window.mainColor);
     this._showCompleteEffect();
+  }
+  _fadeOutGravityArrow() {
+    if (!this._gravityArrow || !this._gravityArrow.scene) {
+      return;
+    }
+    this.tweens.add({
+      targets: this._gravityArrow,
+      alpha: 0,
+      duration: 400,
+      ease: "Quad.Out",
+      onComplete: () => {
+        if (this._gravityArrow) {
+          this._gravityArrow.setVisible(false);
+          this._gravityArrow.alpha = 1;
+        }
+      }
+    });
   }
   _showCompleteEffect() {
     this._audio.fadeOutMusic(1500);
@@ -8132,6 +8702,49 @@ _applyMirrorEffect() {
       },
       onComplete: _0x272eb1
     });
+  }
+  _createGravityArrow() {
+    if (this._gravityArrow) {
+      return;
+    }
+
+    this._gravityArrow = this.add.sprite(0, 0, "GJ_GameSheet03", "edit_downBtn_001.png")
+      .setOrigin(0.5, 0.5)
+      .setScale(1)
+      .setDepth(-8)
+      .setScrollFactor(0)
+      .setVisible(false);
+  }
+  _updateGravityArrow() {
+    if (!this._gravityArrow) {
+      if (window.showGravityArrow) {
+        this._createGravityArrow();
+      } else {
+        return;
+      }
+    }
+
+    if (!window.showGravityArrow || this._menuActive) {
+      this._gravityArrow.setVisible(false);
+      return;
+    }
+
+    if (!this._gravityArrow.scene) {
+      this._gravityArrow = null;
+      return;
+    }
+
+    this._gravityArrow.setVisible(true);
+
+    const playerScreenX = this._playerWorldX - this._cameraX;
+    const playerScreenY = b(this._state.y) + this._cameraY;
+    const ARROW_DISTANCE = 64;
+    const gravityDirection = this._state.gravityFlipped ? -1 : 1;
+    const arrowX = this._getMirrorXOffset(playerScreenX);
+    const arrowY = playerScreenY + (ARROW_DISTANCE * gravityDirection);
+
+    this._gravityArrow.setPosition(arrowX, arrowY);
+    this._gravityArrow.rotation = this._state.gravityFlipped ? Math.PI : 0;
   }
   _showStatsScreen() {
     if (this._pauseBtn) {
