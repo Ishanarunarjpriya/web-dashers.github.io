@@ -313,7 +313,14 @@ class BootScene extends Phaser.Scene {
         if (sliderFill) sliderFill.width = 380;
         this.time.delayedCall(200, () => {
           const bigFontData = this.cache.text.get("bigFontFnt");
-          if (bigFontData) loadFont(this, "bigFont", bigFontData);
+          if (!bigFontData) {
+            console.error("Critical asset bigFont failed to load. Reloading...");
+            localStorage.removeItem('webdash_assets_loaded');
+            localStorage.removeItem('webdash_last_load_time');
+            if (window.gameCache) window.gameCache.clearCache();
+            return location.reload();
+          }
+          loadFont(this, "bigFont", bigFontData);
           const gfd = this.cache.text.get("goldFontFnt");
           if (gfd && !this.cache.bitmapFont.has("goldFont")) loadFont(this, "goldFont", gfd);
 

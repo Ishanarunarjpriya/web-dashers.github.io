@@ -66,7 +66,9 @@ function parseObject(objectString) {
       flipX: objectData[4] === "1",
       flipY: objectData[5] === "1",
       rot: customTransform ? customTransform.rot : parseFloat(objectData[6] || "0"),
-      animSpeed: parseFloat(objectData[20] || "0"),
+      rotSpeed: parseFloat(objectData[97] || "0"),
+      animSpeed: parseFloat(objectData[107] || "0"),
+      linkedGroupId: parseInt(objectData[20] || "0", 10),
       scale: parseFloat(objectData[32] || "1"),
       scaleX: customTransform ? customTransform.scaleX : undefined,
       scaleY: customTransform ? customTransform.scaleY : undefined,
@@ -410,7 +412,7 @@ window.LevelObject = class LevelObject {
             if (typeof hex === "string") hex = parseInt(hex.replace(/^#/, ""), 16);
             this._initialColors[channelId] = { r: (hex >> 16) & 0xff, g: (hex >> 8) & 0xff, b: hex & 0xff, opacity: parseFloat(colorProps[7] ?? 1), blending: colorProps[5] === "1" };
           } else if (copyPlayer === 2) {
-            let hex = window.secondaryColor || 0x00ff00;
+            let hex = window.secondaryColor || 0xffffff;  // ponytail: fallback to white, not green
             if (typeof hex === "string") hex = parseInt(hex.replace(/^#/, ""), 16);
             this._initialColors[channelId] = { r: (hex >> 16) & 0xff, g: (hex >> 8) & 0xff, b: hex & 0xff, opacity: parseFloat(colorProps[7] ?? 1), blending: colorProps[5] === "1" };
           } else {
@@ -445,6 +447,10 @@ window.LevelObject = class LevelObject {
     if (!this._initialColors[1001] && window.settingsMap["kS30"]) {
       let col = parseColorEntry(window.settingsMap["kS30"]);
       if (col) this._initialColors[1001] = col;
+    }
+    // ponytail: default detail color (1001) to white if not set
+    if (!this._initialColors[1001]) {
+      this._initialColors[1001] = { r: 255, g: 255, b: 255 };
     }
   }
   _buildGround() {
@@ -774,8 +780,23 @@ window.LevelObject = class LevelObject {
       sprite._eeBaseAlpha = objectData.opacity;
       sprite.setAlpha(objectData.opacity);
     }
-    if (objectData.spinSpeed !== undefined) {
-      sprite._spinSpeed = objectData.spinSpeed;
+    if (
+      frameName.includes("_color_") ||
+      (colorData && colorData.tint !== undefined && (
+        frameName.startsWith("block") ||
+        frameName.startsWith("persp_block") ||
+        frameName.startsWith("colorSpike") ||
+        frameName.startsWith("triangle_") ||
+        frameName.startsWith("square_")
+      ))
+    ) {
+      sprite._eeUseFillTint = true;
+    }
+    let finalSpinSpeed = undefined;
+    if (objectData && objectData.spinSpeed !== undefined) finalSpinSpeed = objectData.spinSpeed;
+    else if (colorData && colorData.spinSpeed !== undefined) finalSpinSpeed = colorData.spinSpeed;
+    if (finalSpinSpeed !== undefined) {
+      sprite._spinSpeed = finalSpinSpeed;
       if (!this._spinSprites.includes(sprite)) this._spinSprites.push(sprite);
     }
     if (colorData) {
@@ -855,7 +876,29 @@ window.LevelObject = class LevelObject {
   const isNativeSpinFrame = objectFrame && (
     objectFrame.startsWith("d_wheel_0") ||
     objectFrame.startsWith("d_cogwheel_") ||
-    objectFrame.startsWith("d_cartwheel_")
+    objectFrame.startsWith("d_cartwheel_") ||
+    objectFrame.startsWith("blackCogwheel_") ||
+    objectFrame.startsWith("d_roundCloud_") ||
+    objectFrame.startsWith("d_circle_") ||
+    objectFrame.startsWith("d_swirve_") ||
+    objectFrame.startsWith("d_ringSpiral_") ||
+    objectFrame.startsWith("d_spiral_") ||
+    objectFrame.startsWith("d_spikewheel_") ||
+    objectFrame.startsWith("d_rotating") ||
+    objectFrame.startsWith("d_ringSeg_") ||
+    objectFrame.startsWith("d_scaleFadeRing_") ||
+    objectFrame.startsWith("blade_") ||
+    objectFrame.startsWith("spinBlade")
+  );
+  const isPartialSpinFrame = objectFrame && (
+    objectFrame.startsWith("d_cogwheel_01_") ||
+    objectFrame.startsWith("d_cartwheel_01_") ||
+    objectFrame.startsWith("d_spikewheel_01_") ||
+    objectFrame.startsWith("d_roundCloud_01_") ||
+    objectFrame.startsWith("d_swirve_") ||
+    objectFrame.startsWith("d_spiral_") ||
+    objectFrame.startsWith("d_rotatingLine_") ||
+    objectFrame.startsWith("d_rotatingSquare_")
   );
   if (objectDef && objectDef.default_scale !== undefined) {
     levelObj.scale = (levelObj.scale || 1) * objectDef.default_scale;
@@ -863,9 +906,33 @@ window.LevelObject = class LevelObject {
   if (objectDef && objectDef.spinSpeed !== undefined) {
     levelObj.spinSpeed = objectDef.spinSpeed;
   }
-  // ponytail: GD key 20 is animation/spin speed; this matches current 137 timing and supports negative direction.
-  if (isNativeSpinFrame && Number.isFinite(levelObj.animSpeed) && levelObj.animSpeed !== 0) {
-    levelObj.spinSpeed = Math.sign(levelObj.animSpeed) * Math.min(10, Math.max(0.75, Math.abs(levelObj.animSpeed) * 0.75));
+  // ponytail: key 97 (m_rotationSpeed) overrides spin for spin-capable objects. Negative = reverse.
+  const isSpinCapable = (objectDef && objectDef.spinSpeed !== undefined) || isNativeSpinFrame;
+  if (isSpinCapable && Number.isFinite(levelObj.rotSpeed) && levelObj.rotSpeed !== 0) {
+    levelObj.spinSpeed = levelObj.rotSpeed;
+  }
+  // ponytail: GD object-ID-based default spin speeds (from decompilation).
+  // GD uses values ~90-270, we scale down by ~120 to get ~0.75-2.25 range.
+  if (isNativeSpinFrame && levelObj.spinSpeed === undefined) {
+    const id = levelObj.id;
+    let defaultSpin = 1;
+    // Objects 1619, 1620, 186, 222 spin counterclockwise by default
+    if (id === 1619 || id === 1620 || id === 186 || id === 222) {
+      defaultSpin = -1.5;  // counterclockwise, medium speed
+    }
+    // Objects 97, 85-89 have 1.5x multiplier
+    else if (id === 97 || (id >= 85 && id <= 89)) {
+      defaultSpin = 1.5;  // clockwise, faster
+    }
+    // Objects 154-156 have 1.0x multiplier
+    else if (id >= 154 && id <= 156) {
+      defaultSpin = 1.0;  // clockwise, medium
+    }
+    // Objects 137-139, 98, 180-182 use base speed
+    else if ((id >= 137 && id <= 139) || id === 98 || (id >= 180 && id <= 182)) {
+      defaultSpin = 1.0;  // clockwise, medium
+    }
+    levelObj.spinSpeed = defaultSpin;
   } else if (isJumpPadLineFrame && levelObj.spinSpeed === undefined) {
     levelObj.spinSpeed = 1;
   }
@@ -916,11 +983,36 @@ window.LevelObject = class LevelObject {
 
     if (levelObj.id === 1007) {
       const _raw = levelObj._raw;
+      // ponytail: GD Alpha Trigger - supports fade in/hold/fade out phases and easing
+      // Key 7 = fade in time, Key 8 = hold time, Key 9 = fade out time
+      // Key 10 = duration (legacy), Key 13 = easing type, Key 14 = easing rate
+      // Key 35 = target opacity, Key 36 = fade out flag, Key 51 = target group
+      const fadeIn = parseFloat(_raw[7] || "0");
+      const hold = parseFloat(_raw[8] || "0");
+      const fadeOut = parseFloat(_raw[9] || "0");
+      const legacyDuration = parseFloat(_raw[10] || "0");
+      const easingType = parseInt(_raw[13] || "0", 10);
+      const easingRate = parseFloat(_raw[14] || "2");
+      const targetOpacity = Math.max(0, Math.min(1, parseFloat(_raw[35] || "1")));
+      const fadeOutEnabled = _raw[36] === "1";
+      const targetGroup = parseInt(_raw[51] || "0", 10);
+      
+      // Calculate total duration and phases
+      let totalDuration = legacyDuration;
+      if (fadeIn > 0 || hold > 0 || fadeOut > 0) {
+        totalDuration = fadeIn + hold + fadeOut;
+      }
+      
       this._alphaTriggers.push({
         x: levelObj.x * 2,
-        duration: parseFloat(_raw[10] ?? 0),
-        targetGroup: parseInt(_raw[51] ?? 0, 10),
-        targetOpacity: Math.max(0, Math.min(1, parseFloat(_raw[35] ?? 1)))
+        duration: totalDuration,
+        fadeIn: fadeIn > 0 ? fadeIn : (totalDuration > 0 ? totalDuration : 0),
+        hold: hold,
+        fadeOut: fadeOutEnabled ? fadeOut : 0,
+        targetGroup: targetGroup,
+        targetOpacity: targetOpacity,
+        easingType: easingType,
+        easingRate: easingRate
       });
     }
 
@@ -1050,7 +1142,6 @@ window.LevelObject = class LevelObject {
 
     const isBlackChannelObject =
       (objectDef.type === hazardType && (
-        frameName.startsWith("spike_") ||
         frameName.indexOf("sawblade") >= 0 ||
         frameName.startsWith("spinBlade") ||
         frameName.startsWith("blade") ||
@@ -1257,8 +1348,52 @@ window.LevelObject = class LevelObject {
       }
     }
 
+    const spinCompletionAngles = [90, 180, 270];
+    const objectChildRotations = new Set((objectDef.children || []).map(childDef => {
+      const rot = childDef.rot || 0;
+      return ((rot % 360) + 360) % 360;
+    }));
+    const hasSpinCompletionChildren = spinCompletionAngles.every(angle => objectChildRotations.has(angle));
+    const shouldAutoCompletePartialSpin =
+      levelObj.spinSpeed !== undefined &&
+      isPartialSpinFrame &&
+      !hasSpinCompletionChildren;
+
+    // Complete rotating line/square deco that is authored as one quarter/half sprite.
+    if (shouldAutoCompletePartialSpin) {
+      for (const extraAngle of spinCompletionAngles) {
+        const extraRotDeg = (levelObj.rot || 0) + extraAngle;
+        const extraVisualData = { ...levelObj, rot: extraRotDeg, spinSpeed: levelObj.spinSpeed };
+        const extraSprite = addImageToScene(scene, spriteWorldX, baseY, frameName);
+        if (extraSprite) {
+          this._applyVisualProps(scene, extraSprite, frameName, extraVisualData, objectDef);
+          this._addVisualSprite(extraSprite, objectDef);
+          extraSprite._eeWorldX = worldX;
+          extraSprite._eeBaseY = baseY;
+          extraSprite._eeZDepth = objZDepth - 0.001;
+          extraSprite._eeOrigAlpha = 1;
+          registerColor(extraSprite, col1);
+          this._addToSection(extraSprite);
+          registerToGroups(extraSprite, worldX, baseY);
+          registerObjectSprite(extraSprite);
+        }
+      }
+    }
+
     if (objectDef.children) {
       for (const childDef of objectDef.children) {
+        const isDuplicateSpinChild =
+          shouldAutoCompletePartialSpin &&
+          childDef.frame === frameName &&
+          (childDef.rot || 0) === 0 &&
+          !childDef.dx &&
+          !childDef.dy &&
+          !childDef.localDx &&
+          !childDef.localDy;
+        if (isDuplicateSpinChild) {
+          continue;
+        }
+
         let childDx = childDef.dx || 0;
         let childDy = childDef.dy || 0;
 
@@ -1287,6 +1422,12 @@ window.LevelObject = class LevelObject {
           if (childSprite) {
             this._applyVisualProps(scene, childSprite, childDef.frame, childVisualData, childDef);
 
+            // ponytail: child tracks parent rotation so the group spins as one rigid circle
+            if (levelObj.spinSpeed !== undefined) {
+              childSprite._spinParentRef = sprite;
+              childSprite._spinRotOffset = childSprite.rotation - sprite.rotation;
+            }
+
           if (childDef.audioScale) {
             childSprite.setScale(0.1);
             childSprite.setAlpha(0.9);
@@ -1305,7 +1446,18 @@ window.LevelObject = class LevelObject {
           childSprite._eeBaseY = childBaseY;
           childSprite._eeZDepth = objZDepth + ((childDef.z !== undefined ? childDef.z : -1) < 0 ? -0.003 : 0.001);
           childSprite._eeOrigAlpha = 1;
-          registerColor(childSprite, col1);
+          const childUsesDetailColor =
+            childDef.color_channel === "detail" ||
+            childDef.detailColor === true ||
+            childDef.frame.includes("_color_") ||
+            (
+              childDef.tint !== undefined &&
+              col2 > 0 &&
+              objectDef.default_detail_color_channel > 0 &&
+              childDef.frame.indexOf("Cogwheel") < 0 &&
+              childDef.frame.indexOf("cogwheel") < 0
+            );
+          registerColor(childSprite, childUsesDetailColor ? col2 : col1);
           this._addToSection(childSprite);
           registerToGroups(childSprite, childWorldX, childBaseY);
           registerObjectSprite(childSprite);
@@ -1928,6 +2080,31 @@ window.LevelObject = class LevelObject {
   }
 
   stepAlphaTriggers(dt) {
+    // ponytail: easing functions for GD trigger effects
+    const applyEasing = (t, type, rate) => {
+      const r = Math.max(0.5, Math.min(10, rate));
+      switch (type) {
+        case 1: return t * t;  // ease in quad
+        case 2: return 1 - (1 - t) * (1 - t);  // ease out quad
+        case 3: return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;  // ease in-out quad
+        case 4: return Math.pow(t, r);  // ease in pow
+        case 5: return 1 - Math.pow(1 - t, r);  // ease out pow
+        case 6: return t < 0.5 ? Math.pow(2 * t, r) / 2 : 1 - Math.pow(2 * (1 - t), r) / 2;  // ease in-out pow
+        case 7: return t * t * t;  // ease in cubic
+        case 8: return 1 - Math.pow(1 - t, 3);  // ease out cubic
+        case 9: return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;  // ease in-out cubic
+        case 10: return t * t * t * t;  // ease in quart
+        case 11: return 1 - Math.pow(1 - t, 4);  // ease out quart
+        case 12: return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;  // ease in-out quart
+        case 13: return 1 - Math.cos(t * Math.PI / 2);  // ease out sine
+        case 14: return Math.sin(t * Math.PI / 2);  // ease in sine
+        case 15: return (1 - Math.cos(t * Math.PI)) / 2;  // ease in-out sine
+        case 16: return 1 - Math.exp(-r * t);  // ease in exponential
+        case 17: return t === 1 ? 1 : 1 - Math.exp(-r * (1 - t));  // ease out exponential (approx)
+        default: return t;  // linear (no easing)
+      }
+    };
+
     let i = 0;
     while (i < this._activeAlphaTweens.length) {
       const anim = this._activeAlphaTweens[i];
@@ -1935,12 +2112,56 @@ window.LevelObject = class LevelObject {
       const dur = trig.duration > 0 ? trig.duration : 0;
 
       anim.elapsed += dt;
-      const progress = dur > 0 ? Math.min(anim.elapsed / dur, 1) : 1;
-
-      const newOpacity = anim.startOpacity + (trig.targetOpacity - anim.startOpacity) * progress;
+      const rawProgress = dur > 0 ? Math.min(anim.elapsed / dur, 1) : 1;
+      
+      // Calculate opacity based on fade in/hold/fade out phases
+      let targetOp = trig.targetOpacity;
+      let phaseProgress = rawProgress;
+      
+      if (trig.fadeIn > 0 || trig.hold > 0 || trig.fadeOut > 0) {
+        const elapsed = anim.elapsed;
+        const fadeInEnd = trig.fadeIn;
+        const holdEnd = fadeInEnd + trig.hold;
+        const fadeOutEnd = holdEnd + trig.fadeOut;
+        
+        if (elapsed <= fadeInEnd && trig.fadeIn > 0) {
+          // Fade in phase: startOpacity -> targetOpacity
+          phaseProgress = trig.fadeIn > 0 ? elapsed / trig.fadeIn : 1;
+          targetOp = trig.targetOpacity;
+        } else if (elapsed <= holdEnd) {
+          // Hold phase: stay at targetOpacity
+          phaseProgress = 1;
+          targetOp = trig.targetOpacity;
+        } else if (elapsed <= fadeOutEnd && trig.fadeOut > 0) {
+          // Fade out phase: targetOpacity -> startOpacity
+          phaseProgress = (elapsed - holdEnd) / trig.fadeOut;
+          targetOp = anim.startOpacity;
+        } else {
+          // Done
+          phaseProgress = 1;
+          targetOp = trig.fadeOut > 0 ? anim.startOpacity : trig.targetOpacity;
+        }
+      } else {
+        // Legacy mode: just interpolate to target
+        targetOp = trig.targetOpacity;
+      }
+      
+      // Apply easing to phase progress
+      const easedProgress = applyEasing(phaseProgress, trig.easingType || 0, trig.easingRate || 2);
+      
+      // Calculate final opacity
+      let newOpacity;
+      if (trig.fadeOut > 0 && anim.elapsed > trig.fadeIn + trig.hold) {
+        // Fading out: interpolate from targetOpacity back to startOpacity
+        newOpacity = trig.targetOpacity + (anim.startOpacity - trig.targetOpacity) * easedProgress;
+      } else {
+        // Fading in or holding: interpolate from startOpacity to targetOpacity
+        newOpacity = anim.startOpacity + (targetOp - anim.startOpacity) * easedProgress;
+      }
+      
       this._groupOpacity[trig.targetGroup] = Math.max(0, Math.min(1, newOpacity));
 
-      if (progress >= 1) {
+      if (rawProgress >= 1) {
         this._activeAlphaTweens.splice(i, 1);
       } else {
         i++;
@@ -2131,7 +2352,11 @@ window.LevelObject = class LevelObject {
         if (!spr || !spr.active) continue;
         if (spr._eePulsed) continue;
         if (spr._eeAudioScale) continue;
-        spr.setTint(hex);
+        if (spr._eeUseFillTint) {
+          spr.setTintFill(hex);
+        } else {
+          spr.setTint(hex);
+        }
         if (chColor.opacity !== undefined) {
           spr._eeColorAlpha = chColor.opacity;
         } else {

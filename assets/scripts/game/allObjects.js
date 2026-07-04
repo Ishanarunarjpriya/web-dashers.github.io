@@ -1664,7 +1664,6 @@ window.allobjects = function() {
   },
   "137": {
     "type": "deco",
-    "spinSpeed": 0.75,
     "frame": "d_wheel_01_001.png",
     "gridW": 1.350000023841858,
     "gridH": 2.6666667461395264,
@@ -16591,7 +16590,6 @@ window.allobjects = function() {
   },
   "997": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_ringSeg_01_001.png",
@@ -16636,7 +16634,6 @@ window.allobjects = function() {
   },
   "998": {
     "can_color": true,
-    "spinSpeed": -0.75,
     "children": [
       {
         "frame": "d_ringSeg_02_001.png",
@@ -16681,7 +16678,6 @@ window.allobjects = function() {
   },
   "999": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_ringSeg_03_001.png",
@@ -16726,7 +16722,6 @@ window.allobjects = function() {
   },
   "1000": {
     "can_color": true,
-    "spinSpeed": -0.75,
     "children": [
       {
         "frame": "d_ringSeg_04_001.png",
@@ -31583,7 +31578,6 @@ window.allobjects = function() {
   },
   "1831": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_scaleFadeRing_01_001.png",
@@ -31628,7 +31622,6 @@ window.allobjects = function() {
   },
   "1832": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "default_scale": 2,
     "children": [
       {
@@ -31674,7 +31667,6 @@ window.allobjects = function() {
   },
   "1833": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_scaleFadeRing_02_001.png",
@@ -31719,7 +31711,6 @@ window.allobjects = function() {
   },
   "1834": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "default_scale": 2,
     "children": [
       {
@@ -31765,7 +31756,6 @@ window.allobjects = function() {
   },
   "1835": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_scaleFadeRing_01_001.png",
@@ -31806,7 +31796,6 @@ window.allobjects = function() {
   },
   "1836": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "default_scale": 2,
     "children": [
       {
@@ -31848,7 +31837,6 @@ window.allobjects = function() {
   },
   "1837": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_scaleFadeRing_02_001.png",
@@ -31889,7 +31877,6 @@ window.allobjects = function() {
   },
   "1838": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "default_scale": 2,
     "children": [
       {
@@ -31931,7 +31918,6 @@ window.allobjects = function() {
   },
   "1839": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_scaleFadeRing_01_001.png",
@@ -31976,7 +31962,6 @@ window.allobjects = function() {
   },
   "1840": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "default_scale": 2,
     "children": [
       {
@@ -32022,7 +32007,6 @@ window.allobjects = function() {
   },
   "1841": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "children": [
       {
         "frame": "d_scaleFadeRing_02_001.png",
@@ -32067,7 +32051,6 @@ window.allobjects = function() {
   },
   "1842": {
     "can_color": true,
-    "spinSpeed": 0.75,
     "default_scale": 2,
     "children": [
       {

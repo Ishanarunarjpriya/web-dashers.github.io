@@ -1,6 +1,6 @@
-// Removed player color defaults
-if (typeof window.mainColor === 'undefined') window.mainColor = '#ff0000';
-if (typeof window.secondaryColor === 'undefined') window.secondaryColor = '#00ff00';
+// ponytail: default player colors - matching GD defaults
+if (typeof window.mainColor === 'undefined') window.mainColor = '#00FBFF';  // cyan
+if (typeof window.secondaryColor === 'undefined') window.secondaryColor = '#FFFFFF';  // white
 
 class PracticeMode {
   constructor() {
@@ -5036,7 +5036,14 @@ _buildSettingsPopup() {
     if (this._level && this._level._spinSprites) {
       const spinRotation = deltaTime * 0.003;
       for (let _spin of this._level._spinSprites) {
-        if (_spin && _spin.active) _spin.rotation += spinRotation * (_spin._spinSpeed ?? 1);
+        if (_spin && _spin.active) {
+          if (_spin._spinParentRef) {
+            // ponytail: child of a spinning group — lock to parent's rotation so they spin as one circle
+            _spin.rotation = _spin._spinParentRef.rotation + _spin._spinRotOffset;
+          } else {
+            _spin.rotation += spinRotation * (_spin._spinSpeed ?? 1);
+          }
+        }
       }
     }
     this._level.updateAudioScale(this._audio.getMeteringValue());
