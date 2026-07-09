@@ -2009,9 +2009,9 @@ window.LevelObject = class LevelObject {
           const childSprite = addImageToScene(scene, spriteWorldX + childDx, baseY + childDy, childDef.frame);
 
         if (childSprite) {
-          const childObjectData = (childDef.frame === "portal_01_extra_2_001.png" || childDef.frame === "portal_02_extra_2_001.png")
+          const childObjectData = childDef.frame === "portal_01_extra_2_001.png" || childDef.frame === "portal_02_extra_2_001.png"
             ? { ...levelObj, rot: 0 }
-            : levelObj;
+            : childVisualData;
           this._applyVisualProps(scene, childSprite, childDef.frame, childObjectData, childDef);
           const showguide = childDef.portalGuide ? (window.enablePortalGuide !== false) : true;
           const showguide2 = childDef.orbGuide ? (window.enableOrbGuide !== false) : true;
