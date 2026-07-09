@@ -44,7 +44,7 @@ class Easing {
   static _bounceIn(x) { return 1-this._bounceTime(1-x); };
   static _bounceOut(x) { return this._bounceTime(x); };
   static _expInOut(x) { return x<0.5 ? 0.5*Math.pow(2,10*(x*2-1)) : 0.5*(-Math.pow(2,-10*(x*2-1))+2); };
-  static _expIn(x) { return Math.pow(2,10*(x-1))-0.001; };
+  static _expIn(x) { return Math.max(0, Math.pow(2,10*(x-1))-0.001); };
   static _expOut(x) { return -Math.pow(2,-10*x)+1; };
   static _sineInOut(x) { return -0.5*(Math.cos(x*Math.PI)-1); };
   static _sineIn(x) { return 1-Math.cos((x*Math.PI)/2); };
@@ -170,6 +170,21 @@ class ColorManager {
         b: 255
       },
       [1011]: {
+        r: 255,
+        g: 255,
+        b: 255
+      },
+      1002: {
+        r: 255,
+        g: 255,
+        b: 255
+      },
+      1003: {
+        r: 255,
+        g: 255,
+        b: 255
+      },
+      1004: {
         r: 255,
         g: 255,
         b: 255
