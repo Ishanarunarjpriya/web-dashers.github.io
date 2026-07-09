@@ -334,7 +334,6 @@ if (!allObjects[1331]) {
   };
 }
 
-
 const _speedPortalIds = [200, 201, 202, 203, 1334];
 for (const _spId of _speedPortalIds) {
   if (!allObjects[_spId] || allObjects[_spId].type !== "speed") {
@@ -499,6 +498,7 @@ window.LevelObject = class LevelObject {
     this._spawnTriggerIdx = 0;
     this._activeSpawnDelays = [];
     this._colorChannelSprites = {};
+    this._ground2Tint = 0xffffff;
     this._groupSprites = {};
     this._groupOffsets = {};
     this._groupOpacity = {};
@@ -532,6 +532,56 @@ window.LevelObject = class LevelObject {
     return String(levelObj?._raw?.[62] ?? levelObj?._raw?.["62"] ?? "0") === "1";
   }
 
+  _getTeleportPortalYOffset(levelObj) {
+    const raw = levelObj?._raw || {};
+    const hasOffset = raw[54] !== undefined || raw["54"] !== undefined;
+    const parsed = parseFloat(hasOffset ? (raw[54] ?? raw["54"]) : 90);
+    return Number.isFinite(parsed) ? parsed : 90;
+  }
+
+  _normalizeTeleportPortals(levelObjects) {
+    if (!Array.isArray(levelObjects)) return [];
+
+    const normalized = [];
+    const standaloneExitPortals = [];
+
+    for (const obj of levelObjects) {
+      if (!obj) continue;
+      if (parseInt(obj.id ?? 0, 10) === 749) {
+        standaloneExitPortals.push(obj);
+      } else {
+        normalized.push(obj);
+      }
+    }
+
+    for (const exitObj of standaloneExitPortals) {
+      const exitX = parseFloat(exitObj.x ?? exitObj._raw?.[2] ?? exitObj._raw?.["2"] ?? 0) || 0;
+      let enterObj = null;
+      let bestDistance = Infinity;
+
+      for (const candidate of normalized) {
+        if (!candidate || parseInt(candidate.id ?? 0, 10) !== 747) continue;
+        const candidateX = parseFloat(candidate.x ?? candidate._raw?.[2] ?? candidate._raw?.["2"] ?? 0) || 0;
+        const distance = Math.abs(candidateX - exitX);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          enterObj = candidate;
+        }
+      }
+
+      if (enterObj) {
+        const enterY = parseFloat(enterObj.y ?? enterObj._raw?.[3] ?? enterObj._raw?.["3"] ?? 0) || 0;
+        const exitY = parseFloat(exitObj.y ?? exitObj._raw?.[3] ?? exitObj._raw?.["3"] ?? enterY) || enterY;
+        const yOffset = exitY - enterY;
+        enterObj._raw = enterObj._raw || {};
+        enterObj._raw[54] = String(yOffset);
+        enterObj._raw["54"] = String(yOffset);
+      }
+    }
+
+    return normalized.filter(Boolean);
+  }
+
   _getLevelObjectGroupIds(levelObj) {
     const values = [];
     const addRawGroups = (rawGroups) => {
@@ -547,6 +597,30 @@ window.LevelObject = class LevelObject {
     addRawGroups(levelObj?.groups);
 
     return [...new Set(values)];
+  }
+
+  _parseSingleTriggerGroupId(value, fallback = 0) {
+    const parts = String(value ?? "")
+      .split(/[,.]/)
+      .map(part => parseInt(part.trim(), 10))
+      .filter(groupId => Number.isFinite(groupId) && groupId > 0);
+    return parts.length ? parts[0] : fallback;
+  }
+
+  _parseRotateTriggerGroups(raw) {
+    const targetRaw = raw?.[51] ?? raw?.["51"] ?? 0;
+    const centerRaw = raw?.[71] ?? raw?.["71"] ?? 0;
+    const targetParts = String(targetRaw ?? "")
+      .split(/[,.]/)
+      .map(part => parseInt(part.trim(), 10))
+      .filter(groupId => Number.isFinite(groupId) && groupId > 0);
+    const centerParts = String(centerRaw ?? "")
+      .split(/[,.]/)
+      .map(part => parseInt(part.trim(), 10))
+      .filter(groupId => Number.isFinite(groupId) && groupId > 0);
+    const targetGroup = targetParts.length ? targetParts[0] : 0;
+    const centerGroup = centerParts.length ? centerParts[0] : 0;
+    return { targetGroup, centerGroup };
   }
 
   _makeTriggerBase(levelObj, linkedObjectId) {
@@ -579,6 +653,7 @@ window.LevelObject = class LevelObject {
       objects: levelObjects,
       settings: settingslist
     } = parseLevel(levelData);
+    levelObjects = this._normalizeTeleportPortals(levelObjects);
     this._sourceLevelObjects = levelObjects;
     this._spawnLevelObjects(levelObjects);
     this._setUpSettings(settingslist);
@@ -665,6 +740,10 @@ window.LevelObject = class LevelObject {
     this._tileW = groundFrame ? groundFrame.width : 1012;
     this._groundTiles = [];
     this._ceilingTiles = [];
+    this._ground2Tiles = [];
+    this._ceiling2Tiles = [];
+    const ground2TexKey = "groundSquare_" + window._groundId + "_2_001.png";
+    const hasGround2 = scene.textures.exists(ground2TexKey);
     let tileCount = Math.ceil(screenWidth / this._tileW) + 2;
     let groundY = b(0);
     const startX = -centerX;
@@ -676,6 +755,14 @@ window.LevelObject = class LevelObject {
       groundTile.setDepth(20);
       groundTile._worldX = tileX;
       this._groundTiles.push(groundTile);
+      if (hasGround2) {
+        let ground2Tile = scene.add.image(0, groundY, ground2TexKey);
+        ground2Tile.setOrigin(0, 0);
+        ground2Tile.setTint(this._ground2Tint);
+        ground2Tile.setDepth(20.5);
+        ground2Tile._worldX = tileX;
+        this._ground2Tiles.push(ground2Tile);
+      }
       let ceilingTile = scene.add.image(0, groundY, "groundSquare_" + window._groundId + "_001.png");
       ceilingTile.setOrigin(0, 1);
       ceilingTile.setFlipY(true);
@@ -684,6 +771,16 @@ window.LevelObject = class LevelObject {
       ceilingTile.setVisible(false);
       ceilingTile._worldX = tileX;
       this._ceilingTiles.push(ceilingTile);
+      if (hasGround2) {
+        let ceiling2Tile = scene.add.image(0, groundY, ground2TexKey);
+        ceiling2Tile.setOrigin(0, 1);
+        ceiling2Tile.setFlipY(true);
+        ceiling2Tile.setTint(this._ground2Tint);
+        ceiling2Tile.setDepth(20.5);
+        ceiling2Tile.setVisible(false);
+        ceiling2Tile._worldX = tileX;
+        this._ceiling2Tiles.push(ceiling2Tile);
+      }
     }
     this._maxGroundWorldX = startX + (tileCount - 1) * this._tileW;
     const floorLineFrame = scene.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
@@ -710,6 +807,55 @@ window.LevelObject = class LevelObject {
     for (let tile of this._ceilingTiles) {
       tile.setTexture(texKey);
     }
+
+    const ground2TexKey = "groundSquare_" + gId + "_2_001.png";
+    const hasGround2 = this._scene.textures.exists(ground2TexKey);
+    this._ground2Tiles = this._ground2Tiles || [];
+    this._ceiling2Tiles = this._ceiling2Tiles || [];
+
+    if (hasGround2) {
+      for (let i = 0; i < this._groundTiles.length; i++) {
+        const groundTile = this._groundTiles[i];
+        const ceilingTile = this._ceilingTiles[i];
+        if (!groundTile || !ceilingTile) continue;
+
+        if (!this._ground2Tiles[i]) {
+          const ground2Tile = this._scene.add.image(groundTile.x || 0, groundTile.y || b(0), ground2TexKey);
+          ground2Tile.setOrigin(0, 0);
+          ground2Tile.setTint(this._ground2Tint);
+          ground2Tile.setDepth(20.5);
+          ground2Tile._worldX = groundTile._worldX;
+          this._ground2Tiles[i] = ground2Tile;
+        } else {
+          this._ground2Tiles[i].setTexture(ground2TexKey);
+          this._ground2Tiles[i].setTint(this._ground2Tint);
+        }
+        this._ground2Tiles[i].setVisible(true);
+
+        if (!this._ceiling2Tiles[i]) {
+          const ceiling2Tile = this._scene.add.image(ceilingTile.x || 0, ceilingTile.y || b(0), ground2TexKey);
+          ceiling2Tile.setOrigin(0, 1);
+          ceiling2Tile.setFlipY(true);
+          ceiling2Tile.setTint(this._ground2Tint);
+          ceiling2Tile.setDepth(20.5);
+          ceiling2Tile.setVisible(false);
+          ceiling2Tile._worldX = ceilingTile._worldX;
+          this._ceiling2Tiles[i] = ceiling2Tile;
+        } else {
+          this._ceiling2Tiles[i].setTexture(ground2TexKey);
+          this._ceiling2Tiles[i].setFlipY(true);
+          this._ceiling2Tiles[i].setTint(this._ground2Tint);
+        }
+        this._ceiling2Tiles[i].setVisible(false);
+      }
+    } else {
+      for (let tile of this._ground2Tiles || []) {
+        if (tile) tile.setVisible(false);
+      }
+      for (let tile of this._ceiling2Tiles || []) {
+        if (tile) tile.setVisible(false);
+      }
+    }
   }
   resizeScreen() {
     var newTile;
@@ -724,10 +870,23 @@ window.LevelObject = class LevelObject {
       newGroundTile.setOrigin(0, 0).setTint(((newTile = this._groundTiles[0]) == null ? undefined : newTile.tintTopLeft) || 17578).setDepth(20);
       newGroundTile._worldX = newTileX;
       this._groundTiles.push(newGroundTile);
+      const ground2TexKey = "groundSquare_" + window._groundId + "_2_001.png";
+      if (scene.textures.exists(ground2TexKey)) {
+        let newGround2Tile = scene.add.image(0, groundY, ground2TexKey);
+        newGround2Tile.setOrigin(0, 0).setTint(this._ground2Tint).setDepth(20.5);
+        newGround2Tile._worldX = newTileX;
+        this._ground2Tiles.push(newGround2Tile);
+      }
       let newCeilingTile = scene.add.image(0, groundY, "groundSquare_" + window._groundId + "_001.png");
       newCeilingTile.setOrigin(0, 1).setFlipY(true).setTint(((newCeilingTile = this._groundTiles[0]) == null ? undefined : newCeilingTile.tintTopLeft) || 17578).setDepth(20).setVisible(false);
       newCeilingTile._worldX = newTileX;
       this._ceilingTiles.push(newCeilingTile);
+      if (scene.textures.exists(ground2TexKey)) {
+        let newCeiling2Tile = scene.add.image(0, groundY, ground2TexKey);
+        newCeiling2Tile.setOrigin(0, 1).setFlipY(true).setTint(this._ground2Tint).setDepth(20.5).setVisible(false);
+        newCeiling2Tile._worldX = newTileX;
+        this._ceiling2Tiles.push(newCeiling2Tile);
+      }
       this._maxGroundWorldX = newTileX;
     }
     const floorLineFrame = this._scene.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
@@ -765,6 +924,8 @@ window.LevelObject = class LevelObject {
       leftTileIndex = b(0) + cameraY;
       rightTileIndex = ceilingActive ? 20 : 0;
     }
+    const ground2TexKey = "groundSquare_" + (window._groundId || "00") + "_2_001.png";
+    const hasGround2 = this._scene.textures.exists(ground2TexKey);
     for (let i = 0; i < this._groundTiles.length; i++) {
       let groundTile = this._groundTiles[i];
       let ceilingTile = this._ceilingTiles[i];
@@ -777,9 +938,22 @@ window.LevelObject = class LevelObject {
       let tileScreenX = groundTile._worldX - cameraX;
       groundTile.x = tileScreenX;
       groundTile.y = leftTileIndex;
+      const ground2Tile = this._ground2Tiles?.[i];
+      if (ground2Tile) {
+        ground2Tile.x = tileScreenX;
+        ground2Tile.y = leftTileIndex;
+        ground2Tile.setVisible(hasGround2);
+      }
       ceilingTile.x = tileScreenX;
       ceilingTile.y = rightTileIndex;
-      ceilingTile.setVisible(this._flyGroundActive && this._groundTargetValue > 0 || ceilingActive);
+      const ceilingVisibleForTile = this._flyGroundActive && this._groundTargetValue > 0 || ceilingActive;
+      ceilingTile.setVisible(ceilingVisibleForTile);
+      const ceiling2Tile = this._ceiling2Tiles?.[i];
+      if (ceiling2Tile) {
+        ceiling2Tile.x = tileScreenX;
+        ceiling2Tile.y = rightTileIndex;
+        ceiling2Tile.setVisible(hasGround2 && ceilingVisibleForTile);
+      }
     }
     this._groundLine.y = leftTileIndex;
     if (this._flyGroundActive && this._groundTargetValue > 0 || ceilingActive) {
@@ -800,6 +974,8 @@ window.LevelObject = class LevelObject {
     for (let i = 0; i < this._groundTiles.length; i++) {
       this._groundTiles[i]._worldX += shiftAmount;
       this._ceilingTiles[i]._worldX += shiftAmount;
+      if (this._ground2Tiles?.[i]) this._ground2Tiles[i]._worldX += shiftAmount;
+      if (this._ceiling2Tiles?.[i]) this._ceiling2Tiles[i]._worldX += shiftAmount;
     }
     this._maxGroundWorldX += shiftAmount;
   }
@@ -808,6 +984,8 @@ window.LevelObject = class LevelObject {
     for (let i = 0; i < this._groundTiles.length; i++) {
       this._groundTiles[i]._worldX = cameraX + i * tileWidth;
       this._ceilingTiles[i]._worldX = cameraX + i * tileWidth;
+      if (this._ground2Tiles?.[i]) this._ground2Tiles[i]._worldX = cameraX + i * tileWidth;
+      if (this._ceiling2Tiles?.[i]) this._ceiling2Tiles[i]._worldX = cameraX + i * tileWidth;
     }
     this._maxGroundWorldX = cameraX + (this._groundTiles.length - 1) * tileWidth;
     this.resetGroundState();
@@ -1143,7 +1321,7 @@ window.LevelObject = class LevelObject {
       const parsed = parseInt(raw[key] ?? raw[String(key)] ?? fallback, 10);
       return Number.isFinite(parsed) ? parsed : fallback;
     };
-    const targetLabel = () => String(Math.max(0, readInt(51, 0)));
+    const targetLabel = () => String(Math.max(0, this._parseSingleTriggerGroupId(raw[51] ?? raw["51"], 0)));
 
     if (id === 29) return "BG";
     if (id === 30) return "G1";
@@ -1152,11 +1330,7 @@ window.LevelObject = class LevelObject {
     if (colorTriggerIds.has(id)) return colorChannelLabel(readInt(23, 1));
     if ([901, 1007, 1268].includes(id)) return targetLabel();
 
-    if (id === 1346) {
-      const targetGroup = targetLabel();
-      const centerGroup = readInt(71, 0);
-      return centerGroup > 0 ? `${targetGroup},${centerGroup}` : targetGroup;
-    }
+    if (id === 1346) return targetLabel();
 
     if (id === 1006) return targetLabel();
 
@@ -1353,9 +1527,16 @@ window.LevelObject = class LevelObject {
     }
 
     if (levelObj.groups) {
-      const groupIds = String(levelObj.groups).split(".").map(Number).filter(n => n > 0);
+      const groupIds = [...new Set(String(levelObj.groups).split(".").map(Number).filter(n => n > 0))];
       if (groupIds.length) {
         textSprite._eeGroups = groupIds;
+        textSprite._origWorldX = worldX;
+        textSprite._origBaseY = worldY;
+        textSprite._eeMoveBaseWorldX = worldX;
+        textSprite._eeMoveBaseBaseY = worldY;
+        textSprite._eeInitialWorldX = worldX;
+        textSprite._eeInitialBaseY = worldY;
+        textSprite._eeInitialRotationRad = textSprite.rotation || 0;
         for (const groupId of groupIds) {
           if (!this._groupSprites[groupId]) this._groupSprites[groupId] = [];
           this._groupSprites[groupId].push(textSprite);
@@ -1371,6 +1552,87 @@ window.LevelObject = class LevelObject {
     }
 
     return textSprite;
+  }
+
+  _spawnTeleportExitPortalVisual(scene, enterObj, enterDef, linkedObjectId, registerObjectSprite, registerToGroups, registerColor, objZDepth, col1) {
+    if (parseInt(enterObj?.id ?? 0, 10) !== 747) return;
+
+    const offsetY = this._getTeleportPortalYOffset(enterObj);
+    const exitDefSource = getObjectFromId(749) || allObjects[749] || enterDef;
+    if (!exitDefSource) return;
+
+    const frameName = exitDefSource.frame || enterDef?.frame;
+    if (!frameName) return;
+
+    const enterX = parseFloat(enterObj.x ?? enterObj._raw?.[2] ?? enterObj._raw?.["2"] ?? 0) || 0;
+    const enterY = parseFloat(enterObj.y ?? enterObj._raw?.[3] ?? enterObj._raw?.["3"] ?? 0) || 0;
+    const exitY = enterY + offsetY;
+    const exitRot = parseFloat(enterObj.rot ?? enterObj._raw?.[6] ?? enterObj._raw?.["6"] ?? 0) || 0;
+    const worldX = enterX * 2;
+    const worldY = exitY * 2;
+    const baseY = b(worldY);
+
+    const exitLevelObj = {
+      ...enterObj,
+      id: 749,
+      y: exitY,
+      rot: exitRot,
+      flipX: true,
+      _generatedTeleportExit: true,
+      _raw: {
+        ...(enterObj._raw || {}),
+        1: "749",
+        "1": "749",
+        2: String(enterX),
+        "2": String(enterX),
+        3: String(exitY),
+        "3": String(exitY),
+        4: "1",
+        "4": "1",
+        6: String(exitRot),
+        "6": String(exitRot)
+      }
+    };
+
+    const exitDef = { ...exitDefSource, _portalFront: true, _generatedTeleportExit: true };
+    let portalBackSprite = null;
+
+    if (frameName.includes("_front_")) {
+      const backFrame = frameName.replace("_front_", "_back_");
+      portalBackSprite = addImageToScene(scene, worldX, baseY, backFrame);
+      if (portalBackSprite) {
+        this._applyVisualProps(scene, portalBackSprite, backFrame, exitLevelObj, exitDefSource);
+        portalBackSprite._eeLayer = 1;
+        portalBackSprite._eeWorldX = worldX;
+        portalBackSprite._eeBaseY = baseY;
+        portalBackSprite._eeZDepth = objZDepth - 0.004;
+        portalBackSprite._eeOrigAlpha = 1;
+        portalBackSprite._eeGeneratedTeleportExit = true;
+        this._addToSection(portalBackSprite);
+        registerToGroups(portalBackSprite, worldX, baseY);
+        registerColor(portalBackSprite, col1);
+        registerObjectSprite(portalBackSprite);
+      }
+    }
+
+    const sprite = addImageToScene(scene, worldX, baseY, frameName);
+    if (!sprite) return;
+
+    this._applyVisualProps(scene, sprite, frameName, exitLevelObj, exitDefSource);
+    if (portalBackSprite) {
+      portalBackSprite.x = sprite.x;
+      portalBackSprite.y = sprite.y;
+    }
+    this._addVisualSprite(sprite, exitDef);
+    sprite._eeWorldX = worldX;
+    sprite._eeBaseY = baseY;
+    sprite._eeZDepth = objZDepth + 0.004;
+    sprite._eeOrigAlpha = 1;
+    sprite._eeGeneratedTeleportExit = true;
+    registerColor(sprite, col1);
+    this._addToSection(sprite);
+    registerToGroups(sprite, worldX, baseY);
+    registerObjectSprite(sprite);
   }
 
   _spawnObject(levelObj) {
@@ -1447,6 +1709,10 @@ window.LevelObject = class LevelObject {
     levelObj.spinSpeed = defaultSpin;
   } else if (isJumpPadLineFrame && levelObj.spinSpeed === undefined) {
     levelObj.spinSpeed = 1;
+  }
+
+  if (parseInt(levelObj?.id ?? 0, 10) === 749 && !levelObj?._generatedTeleportExit) {
+    return objectDef || allObjects[749] || null;
   }
 
   if (objectDef && objectDef.type === triggerType) {
@@ -1593,17 +1859,18 @@ window.LevelObject = class LevelObject {
 
     if (levelObj.id === 1346) {
       const _raw = levelObj._raw;
+      const rotateGroups = this._parseRotateTriggerGroups(_raw);
       this._rotateTriggers.push({
         ...triggerBase,
         x: levelObj.x * 2,
-        targetGroup: parseInt(_raw[51] ?? 0, 10),
+        targetGroup: rotateGroups.targetGroup,
         degrees: parseFloat(_raw[68] ?? 0),
         duration: parseFloat(_raw[10] ?? 0),
         easingType: parseInt(_raw[30] ?? 0, 10),
         easingRate: parseFloat(_raw[85] ?? 2),
         lockRotation: _raw[70] === "1",
         times360: parseInt(_raw[69] ?? 0, 10),
-        centerGroup: parseInt(_raw[71] ?? 0, 10)
+        centerGroup: rotateGroups.centerGroup
       });
     }
 
@@ -1768,9 +2035,16 @@ window.LevelObject = class LevelObject {
 
     const registerToGroups = (spr, baseWorldX, baseBaseY) => {
       if (!objGids || !objGids.length || !spr) return;
+      const uniqueObjGids = [...new Set(objGids.map(gid => parseInt(gid, 10)).filter(gid => Number.isFinite(gid) && gid > 0))];
+      spr._eeGroups = uniqueObjGids;
       spr._origWorldX = baseWorldX;
       spr._origBaseY = baseBaseY;
-      for (const gid of objGids) {
+      spr._eeMoveBaseWorldX = baseWorldX;
+      spr._eeMoveBaseBaseY = baseBaseY;
+      if (spr._eeInitialWorldX === undefined) spr._eeInitialWorldX = baseWorldX;
+      if (spr._eeInitialBaseY === undefined) spr._eeInitialBaseY = baseBaseY;
+      if (spr._eeInitialRotationRad === undefined) spr._eeInitialRotationRad = spr.rotation || 0;
+      for (const gid of uniqueObjGids) {
         if (!this._groupSprites[gid]) this._groupSprites[gid] = [];
         this._groupSprites[gid].push(spr);
       }
@@ -2089,6 +2363,9 @@ window.LevelObject = class LevelObject {
         }
       }
     }
+    if (parseInt(levelObj.id ?? 0, 10) === 747) {
+      this._spawnTeleportExitPortalVisual(scene, levelObj, objectDef, linkedObjectId, registerObjectSprite, registerToGroups, registerColor, objZDepth, col1);
+    }
   }
 
   if (objectDef && objectDef.portalParticle && frameName && !window.isEditor && !scene?._editorPlaytestActive) {
@@ -2158,8 +2435,15 @@ window.LevelObject = class LevelObject {
     const registerCollider = col => {
       col._baseX = col.x;
       col._baseY = col.y;
+      col._baseRotationDegrees = col.rotationDegrees || 0;
       col._origBaseX = col.x;
       col._origBaseY = col.y;
+      col._origRotationDegrees = col.rotationDegrees || 0;
+      col._eeMoveBaseX = col.x;
+      col._eeMoveBaseY = col.y;
+      col._eeInitialBaseX = col.x;
+      col._eeInitialBaseY = col.y;
+      col._eeInitialRotationDegrees = col.rotationDegrees || 0;
       col._eeObjectId = linkedObjectId;
       col._eeEditorLayer = parseInt(levelObj.editorLayer ?? levelObj._raw?.[20] ?? levelObj._raw?.["20"] ?? 0, 10) || 0;
       col._eeEditorLayer2 = parseInt(levelObj.editorLayer2 ?? levelObj._raw?.[61] ?? levelObj._raw?.["61"] ?? 0, 10) || 0;
@@ -2169,7 +2453,7 @@ window.LevelObject = class LevelObject {
       }
 
       if (levelObj.groups) {
-        const cgids = levelObj.groups.split(".").map(Number).filter(n => n > 0);
+        const cgids = [...new Set(levelObj.groups.split(".").map(Number).filter(n => n > 0))];
         col._eeGroups = cgids;
         for (const cgid of cgids) {
           if (!this._groupColliders[cgid]) this._groupColliders[cgid] = [];
@@ -2237,6 +2521,7 @@ window.LevelObject = class LevelObject {
         747: "teleport_in",
         749: "teleport_out",
         1331: "spider",
+        747: "teleport",
         286: "dual_on",
         287: "dual_off"
       }[levelObj.id];
@@ -2254,6 +2539,7 @@ window.LevelObject = class LevelObject {
         ufo: portalUfoType,
         robot: "portal_robot",
         spider: "portal_spider",
+        teleport: "portal_teleport",
         mirrora: "portal_mirror_on",
         mirrorb: "portal_mirror_off",
         shrink: "portal_mini_on",
@@ -2265,10 +2551,22 @@ window.LevelObject = class LevelObject {
       }[portalSub] || null;
 
       if (portalColliderType) {
-        const collider = new Collider(portalColliderType, worldX, worldY, portalW, portalH, levelObj.rot || 0);
-        // store portal Y for both portals
+        const portalRot = parseFloat(levelObj.rot || 0) || 0;
+        const portalRotRad = portalRot * Math.PI / 180;
+        const isTeleportPortal = portalColliderType === "portal_teleport";
+        const hitboxShift = isTeleportPortal ? -30 : 0;
+        const colliderX = worldX - Math.cos(portalRotRad) * hitboxShift;
+        const colliderY = worldY + Math.sin(portalRotRad) * hitboxShift;
+        const collider = new Collider(portalColliderType, colliderX, colliderY, portalW, portalH, portalRot);
+        collider.portalX = worldX;
         collider.portalY = worldY;
         collider.portalObjId = levelObj.id;
+        if (isTeleportPortal) {
+          const yOffset = this._getTeleportPortalYOffset(levelObj);
+          collider.teleportTargetX = worldX;
+          collider.teleportTargetY = worldY + yOffset * 2;
+          collider.teleportYOffset = yOffset * 2;
+        }
         registerCollider(collider);
         this.objects.push(collider);
         hasCollisionEntry = true;
@@ -2840,6 +3138,107 @@ window.LevelObject = class LevelObject {
     return { x: playerX, y: playerY, playerX, playerY, cameraX, cameraY };
   }
 
+
+  _getUniqueGroupSprites(groupId) {
+    const sprites = this._groupSprites?.[groupId];
+    if (!sprites || !sprites.length) return [];
+    return [...new Set(sprites)].filter(spr => spr && spr.active);
+  }
+
+  _getUniqueGroupColliders(groupId) {
+    const colliders = this._groupColliders?.[groupId];
+    if (!colliders || !colliders.length) return [];
+    return [...new Set(colliders)].filter(Boolean);
+  }
+
+  _getObjectGroupIds(obj) {
+    const groups = Array.isArray(obj?._eeGroups) ? obj._eeGroups : [];
+    return [...new Set(groups.map(gid => parseInt(gid, 10)).filter(gid => Number.isFinite(gid) && gid > 0))];
+  }
+
+  _getCombinedGroupOffset(obj) {
+    const result = { x: 0, y: 0 };
+    for (const gid of this._getObjectGroupIds(obj)) {
+      const off = this._groupOffsets?.[gid];
+      if (!off) continue;
+      result.x += Number(off.x) || 0;
+      result.y += Number(off.y) || 0;
+    }
+    return result;
+  }
+
+  _ensureSpriteMoveBase(spr) {
+    if (!spr) return;
+    if (spr._eeMoveBaseWorldX === undefined) {
+      spr._eeMoveBaseWorldX = Number.isFinite(Number(spr._origWorldX)) ? Number(spr._origWorldX) : (Number.isFinite(Number(spr._eeInitialWorldX)) ? Number(spr._eeInitialWorldX) : Number(spr.x) || 0);
+    }
+    if (spr._eeMoveBaseBaseY === undefined) {
+      spr._eeMoveBaseBaseY = Number.isFinite(Number(spr._origBaseY)) ? Number(spr._origBaseY) : (Number.isFinite(Number(spr._eeInitialBaseY)) ? Number(spr._eeInitialBaseY) : Number(spr.y) || 0);
+    }
+    spr._origWorldX = spr._eeMoveBaseWorldX;
+    spr._origBaseY = spr._eeMoveBaseBaseY;
+  }
+
+  _applyGroupedSpriteMoveOffset(spr) {
+    if (!spr || !spr.active) return;
+    this._ensureSpriteMoveBase(spr);
+    const off = this._getCombinedGroupOffset(spr);
+    spr.x = spr._eeMoveBaseWorldX + off.x;
+    spr.y = spr._eeMoveBaseBaseY + off.y;
+    spr._eeWorldX = spr.x;
+    spr._eeBaseY = spr.y;
+    this._refreshSpriteSection(spr);
+    if (spr._coinWorldX !== undefined) {
+      spr._coinWorldX = spr.x / 2;
+    }
+    if (spr._coinWorldY !== undefined) {
+      spr._coinWorldY = (460 - spr.y) / 2;
+    }
+  }
+
+  _syncSpriteMoveBaseFromCurrent(spr) {
+    if (!spr || !spr.active) return;
+    const off = this._getCombinedGroupOffset(spr);
+    const wx = spr._eeWorldX !== undefined ? spr._eeWorldX : spr.x;
+    const wy = spr._eeBaseY !== undefined ? spr._eeBaseY : spr.y;
+    spr._eeMoveBaseWorldX = wx - off.x;
+    spr._eeMoveBaseBaseY = wy - off.y;
+    spr._origWorldX = spr._eeMoveBaseWorldX;
+    spr._origBaseY = spr._eeMoveBaseBaseY;
+  }
+
+  _ensureColliderMoveBase(col) {
+    if (!col) return;
+    if (col._eeMoveBaseX === undefined) {
+      col._eeMoveBaseX = Number.isFinite(Number(col._origBaseX)) ? Number(col._origBaseX) : (Number.isFinite(Number(col._eeInitialBaseX)) ? Number(col._eeInitialBaseX) : Number(col.x) || 0);
+    }
+    if (col._eeMoveBaseY === undefined) {
+      col._eeMoveBaseY = Number.isFinite(Number(col._origBaseY)) ? Number(col._origBaseY) : (Number.isFinite(Number(col._eeInitialBaseY)) ? Number(col._eeInitialBaseY) : Number(col.y) || 0);
+    }
+    col._origBaseX = col._eeMoveBaseX;
+    col._origBaseY = col._eeMoveBaseY;
+  }
+
+  _applyGroupedColliderMoveOffset(col) {
+    if (!col) return;
+    this._ensureColliderMoveBase(col);
+    const off = this._getCombinedGroupOffset(col);
+    col.x = col._eeMoveBaseX + off.x;
+    col.y = col._eeMoveBaseY - off.y;
+    col._baseX = col.x;
+    col._baseY = col.y;
+    this._refreshCollisionSection(col);
+  }
+
+  _syncColliderMoveBaseFromCurrent(col) {
+    if (!col) return;
+    const off = this._getCombinedGroupOffset(col);
+    col._eeMoveBaseX = col.x - off.x;
+    col._eeMoveBaseY = col.y + off.y;
+    col._origBaseX = col._eeMoveBaseX;
+    col._origBaseY = col._eeMoveBaseY;
+  }
+
   _startMoveTriggerTween(trig) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
     const pos = this._getMoveTriggerPlayerPosition();
@@ -2916,37 +3315,20 @@ window.LevelObject = class LevelObject {
         anim.prevCameraY = followPos.cameraY;
       }
 
-      const sprites = this._groupSprites[trig.targetGroup];
-      const colliders = this._groupColliders[trig.targetGroup];
-      if (sprites || colliders) {
-        const off = this._groupOffsets[trig.targetGroup];
-        off.x += deltaX;
-        off.y += deltaY;
-        if (sprites) {
-          for (const spr of sprites) {
-            if (!spr || !spr.active) continue;
-            spr.x = spr._origWorldX + off.x;
-            spr.y = spr._origBaseY + off.y;
-            spr._eeWorldX = spr.x;
-            spr._eeBaseY  = spr.y;
-            this._refreshSpriteSection(spr);
-            if (spr._coinWorldX !== undefined) {
-              spr._coinWorldX = (spr._origWorldX + off.x) / 2;
-            }
-            if (spr._coinWorldY !== undefined) {
-              spr._coinWorldY = (460 - (spr._origBaseY + off.y)) / 2;
-            }
-          }
-        }
-        if (colliders) {
-          for (const col of colliders) {
-            col.x = col._origBaseX + off.x;
-            col.y = col._origBaseY - off.y;
-            col._baseX = col.x;
-            col._baseY = col.y;
-            this._refreshCollisionSection(col);
-          }
-        }
+      if (!this._groupOffsets[trig.targetGroup]) {
+        this._groupOffsets[trig.targetGroup] = { x: 0, y: 0 };
+      }
+      const off = this._groupOffsets[trig.targetGroup];
+      off.x += deltaX;
+      off.y += deltaY;
+
+      const sprites = this._getUniqueGroupSprites(trig.targetGroup);
+      const colliders = this._getUniqueGroupColliders(trig.targetGroup);
+      for (const spr of sprites) {
+        this._applyGroupedSpriteMoveOffset(spr);
+      }
+      for (const col of colliders) {
+        this._applyGroupedColliderMoveOffset(col);
       }
 
       if (progress >= 1) {
@@ -2962,22 +3344,41 @@ window.LevelObject = class LevelObject {
     this._activeMoveTweens = [];
     this._touchMoveTriggerActivated = new Set();
     this._groupOffsets = {};
+
+    const seenSprites = new Set();
     for (const gid in this._groupSprites) {
       for (const spr of this._groupSprites[gid]) {
-        if (!spr || !spr.active) continue;
-        spr.x = spr._origWorldX;
-        spr.y = spr._origBaseY;
-        spr._eeWorldX = spr._origWorldX;
-        spr._eeBaseY = spr._origBaseY;
+        if (!spr || !spr.active || seenSprites.has(spr)) continue;
+        seenSprites.add(spr);
+        const baseX = spr._eeInitialWorldX !== undefined ? spr._eeInitialWorldX : (spr._origWorldX ?? spr.x);
+        const baseY = spr._eeInitialBaseY !== undefined ? spr._eeInitialBaseY : (spr._origBaseY ?? spr.y);
+        spr._eeMoveBaseWorldX = baseX;
+        spr._eeMoveBaseBaseY = baseY;
+        spr._origWorldX = baseX;
+        spr._origBaseY = baseY;
+        spr.x = baseX;
+        spr.y = baseY;
+        spr._eeWorldX = baseX;
+        spr._eeBaseY = baseY;
         this._refreshSpriteSection(spr);
       }
     }
+
+    const seenColliders = new Set();
     for (const gid in this._groupColliders) {
       for (const col of this._groupColliders[gid]) {
-        col.x = col._origBaseX;
-        col.y = col._origBaseY;
-        col._baseX = col._origBaseX;
-        col._baseY = col._origBaseY;
+        if (!col || seenColliders.has(col)) continue;
+        seenColliders.add(col);
+        const baseX = col._eeInitialBaseX !== undefined ? col._eeInitialBaseX : (col._origBaseX ?? col.x);
+        const baseY = col._eeInitialBaseY !== undefined ? col._eeInitialBaseY : (col._origBaseY ?? col.y);
+        col._eeMoveBaseX = baseX;
+        col._eeMoveBaseY = baseY;
+        col._origBaseX = baseX;
+        col._origBaseY = baseY;
+        col.x = baseX;
+        col.y = baseY;
+        col._baseX = baseX;
+        col._baseY = baseY;
         this._refreshCollisionSection(col);
       }
     }
@@ -3002,6 +3403,38 @@ window.LevelObject = class LevelObject {
       prevProgress: 0,
       totalRad: totalDeg * Math.PI / 180,
     });
+  }
+
+  _screenYToCollisionY(screenY) {
+    if (typeof b === "function") return b(screenY);
+    return 460 - (Number(screenY) || 0);
+  }
+
+
+  _applyRotateTriggerColliderDelta(col, deltaRot, centerX = null, centerY = null, lockRotation = false) {
+    if (!col) return;
+    const hasCenter = Number.isFinite(centerX) && Number.isFinite(centerY);
+    if (hasCenter) {
+      const collisionCenterX = Number(centerX) || 0;
+      const collisionCenterY = this._screenYToCollisionY(Number(centerY) || 0);
+      const dx = col.x - collisionCenterX;
+      const dy = col.y - collisionCenterY;
+      const collisionDelta = -deltaRot;
+      const cosD = Math.cos(collisionDelta);
+      const sinD = Math.sin(collisionDelta);
+      col.x = collisionCenterX + dx * cosD - dy * sinD;
+      col.y = collisionCenterY + dx * sinD + dy * cosD;
+      col._baseX = col.x;
+      col._baseY = col.y;
+      this._syncColliderMoveBaseFromCurrent(col);
+    }
+    if (!lockRotation) {
+      const deltaDeg = deltaRot * 180 / Math.PI;
+      col.rotationDegrees = (Number(col.rotationDegrees) || 0) + deltaDeg;
+      col._baseRotationDegrees = col.rotationDegrees;
+      if (col._origRotationDegrees !== undefined) col._origRotationDegrees = col.rotationDegrees;
+    }
+    this._refreshCollisionSection(col);
   }
 
   _startPulseTrigger(trig) {
@@ -3235,6 +3668,7 @@ window.LevelObject = class LevelObject {
       this._rotateTriggerIdx++;
     }
   }
+
   stepRotateTriggers(dt) {
     let i = 0;
     while (i < this._activeRotateTweens.length) {
@@ -3247,15 +3681,17 @@ window.LevelObject = class LevelObject {
       const prevSample = Easing.sample(trig.easingType, trig.easingRate, anim.prevProgress);
       const deltaRot = (curSample - prevSample) * anim.totalRad;
       anim.prevProgress = progress;
-      const sprites = this._groupSprites[trig.targetGroup];
-      const colliders = this._groupColliders[trig.targetGroup];
+      const sprites = this._getUniqueGroupSprites(trig.targetGroup);
+      const colliders = this._getUniqueGroupColliders(trig.targetGroup);
       if (trig.centerGroup > 0) {
-        const centerSprites = this._groupSprites[trig.centerGroup];
+        const centerSprites = this._getUniqueGroupSprites(trig.centerGroup);
         if (centerSprites && centerSprites.length > 0) {
           let cx = 0, cy = 0, cn = 0;
           for (const cs of centerSprites) {
             if (!cs || !cs.active) continue;
-            cx += cs.x; cy += cs.y; cn++;
+            cx += cs._eeWorldX !== undefined ? cs._eeWorldX : cs.x;
+            cy += cs._eeBaseY !== undefined ? cs._eeBaseY : cs.y;
+            cn++;
           }
           if (cn > 0) {
             cx /= cn; cy /= cn;
@@ -3263,40 +3699,96 @@ window.LevelObject = class LevelObject {
             if (sprites) {
               for (const spr of sprites) {
                 if (!spr || !spr.active) continue;
-                const dx = spr.x - cx, dy = spr.y - cy;
-                spr.x = cx + dx * cosD - dy * sinD;
-                spr.y = cy + dx * sinD + dy * cosD;
-                spr._eeWorldX = spr.x;
-                spr._eeBaseY = spr.y;
-                if (spr._origWorldX !== undefined) { spr._origWorldX = spr.x; spr._origBaseY = spr.y; }
+                const bx = spr._eeWorldX !== undefined ? spr._eeWorldX : spr.x;
+                const by = spr._eeBaseY !== undefined ? spr._eeBaseY : spr.y;
+                const dx = bx - cx, dy = by - cy;
+                spr._eeWorldX = cx + dx * cosD - dy * sinD;
+                spr._eeBaseY = cy + dx * sinD + dy * cosD;
+                spr.x = spr._eeWorldX;
+                spr.y = spr._eeBaseY;
+                this._syncSpriteMoveBaseFromCurrent(spr);
                 if (!trig.lockRotation) spr.rotation += deltaRot;
+                this._refreshSpriteSection(spr);
               }
             }
             if (colliders) {
               for (const col of colliders) {
-                const dx = col.x - cx, dy = col.y - cy;
-                col.x = cx + dx * cosD - dy * sinD;
-                col.y = cy + dx * sinD + dy * cosD;
-                col._baseX = col.x; col._baseY = col.y;
-                if (col._origBaseX !== undefined) { col._origBaseX = col.x; col._origBaseY = col.y; }
+                this._applyRotateTriggerColliderDelta(col, deltaRot, cx, cy, !!trig.lockRotation);
               }
             }
           }
         }
       } else {
-        if (sprites) {
+        if (sprites && !trig.lockRotation) {
           for (const spr of sprites) {
             if (!spr || !spr.active) continue;
             spr.rotation += deltaRot;
           }
         }
+        if (colliders) {
+          for (const col of colliders) {
+            this._applyRotateTriggerColliderDelta(col, deltaRot, null, null, !!trig.lockRotation);
+          }
+        }
       }
-      if (progress >= 1) { this._activeRotateTweens.splice(i, 1); } else { i++; }
+      if (progress >= 1) { 
+        this._activeRotateTweens.splice(i, 1); 
+      } else { 
+        i++; 
+      }
     }
   }
+
   resetRotateTriggers() {
     this._rotateTriggerIdx = 0;
     this._activeRotateTweens = [];
+    const seenSprites = new Set();
+    for (const gid in this._groupSprites) {
+      for (const spr of this._groupSprites[gid]) {
+        if (!spr || !spr.active || seenSprites.has(spr)) continue;
+        seenSprites.add(spr);
+        if (spr._eeInitialWorldX !== undefined) {
+          spr.x = spr._eeInitialWorldX;
+          spr._eeWorldX = spr._eeInitialWorldX;
+          spr._origWorldX = spr._eeInitialWorldX;
+          spr._eeMoveBaseWorldX = spr._eeInitialWorldX;
+        }
+        if (spr._eeInitialBaseY !== undefined) {
+          spr.y = spr._eeInitialBaseY;
+          spr._eeBaseY = spr._eeInitialBaseY;
+          spr._origBaseY = spr._eeInitialBaseY;
+          spr._eeMoveBaseBaseY = spr._eeInitialBaseY;
+        }
+        if (spr._eeInitialRotationRad !== undefined) spr.rotation = spr._eeInitialRotationRad;
+        this._refreshSpriteSection(spr);
+      }
+    }
+
+    const seenColliders = new Set();
+    for (const gid in this._groupColliders) {
+      for (const col of this._groupColliders[gid]) {
+        if (!col || seenColliders.has(col)) continue;
+        seenColliders.add(col);
+        if (col._eeInitialBaseX !== undefined) {
+          col.x = col._eeInitialBaseX;
+          col._baseX = col._eeInitialBaseX;
+          col._origBaseX = col._eeInitialBaseX;
+          col._eeMoveBaseX = col._eeInitialBaseX;
+        }
+        if (col._eeInitialBaseY !== undefined) {
+          col.y = col._eeInitialBaseY;
+          col._baseY = col._eeInitialBaseY;
+          col._origBaseY = col._eeInitialBaseY;
+          col._eeMoveBaseY = col._eeInitialBaseY;
+        }
+        if (col._eeInitialRotationDegrees !== undefined) {
+          col.rotationDegrees = col._eeInitialRotationDegrees;
+          col._baseRotationDegrees = col._eeInitialRotationDegrees;
+          col._origRotationDegrees = col._eeInitialRotationDegrees;
+        }
+        this._refreshCollisionSection(col);
+      }
+    }
   }
 
   checkPulseTriggers(playerX) {
@@ -3540,6 +4032,16 @@ if (spr && spr._eeColorAlpha !== undefined) {
       _0x251562.setTint(_0x3958eb);
     }
   }
+  setGround2Color(_0x3958eb) {
+    if (window.isEditor) return; // not dealing with ts rn
+    this._ground2Tint = _0x3958eb;
+    for (let _0x46c21a of this._ground2Tiles || []) {
+      _0x46c21a.setTint(_0x3958eb);
+    }
+    for (let _0x251562 of this._ceiling2Tiles || []) {
+      _0x251562.setTint(_0x3958eb);
+    }
+  }
   updateAudioScale(_0x337bf7) {
     for (let _0x24afdb of this._audioScaleSprites) {
       _0x24afdb.setScale(_0x337bf7);
@@ -3577,8 +4079,14 @@ if (spr && spr._eeColorAlpha !== undefined) {
         continue;
       }
       _0x3d473e.activated = false;
+      if (_0x3d473e._activatedByPlayer) {
+        delete _0x3d473e._activatedByPlayer;
+      }
       if (_0x3d473e._dashHoldTicks !== undefined) {
         _0x3d473e._dashHoldTicks = 0;
+      }
+      if (_0x3d473e._dashHoldTicksByPlayer) {
+        delete _0x3d473e._dashHoldTicksByPlayer;
       }
     }
     for (let _0x5c5d9a of this._audioScaleSprites) {

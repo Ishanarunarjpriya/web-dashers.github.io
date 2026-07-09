@@ -130,7 +130,7 @@ window.allLevels = [
 	    "Dash",
 	    "level_22",
 	    ["RobTop", "MDK"]
-    ],*/
+    ],
     [
         "every_end",
 	    "Every End",
@@ -179,7 +179,6 @@ window.allLevels = [
 	    "level_56199846",
 	    ["Unzor", "DjHoneyb"]
     ],
-	/*
     [
         "stereo_madness",
 	    "Test Level",
