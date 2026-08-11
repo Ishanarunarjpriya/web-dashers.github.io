@@ -108,8 +108,8 @@ class LevelEditor {
     this._editorPlaytestLastTrailPoint = null;
     this.input.on('pointerdown', (pointer) => {
         if (this._editorPlaytestActive && !this._editorPlaytestPaused) return;
-        this._clickStartPos.x = pointer.x;
-        this._clickStartPos.y = pointer.y;
+        this._clickStartPos.x = (pointer.x / RES_SCALE);
+        this._clickStartPos.y = (pointer.y / RES_SCALE);
         this._cameraStartX = this._cameraX;
         this._cameraStartY = this._cameraY;
         this._isDragging = false;
@@ -332,7 +332,7 @@ class LevelEditor {
 
     this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
         const zoomAmount = deltaY > 0 ? -0.1 : 0.1;
-        this._adjustZoom(zoomAmount, pointer.x, pointer.y);
+        this._adjustZoom(zoomAmount, (pointer.x / RES_SCALE), (pointer.y / RES_SCALE));
     });
 
     this._updateEditorActionButtons();
@@ -2299,7 +2299,7 @@ class LevelEditor {
   _startEditorBoxSelect(pointer) {
     this._editorBoxSelectActive = true;
     this._editorBoxSelectMoved = false;
-    this._editorBoxSelectStart = { x: pointer.x, y: pointer.y };
+    this._editorBoxSelectStart = { x: (pointer.x / RES_SCALE), y: (pointer.y / RES_SCALE) };
 
     if (!this._editorBoxSelectGraphics || !this._editorBoxSelectGraphics.active) {
         this._editorBoxSelectGraphics = this.add.graphics().setScrollFactor(0).setDepth(1501);
@@ -2313,14 +2313,14 @@ class LevelEditor {
     if (!this._editorBoxSelectActive || !this._editorBoxSelectStart) return;
 
     const start = this._editorBoxSelectStart;
-    const dx = pointer.x - start.x;
-    const dy = pointer.y - start.y;
+    const dx = (pointer.x / RES_SCALE) - start.x;
+    const dy = (pointer.y / RES_SCALE) - start.y;
 
     if (!this._editorBoxSelectMoved && ((dx * dx) + (dy * dy)) < 16) return;
     this._editorBoxSelectMoved = true;
 
-    const x = Math.min(start.x, pointer.x);
-    const y = Math.min(start.y, pointer.y);
+    const x = Math.min(start.x, (pointer.x / RES_SCALE));
+    const y = Math.min(start.y, (pointer.y / RES_SCALE));
     const w = Math.abs(dx);
     const h = Math.abs(dy);
 
@@ -2345,10 +2345,10 @@ class LevelEditor {
     if (!wasActive || !didMove || !start) return false;
 
     const rect = {
-        x: Math.min(start.x, pointer.x),
-        y: Math.min(start.y, pointer.y),
-        right: Math.max(start.x, pointer.x),
-        bottom: Math.max(start.y, pointer.y)
+        x: Math.min(start.x, (pointer.x / RES_SCALE)),
+        y: Math.min(start.y, (pointer.y / RES_SCALE)),
+        right: Math.max(start.x, (pointer.x / RES_SCALE)),
+        bottom: Math.max(start.y, (pointer.y / RES_SCALE))
     };
     rect.width = rect.right - rect.x;
     rect.height = rect.bottom - rect.y;
@@ -2738,8 +2738,8 @@ class LevelEditor {
   _placeObject() {
     const pointer = this.input.activePointer;
 
-    const worldX = (this.input.activePointer.x + this._cameraX) / this._editorZoom;
-    const worldY = (this.input.activePointer.y + this._cameraY) / this._editorZoom;
+    const worldX = (this.input.activePointer.x / RES_SCALE + this._cameraX) / this._editorZoom;
+    const worldY = (this.input.activePointer.y / RES_SCALE + this._cameraY) / this._editorZoom;
 
     const snapX = Math.floor(worldX / 60) * 60;
     const snapY = Math.floor((worldY + 20) / 60) * 60;
@@ -2884,7 +2884,7 @@ class LevelEditor {
             if (!spr || !spr.active || !spr.visible) continue;
 
             const bounds = spr.getBounds();
-            if (bounds.contains(pointer.x, pointer.y)) {
+            if (bounds.contains((pointer.x / RES_SCALE), (pointer.y / RES_SCALE))) {
                 foundObjectIndex = i;
                 foundSprite = spr;
                 break;
@@ -2930,7 +2930,7 @@ class LevelEditor {
             if (!spr || !spr.active || !spr.visible) continue;
 
             const bounds = spr.getBounds();
-            if (bounds.contains(pointer.x, pointer.y)) {
+            if (bounds.contains((pointer.x / RES_SCALE), (pointer.y / RES_SCALE))) {
                 foundObjectIndex = i;
                 break;
             }
@@ -4582,8 +4582,8 @@ class LevelEditor {
 
     const getLocalPointer = (pointer) => {
         return {
-            x: pointer.x - (sw / 2),
-            y: pointer.y - (sh / 2)
+            x: (pointer.x / RES_SCALE) - (sw / 2),
+            y: (pointer.y / RES_SCALE) - (sh / 2)
         };
     };
 
@@ -5584,8 +5584,8 @@ class LevelEditor {
       const isInside = (pointer) => {
         const inputScreenX = (sw / 2) + x;
         const inputScreenY = (sh / 2) + y;
-        return Math.abs(pointer.x - inputScreenX) <= inputW / 2 &&
-          Math.abs(pointer.y - inputScreenY) <= (inputH + 4) / 2;
+        return Math.abs((pointer.x / RES_SCALE) - inputScreenX) <= inputW / 2 &&
+          Math.abs((pointer.y / RES_SCALE) - inputScreenY) <= (inputH + 4) / 2;
       };
 
       const stepValue = (delta) => {
@@ -6200,7 +6200,7 @@ class LevelEditor {
         render();
         stopInputEvent(pointer?.event);
       };
-      const isInside = (pointer) => Math.abs(pointer.x - (sw / 2 + x)) <= inputW / 2 && Math.abs(pointer.y - (sh / 2 + 6 + y)) <= (inputH + 4) / 2;
+      const isInside = (pointer) => Math.abs((pointer.x / RES_SCALE) - (sw / 2 + x)) <= inputW / 2 && Math.abs((pointer.y / RES_SCALE) - (sh / 2 + 6 + y)) <= (inputH + 4) / 2;
       const stepValue = (delta) => { blur(true); setValue(normalize(getValue()) + delta); render(); };
       hit.on("pointerdown", focus);
       this._makeBouncyButton(leftArrow, 0.9, () => stepValue(-1));
@@ -6321,7 +6321,7 @@ class LevelEditor {
         stopInputEvent(pointer?.event);
       };
       
-      const isInside = (pointer) => Math.abs(pointer.x - (sw / 2 + inputX)) <= inputW / 2 && Math.abs(pointer.y - (sh / 2 + 6 + inputY)) <= (inputH + 8) / 2;
+      const isInside = (pointer) => Math.abs((pointer.x / RES_SCALE) - (sw / 2 + inputX)) <= inputW / 2 && Math.abs((pointer.y / RES_SCALE) - (sh / 2 + 6 + inputY)) <= (inputH + 8) / 2;
       
       const setFromPointerX = (localX) => {
         blur(true);
@@ -6331,7 +6331,7 @@ class LevelEditor {
       };
       
       inputHit.on("pointerdown", focus);
-      sliderHit.on("pointerdown", (pointer) => { setFromPointerX(pointer.x - (sw / 2)); stopInputEvent(pointer?.event); });
+      sliderHit.on("pointerdown", (pointer) => { setFromPointerX((pointer.x / RES_SCALE) - (sw / 2)); stopInputEvent(pointer?.event); });
       sliderThumb.on("dragstart", () => { this._isDraggingSlider = true; });
       sliderThumb.on("drag", (pointer, dragX) => setFromPointerX(dragX));
       sliderThumb.on("dragend", () => { this._isDraggingSlider = false; });
@@ -6554,7 +6554,7 @@ class LevelEditor {
         render();
         stopInputEvent(pointer?.event);
       };
-      const isInside = (pointer) => Math.abs(pointer.x - (sw / 2 + x)) <= inputW / 2 && Math.abs(pointer.y - (sh / 2 + 6 + y)) <= (inputH + 4) / 2;
+      const isInside = (pointer) => Math.abs((pointer.x / RES_SCALE) - (sw / 2 + x)) <= inputW / 2 && Math.abs((pointer.y / RES_SCALE) - (sh / 2 + 6 + y)) <= (inputH + 4) / 2;
       const stepValue = (delta) => { blur(true); setValue(normalize(getValue()) + delta); render(); };
       hit.on("pointerdown", focus);
       this._makeBouncyButton(leftArrow, 0.9, () => stepValue(-1));
@@ -6693,8 +6693,8 @@ class LevelEditor {
         };
 
         const isInside = (pointer) =>
-            Math.abs(pointer.x - (sw / 2 + inputX)) <= inputW / 2 &&
-            Math.abs(pointer.y - (sh / 2 + 6 + inputY)) <= (inputH + 8) / 2;
+            Math.abs((pointer.x / RES_SCALE) - (sw / 2 + inputX)) <= inputW / 2 &&
+            Math.abs((pointer.y / RES_SCALE) - (sh / 2 + 6 + inputY)) <= (inputH + 8) / 2;
 
         const setFromPointerX = (localX) => {
             blur(true);
@@ -6708,7 +6708,7 @@ class LevelEditor {
         inputHit.on("pointerdown", focus);
 
         sliderHit.on("pointerdown", (pointer) => {
-            setFromPointerX(pointer.x - (sw / 2));
+            setFromPointerX((pointer.x / RES_SCALE) - (sw / 2));
             stopInputEvent(pointer?.event);
         });
 
@@ -7134,7 +7134,7 @@ class LevelEditor {
                 sliderHit.on("pointerdown", (pointer) => {
                     blurTargetInput(true);
                     blurFadeInput(true);
-                    setFadeFromPointerX(pointer.x - (screenWidth / 2));
+                    setFadeFromPointerX((pointer.x / RES_SCALE) - (screenWidth / 2));
                     stopInputEvent(pointer?.event);
                 });
                 sliderThumb.on("dragstart", () => { this._isDraggingSlider = true; });

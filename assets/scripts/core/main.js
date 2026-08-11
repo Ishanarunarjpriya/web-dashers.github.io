@@ -49,8 +49,8 @@ document.body.appendChild(_gameWrapper);
 
 const phaserConfig = {
   type: Phaser.AUTO,
-  width: screenWidth,
-  height: screenHeight,
+  width: screenWidth * RES_SCALE,
+  height: screenHeight * RES_SCALE,
   fps: { smoothStep: true },
   backgroundColor: "#000000",
   parent: _gameWrapper,
@@ -68,6 +68,21 @@ const _phaserGame = new Phaser.Game(phaserConfig);
 _phaserGame.events.once('ready', function () {
   _phaserGame.canvas.style.pointerEvents = 'auto';
 });
+
+// Phaser.Scale.FIT leaves fractional CSS width/height on the canvas (e.g.
+// "719.859px"). The flex wrapper then centers that fractional box, and
+// browsers can round each edge of a sub-pixel box differently, showing up
+// as the whole canvas sitting ~1px down-and-left of where it should be.
+// Snapping to whole pixels after every resize keeps the centering exact.
+function _snapCanvasToWholePixels() {
+  const c = _phaserGame.canvas;
+  const w = Math.round(parseFloat(c.style.width));
+  const h = Math.round(parseFloat(c.style.height));
+  if (w) c.style.width = w + 'px';
+  if (h) c.style.height = h + 'px';
+}
+_phaserGame.scale.on('resize', _snapCanvasToWholePixels);
+_phaserGame.events.once('ready', _snapCanvasToWholePixels);
 
 window.clearGameCache = () => {
   if (window.gameCache) {

@@ -93,6 +93,161 @@ function hexadecimalToHex(num) {
 
 let screenWidth = 1138;
 const screenHeight = 640;
+const RES_SCALE = 2;
+
+// Renders content at a higher pixel density without touching camera.zoom (which broke
+// WebGL rendering on this codebase for still-unexplained reasons — see project memory).
+// Nests every factory-created object into one scaled wrapper container instead, the same
+// this.add.X monkey-patch technique the old UHD system used, proven safe in this codebase.
+// Sprites swapped to higher-res UHD source atlases (see loading-screen.js's multi-source
+// atlas loads) sample more texture detail than before but keep the same cutWidth/cutHeight
+// as the source pixels -- Phaser's render quad size comes from cutWidth/cutHeight * scale,
+// NOT from spriteSourceSize/sourceSize (verified empirically: setTrim() only affects the
+// cosmetic .width/.height getters, not actual draw geometry). So each upgraded sprite must
+// be explicitly scaled back down via setDisplaySize to its original on-screen footprint --
+// that's what gives real per-sprite supersampling (GPU minification) instead of the sprite
+// just rendering RES_SCALE-times too big.
+function getUhdUpgradeLookup(scene) {
+  if (window._uhdUpgradeLookup) return window._uhdUpgradeLookup;
+  const manifest = scene.cache.json.get('_uhdUpgradedManifest');
+  if (!manifest) return {};
+  const lookup = {};
+  for (const key in manifest) {
+    lookup[key] = { frames: new Set(manifest[key].frames), ratio: manifest[key].ratio };
+  }
+  window._uhdUpgradeLookup = lookup;
+  return lookup;
+}
+
+function wrapSceneForResScale(scene) {
+  const factory = scene.add;
+  if (!factory._origContainer) {
+    factory._origContainer = factory.container.bind(factory);
+  }
+  scene._resContainer = factory._origContainer(0, 0).setScale(RES_SCALE);
+  // Containers render children in insertion order, NOT by .depth -- only the
+  // Scene's own top-level display list auto depth-sorts every frame (via its
+  // own queueDepthSort()/depthSort() pair, which Container does NOT inherit --
+  // Container only has the generic List.sort(property) method, confirmed
+  // empirically: Container.prototype has no depthSort/queueDepthSort of its
+  // own). Nesting everything into this one container (below) silently broke
+  // every .setDepth() call in the codebase: a later-added, lower-depth object
+  // still paints over an earlier-added, higher-depth one (verified
+  // empirically -- e.g. the main-menu open-submenu fade-in graphic, added
+  // before the submenu content, got instantly painted over despite its
+  // higher depth, so the fade never showed; the close transition's fade-out
+  // graphic is added *after* the content it covers, so insertion order
+  // accidentally matched depth order there and it looked fine). Re-sorting
+  // by depth every frame restores real depth ordering; the container is
+  // small enough (per-scene UI, not thousands of objects) that an
+  // unconditional sort every frame is cheap -- no dirty-flag plumbing needed.
+  if (!scene._resContainerDepthSortBound) {
+    scene._resContainerDepthSortBound = true;
+    scene.events.on('update', () => scene._resContainer.sort('depth'));
+  }
+  const uhdLookup = getUhdUpgradeLookup(scene);
+
+  if (!factory._resPatched) {
+    const methods = ['image', 'container', 'rectangle', 'text', 'tileSprite', 'graphics',
+      'particles', 'zone', 'circle', 'polygon', 'nineslice', 'bitmapText'];
+    methods.forEach(method => {
+      if (typeof factory[method] !== 'function') return;
+      const orig = factory[method].bind(factory);
+      factory[method] = (...args) => {
+        const obj = orig(...args);
+        scene._resContainer.add(obj);
+        if (obj.texture && obj.frame) {
+          const entry = uhdLookup[obj.texture.key];
+          // NineSlice's width/height are live setters that actually resize/re-tile it --
+          // unlike Image, where .width is just a cosmetic snapshot decoupled from the real
+          // render quad -- so this whole compensation block (built for that Image mismatch)
+          // does real, compounding damage to a NineSlice: setScale() shrinks its displayed
+          // size by 1/ratio, then the .width/.height override below resizes it a second time
+          // down to the pre-upgrade footprint, on top of that scale -- the net result renders
+          // at a small fraction of the width/height the caller explicitly requested (verified
+          // empirically: the Quick Search grid's nineslice backgrounds, asked for ~227x59,
+          // rendered as a tiny ~90px pill). NineSlice already reads the frame's real
+          // cutWidth/cutHeight/border geometry itself to figure out how to tile at whatever
+          // width/height the caller passes in, so none of this correction is needed there.
+          if (entry && entry.frames.has(obj.frame.name) && obj.type !== 'NineSlice') {
+            // Render size = cutWidth/cutHeight * scaleX/scaleY (verified empirically -- NOT
+            // spriteSourceSize/sourceSize, those don't affect draw geometry), so this is the
+            // only reliable way to shrink the higher-res sprite back to its original footprint.
+            obj.setScale(obj.scaleX / entry.ratio, obj.scaleY / entry.ratio);
+            // Any scale a caller sets afterward (the common `.setScale(x)` chained straight
+            // onto this.add.image(...) throughout this codebase) is expressed in "pre-upgrade"
+            // terms -- i.e. what it would need to be against the original lower-res atlas.
+            // Left unwrapped, that call overwrites the compensation above with an absolute
+            // value and renders at entry.ratio times too large (verified empirically: the
+            // creator-menu grid buttons, which chain .setScale(0.77), rendered at displayWidth
+            // 321.86 instead of the intended 160.93 -- exactly double). Wrap setScale so any
+            // later caller-supplied scale gets the same ratio compensation applied.
+            const origSetScale = obj.setScale.bind(obj);
+            obj.setScale = (x, y) => {
+              const sx = x === undefined ? 1 : x;
+              const sy = y === undefined ? sx : y;
+              return origSetScale(sx / entry.ratio, sy / entry.ratio);
+            };
+            // GameObject.width/.height are a snapshot taken from frame.realWidth at creation
+            // time (setSizeToFrame), not a live getter -- other code in this codebase reads
+            // .width/.height for layout math (e.g. positioning sibling buttons), so they still
+            // need correcting back down to the sprite's original footprint here. displayWidth
+            // (scaleX * realWidth) is a live getter and already reports correctly since
+            // realWidth naturally matches cutWidth for these untrimmed upgraded frames -- no
+            // separate fix needed there.
+            const origSizes = window._uhdOrigSizes && window._uhdOrigSizes[obj.texture.key];
+            const origSize = origSizes && origSizes[obj.frame.name];
+            if (origSize) {
+              obj.width = origSize.w;
+              obj.height = origSize.h;
+              // Phaser's updateDisplayOrigin() computes displayOriginX/Y as originX/Y *
+              // this.width/height -- so ANY explicit .setOrigin(...) call chained after
+              // creation (default origin from setOriginFromFrame() at construction time,
+              // BEFORE the .width/.height override above, is unaffected) recomputes the
+              // pivot from the now-corrected (smaller) .width/.height, while the actual
+              // render quad stays at the larger cutWidth/cutHeight * scale. That mismatch
+              // pulls the visual/interactive pivot toward the top-left corner of the real
+              // (bigger) rendered sprite -- verified empirically on the search menu's
+              // difficulty-filter icons and search/find-people/delete buttons, all of which
+              // chain .setOrigin(0.5) after creation. Wrap setOrigin to recompute the pivot
+              // from the frame's real (uncorrupted) size instead.
+              const origSetOrigin = obj.setOrigin.bind(obj);
+              obj.setOrigin = (x, y) => {
+                origSetOrigin(x, y);
+                obj._displayOriginX = obj.originX * obj.frame.realWidth;
+                obj._displayOriginY = obj.originY * obj.frame.realHeight;
+                return obj;
+              };
+              // setInteractive() with no args builds its default hit area straight from
+              // .width/.height in RAW local-frame units, then lets scaleX/scaleY (already
+              // compensated above) shrink it back down during hit-testing -- exactly like it
+              // does for the render quad. Building that default hit area from the now-corrected
+              // (smaller) .width/.height double-applies the shrink: the hit area ends up scaled
+              // down twice, so it's both mispositioned and half the size it should be on screen.
+              // Wrap setInteractive so its default hit area is instead built from the natural
+              // (raw) frame size -- recovered from displayOriginX/Y / originX/Y, which the
+              // setOrigin wrap above now keeps correct regardless of call order -- which comes
+              // out correctly sized and centered once scaleX/scaleY are applied during
+              // hit-testing.
+              const origSetInteractive = obj.setInteractive.bind(obj);
+              obj.setInteractive = (...siArgs) => {
+                origSetInteractive(...siArgs);
+                if (siArgs.length === 0 && obj.input && obj.input.hitArea) {
+                  const naturalWidth = obj.originX ? obj.displayOriginX / obj.originX : obj.width;
+                  const naturalHeight = obj.originY ? obj.displayOriginY / obj.originY : obj.height;
+                  obj.input.hitArea.setTo(0, 0, naturalWidth, naturalHeight);
+                }
+                return obj;
+              };
+            }
+          }
+        }
+        return obj;
+      };
+    });
+    factory._resPatched = true;
+  }
+}
 const a = 60;
 const o = 180;
 let centerX = screenWidth / 2 - 150;

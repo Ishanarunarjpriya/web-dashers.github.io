@@ -301,280 +301,21 @@ class GameScene extends Phaser.Scene {
     });
   }
   create() {
-    // Universal GJ_GameSheet/02/03/04 + GJ_WebSheet UHD overlay system.
-    // Intercepts every this.add.image call for those sheets and layers a native DOM
-    // <img> over it, cropped from a packed UHD sheet, so the browser renders UHD
-    // pixels at full DPR without loading thousands of individually-cut per-frame files.
-    ['gj-s03-uhd', 'gj-s03-uhd-fade', 'gj-s03-uhd-flash', 'gj-s03-menu-dom'].forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
-    const _uhdParent = this.game.canvas.parentElement || document.body;
-    this._uhdParent = _uhdParent;
-    const _uhdCont = document.createElement('div');
-    _uhdCont.id = 'gj-s03-uhd';
-    _uhdCont.style.cssText = 'position:absolute;pointer-events:none;z-index:499;overflow:hidden;top:0;left:0;width:100%;height:100%;';
-    _uhdParent.appendChild(_uhdCont);
-    this._uhdCont = _uhdCont;
-    // Noclip death flash mirror — must sit above EVERYTHING, including all UHD
-    // overlay canvases and the black fade div. Driven by this.noclipFlash's alpha.
-    const _uhdFlashDiv = document.createElement('div');
-    _uhdFlashDiv.id = 'gj-s03-uhd-flash';
-    _uhdFlashDiv.style.cssText = 'position:absolute;pointer-events:none;z-index:9000;top:0;left:0;width:100%;height:100%;background:#f00;opacity:0;';
-    _uhdParent.appendChild(_uhdFlashDiv);
-    this._uhdFlashDiv = _uhdFlashDiv;
-    this._uhdMap = new Map();
-    this._uhdContext = null; // null = main menu; must be set before any add.image calls
-    // Sync overlay positions after update() has moved containers/cameras for the frame
+    wrapSceneForResScale(this);
+    ['gj-s03-noclip-flash', 'gj-s03-menu-dom'].forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
+    const _domParent = this.game.canvas.parentElement || document.body;
+    this._domParent = _domParent;
+    // Noclip death flash mirror, drawn as a DOM div (not a Phaser depth) so it always
+    // sits above the canvas. Driven by this.noclipFlash's alpha.
+    const _noclipFlashDiv = document.createElement('div');
+    _noclipFlashDiv.id = 'gj-s03-noclip-flash';
+    _noclipFlashDiv.style.cssText = 'position:absolute;pointer-events:none;z-index:9000;top:0;left:0;width:100%;height:100%;background:#f00;opacity:0;';
+    _domParent.appendChild(_noclipFlashDiv);
+    this._noclipFlashDiv = _noclipFlashDiv;
+    // Sync the flash div after update() has moved containers/cameras for the frame
     // (off-before-on: scene restarts reuse the same instance, avoid double registration)
-    this.events.off('postupdate', this._syncUhdOverlays);
-    this.events.on('postupdate', this._syncUhdOverlays);
-    const _sc = this;
-    // On scene restart this.add is the same plugin instance, so the patch from the
-    // previous create() may still be in place. Always unwrap to the true original first.
-    if (this.add.image._uhd_orig) this.add.image = this.add.image._uhd_orig;
-    if (this.add.nineslice._uhd_orig) this.add.nineslice = this.add.nineslice._uhd_orig;
-    const _uhdDirs = { GJ_GameSheet03: true, GJ_GameSheet04: true, GJ_WebSheet: true, GJ_GameSheet: true, GJ_GameSheet02: true };
-    // Standalone assets/sprites/*.png files — not atlas frames, so there's no separate
-    // "-uhd-packed" sheet to swap in. These are already the only art that exists; the
-    // point of overlaying them as DOM elements is just to escape the game's fixed-resolution
-    // WebGL canvas (see feedback_uhd_packed_sheets memory, tenth gotcha).
-    // GJ_square01/02, square01_001, square04_001 are deliberately excluded here even
-    // though they're standalone sprites too: they're panel *backgrounds* (via direct
-    // nineslice or _drawScale9) with separate text/icons drawn on top at a higher Phaser
-    // depth but composited into the same canvas — an overlay big enough to matter always
-    // ends up covering some of that content once a panel's corner/border is wide relative
-    // to where its content sits (confirmed broken on the song-info box and a settings
-    // sub-popup). See eleventh gotcha in feedback_uhd_packed_sheets memory.
-    const _uhdRawDirs = {
-      GJ_button01: true, GJ_button02: true, GJ_button03: true, GJ_button04: true,
-      GJ_button05: true, GJ_button06: true, loadingCircle: true, macroBot: true,
-      import: true, export: true,
-      tutorial_01: true, tutorial_02: true, tutorial_03: true, tutorial_04: true, tutorial_05: true,
-      tab1: true, tab2: true, tab3: true, tab4: true, tab5: true,
-      GJ_moveBtn: true, GJ_moveSBtn: true, slidergroove2: true,
-      importMacro: true, playbackMacro: true, stopPlayback: true, recordMacro: true, stopRecord: true,
-    };
-    const _uhdPacked = {};
-    Object.keys(_uhdDirs).forEach(k => {
-      const tex = _sc.textures.get('uhd_' + k);
-      const atlasJson = _sc.cache.json.get('uhd_' + k + '_atlas');
-      if (tex && tex.key !== '__MISSING' && atlasJson) {
-        _uhdPacked[k] = { img: tex.getSourceImage(), frames: atlasJson.frames };
-      }
-    });
-    // Data URLs are pre-cropped for every frame during the loading screen (see
-    // buildUhdDataUrlCache in loading-screen.js) — this is a cache lookup, not a crop.
-    // The scratch canvas is only a fallback for a frame that somehow missed pre-caching.
-    const _uhdScratchCanvas = document.createElement('canvas');
-    const _uhdScratchCtx = _uhdScratchCanvas.getContext('2d');
-    // Raw (non-atlas) sprite source: the "UHD" source IS the currently-loaded texture
-    // itself — there's no separate hi-res sheet, just a DOM element instead of a WebGL
-    // quad for the same pixels. frame===null means the whole image; a string frame is
-    // one of _drawScale9's synthetic "_s9_N" sub-rects, cropped the same way as atlas frames.
-    const _uhdRawFrameRect = (key, frame) => {
-      const tex = _sc.textures.get(key);
-      if (!tex || tex.key === '__MISSING') return null;
-      if (frame == null) { const img = tex.getSourceImage(); return { whole: true, w: img.width, h: img.height }; }
-      if (!tex.has(frame)) return null;
-      const f = tex.get(frame);
-      return { whole: false, x: f.cutX, y: f.cutY, w: f.cutWidth, h: f.cutHeight };
-    };
-    // Phaser's own loaded <img> for a texture is backed by a blob: URL that it's free to
-    // revoke once decoded — reusing that URL directly (e.g. as a second <img src> or a CSS
-    // border-image-source) intermittently 404s/ERR_FILE_NOT_FOUND once revoked. Baking a
-    // fresh data URL through the scratch canvas (same trick as the packed-atlas path below)
-    // sidesteps that entirely, since the data URL doesn't depend on the original blob at all.
-    const _uhdRawDataUrl = (key, frame) => {
-      const tex = _sc.textures.get(key);
-      if (!tex || tex.key === '__MISSING') return null;
-      const rect = _uhdRawFrameRect(key, frame);
-      if (!rect) return null;
-      const cacheKey = key + ':' + (frame == null ? '__whole' : frame);
-      let url = window._uhdDataUrlCache && window._uhdDataUrlCache[cacheKey];
-      if (!url) {
-        _uhdScratchCanvas.width = rect.w;
-        _uhdScratchCanvas.height = rect.h;
-        _uhdScratchCtx.clearRect(0, 0, rect.w, rect.h);
-        if (rect.whole) _uhdScratchCtx.drawImage(tex.getSourceImage(), 0, 0);
-        else _uhdScratchCtx.drawImage(tex.getSourceImage(), rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-        url = _uhdScratchCanvas.toDataURL();
-        if (window._uhdDataUrlCache) window._uhdDataUrlCache[cacheKey] = url;
-      }
-      return url;
-    };
-    this._uhdRawDataUrl = _uhdRawDataUrl;
-    const _uhdDrawFrame = (imgEl, key, frame) => {
-      if (_uhdRawDirs[key]) {
-        const url = _uhdRawDataUrl(key, frame);
-        if (!url) return false;
-        imgEl.src = url;
-        return true;
-      }
-      const packed = _uhdPacked[key];
-      const rect = packed && packed.frames[frame];
-      if (!rect) return false;
-      const cacheKey = key + ':' + frame;
-      let url = window._uhdDataUrlCache && window._uhdDataUrlCache[cacheKey];
-      if (!url) {
-        _uhdScratchCanvas.width = rect.w;
-        _uhdScratchCanvas.height = rect.h;
-        _uhdScratchCtx.clearRect(0, 0, rect.w, rect.h);
-        _uhdScratchCtx.drawImage(packed.img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-        url = _uhdScratchCanvas.toDataURL();
-        if (window._uhdDataUrlCache) window._uhdDataUrlCache[cacheKey] = url;
-      }
-      imgEl.src = url;
-      return true;
-    };
-    this._uhdDrawFrame = _uhdDrawFrame;
-    // Per-frame shrink applied only to the UHD overlay's own box (not the underlying sprite),
-    // so the replacement art renders smaller than the original frame while staying centered
-    // on it. Keyed as "textureKey:frameName".
-    const _uhdScaleOverrides = { 'GJ_WebSheet:GJ_logo_001.png': 0.95 };
-    // Atlas-rotated frames normally get CSS rotation suppressed (their UHD art is packed in
-    // final visual orientation). But frames listed here are drawn at several code rotations
-    // (editor move arrows), so their overlay must follow go.rotation; the value is the offset
-    // between the packed art's on-disk orientation (up) and the frame's design orientation (left).
-    const _uhdRotateOverrides = {
-      'GJ_GameSheet03:edit_upBtn2_001.png': -Math.PI / 2,
-      'GJ_GameSheet03:edit_upBtn3_001.png': -Math.PI / 2,
-    };
-    // Per-frame position nudge (game units) applied only to the UHD overlay, not the
-    // underlying sprite. Keyed as "textureKey:frameName".
-    const _uhdOffsetOverrides = { 'GJ_WebSheet:GJ_logo_001.png': { x: -5, y: -5 } };
-    // Per-frame object-fit override. Default 'contain' never crops but can leave the old
-    // sprite visible in the letterboxed gap when the replacement art's aspect ratio doesn't
-    // match the original frame; 'cover' guarantees full coverage of the old frame's box
-    // (cropping the replacement's edges slightly) for cases where that gap is worse than the crop.
-    const _uhdFitOverrides = {};
-    const _uhdFrameAllowed = (key, frame) => !!(_uhdPacked[key] && _uhdPacked[key].frames[frame]) || (!!_uhdRawDirs[key] && !!_uhdRawFrameRect(key, frame));
-    // A raw sprite has no atlas frame name at all when used whole (this.add.image(x,y,key)),
-    // so the usual `typeof frame === 'string'` gate has to loosen to allow frame == null too.
-    const _uhdShouldTag = (key, frame) =>
-      (_uhdDirs[key] && typeof frame === 'string' && _uhdFrameAllowed(key, frame)) ||
-      (_uhdRawDirs[key] && (frame == null || typeof frame === 'string') && _uhdFrameAllowed(key, frame));
-    // GJ_GameSheet/GJ_GameSheet02 hold the gameplay objects. Their overlays are tagged
-    // obj-mode: alpha maps to CSS opacity (not the disabled-button grayscale), and the
-    // overlay hides for color-tinted or additive-blend sprites (canvas fallback), since
-    // DOM elements can't replicate arbitrary tints or blend modes.
-    const _uhdObjSheet = (key) => key === 'GJ_GameSheet' || key === 'GJ_GameSheet02';
-    // Shared by the add.image and add.nineslice patches: gives an interactive game object
-    // a companion invisible Zone as its real input target, so the sync loop can hide the
-    // object's own canvas rendering behind its DOM overlay without losing clicks.
-    const _uhdWireInteractive = (go) => {
-      const _oSetInteractive = go.setInteractive.bind(go);
-      const _oDisableInteractive = go.disableInteractive.bind(go);
-      go.setInteractive = function(...args) {
-        const r = _oSetInteractive(...args);
-        go._uhdWantsInteractive = true;
-        if (localStorage.getItem('uhdHideOldTextures') !== '0' && go.input) {
-          if (!go._uhdHitZone) {
-            const _cursor = go.input.cursor;
-            const zone = _sc.add.zone(go.x, go.y, go.width || 1, go.height || 1)
-              .setOrigin(go.originX, go.originY)
-              .setInteractive(_cursor ? { cursor: _cursor } : undefined);
-            go._uhdHitZone = zone;
-            ['pointerdown', 'pointerup', 'pointerover', 'pointerout', 'pointerupoutside', 'pointermove']
-              .forEach(evt => zone.on(evt, (...a) => go.emit(evt, ...a)));
-            const e = _sc._uhdMap.get(go);
-            if (e) e.hitZone = zone;
-          }
-          _oDisableInteractive();
-        }
-        return r;
-      };
-      go.disableInteractive = function(...args) {
-        const r = _oDisableInteractive(...args);
-        go._uhdWantsInteractive = false;
-        return r;
-      };
-    };
-    const _origAddImg = this.add.image.bind(this.add);
-    const _patchedAddImg = function(x, y, key, frame, ...rest) {
-      const go = _origAddImg(x, y, key, frame, ...rest);
-      if (_uhdShouldTag(key, frame)) {
-        // object-fit:contain (rather than the default fill/stretch) lets a UHD replacement
-        // whose own aspect ratio doesn't exactly match the original frame's sourceSize (e.g.
-        // a redrawn logo) scale in without distortion; it's a no-op when the aspect already
-        // matches, so it doesn't change anything for the existing GameSheet03/04 assets.
-        const _fitMode = _uhdFitOverrides[key + ':' + frame] || 'contain';
-        // Editor build-tab preview icons draw from the object sheets but are UI, not
-        // in-game objects — exempt them from the In-Game UHD toggle & lazy lifecycle,
-        // or they'd vanish behind their button-background overlays when it's off.
-        const _isObj = _uhdObjSheet(key) && !_sc._uhdPreviewIcons;
-        // Object-sheet sprites (level objects) get their DOM img lazily, in the sync
-        // loop, only while actually on screen — a long level would otherwise create
-        // thousands of img nodes up front and keep them all alive forever.
-        let di = null;
-        if (!_isObj) {
-          di = document.createElement('img');
-          di.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;display:none;object-fit:' + _fitMode + ';';
-          _uhdDrawFrame(di, key, frame);
-          _uhdCont.appendChild(di);
-        }
-        const entry = { img: di, key, frame, fit: _fitMode, group: _sc._uhdContext, obj: _isObj, _sized: false, _vis: null, _t: null, uhdScale: _uhdScaleOverrides[key + ':' + frame] || 1, uhdOffset: _uhdOffsetOverrides[key + ':' + frame] || null, uhdRot: _uhdRotateOverrides[key + ':' + frame] != null ? _uhdRotateOverrides[key + ':' + frame] : null };
-        _sc._uhdMap.set(go, entry);
-        // Follow dynamic texture swaps (nav dots, checkboxes, etc.)
-        const _oST = go.setTexture.bind(go);
-        go.setTexture = function(k, f, ...a) {
-          const r = _oST(k, f, ...a);
-          if (_uhdShouldTag(k, f)) {
-            const e = _sc._uhdMap.get(go);
-            if (e) { e.key = k; e.frame = f; if (e.img) _uhdDrawFrame(e.img, k, f); e._sized = false; e.obj = _uhdObjSheet(k); e.uhdScale = _uhdScaleOverrides[k + ':' + f] || 1; e.uhdOffset = _uhdOffsetOverrides[k + ':' + f] || null; e.uhdRot = _uhdRotateOverrides[k + ':' + f] != null ? _uhdRotateOverrides[k + ':' + f] : null; }
-          }
-          return r;
-        };
-        // Follow same-texture frame swaps (editor build/edit/delete tabs, etc.)
-        const _oSFr = go.setFrame.bind(go);
-        go.setFrame = function(f, ...a) {
-          const r = _oSFr(f, ...a);
-          const k = go.texture && go.texture.key;
-          if (_uhdShouldTag(k, f)) {
-            const e = _sc._uhdMap.get(go);
-            if (e) { e.key = k; e.frame = f; if (e.img) _uhdDrawFrame(e.img, k, f); e._sized = false; e.obj = _uhdObjSheet(k); e.uhdScale = _uhdScaleOverrides[k + ':' + f] || 1; e.uhdOffset = _uhdOffsetOverrides[k + ':' + f] || null; e.uhdRot = _uhdRotateOverrides[k + ':' + f] != null ? _uhdRotateOverrides[k + ':' + f] : null; }
-          }
-          return r;
-        };
-        // On by default; opt out via localStorage.setItem('uhdHideOldTextures', '0')
-        // (a plain window flag would reset on every refresh):
-        // give interactive UI icons a companion invisible Zone as their real input
-        // target. Phaser (3.52+) drops non-rendering objects from hit testing and
-        // the old alwaysEnabled escape hatch for that was removed, so a Zone is the
-        // only supported way to let the sync loop hide this sprite's own canvas
-        // rendering (behind its UHD overlay) without also killing its clicks. Once
-        // the zone takes over, the original sprite's own interactive state stops
-        // mattering for input at all, which is what makes that hiding safe.
-        if (!_isObj) _uhdWireInteractive(go);
-      }
-      return go;
-    };
-    _patchedAddImg._uhd_orig = this.add.image; // keep reference to original for unwrap on restart
-    this.add.image = _patchedAddImg;
-    // Raw-sprite nineslice panels (GJ_square01/02, GJ_button01, etc.) can't be replicated
-    // with a plain <img> — squashing the whole texture over an arbitrary width/height would
-    // stretch the rounded corners too. CSS border-image does the same corner-preserving
-    // stretch as Phaser's NineSlice, sourced directly from the same PNG.
-    const _origAddNineslice = this.add.nineslice.bind(this.add);
-    const _patchedAddNineslice = function(x, y, key, frame, width, height, leftWidth, rightWidth, topHeight, bottomHeight, ...rest) {
-      const go = _origAddNineslice(x, y, key, frame, width, height, leftWidth, rightWidth, topHeight, bottomHeight, ...rest);
-      const _nsUrl = _uhdRawDirs[key] ? _uhdRawDataUrl(key, frame) : null;
-      if (_nsUrl) {
-        const div = document.createElement('div');
-        div.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;display:none;box-sizing:border-box;border-style:solid;border-color:transparent;border-image-repeat:stretch;';
-        div.style.borderImageSource = 'url(' + _nsUrl + ')';
-        _uhdCont.appendChild(div);
-        const entry = {
-          img: div, key, frame: null, group: _sc._uhdContext, obj: false, nineslice: true,
-          corners: { l: leftWidth || 0, r: rightWidth || 0, t: topHeight || 0, b: bottomHeight || 0 },
-          _sized: false, _vis: null, _t: null, _al: '',
-        };
-        _sc._uhdMap.set(go, entry);
-        // Unlike the image patch, the original nineslice is never hidden (see the
-        // comment in the sync loop), so its own interactivity is left untouched —
-        // no companion hit-zone needed here.
-      }
-      return go;
-    };
-    _patchedAddNineslice._uhd_orig = this.add.nineslice;
-    this.add.nineslice = _patchedAddNineslice;
+    this.events.off('postupdate', this._syncNoclipFlash);
+    this.events.on('postupdate', this._syncNoclipFlash);
 
     this._bgSpeedX = 0.1;
     this._bgSpeedY = 0.1;
@@ -850,7 +591,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
 
     this._openCreatorMenu = () => {
       if (this._creatorOverlay) return;
-      this._uhdContext = 'creator';
       this._creatorMenuOpen = true;
 
       const sw = screenWidth;
@@ -995,7 +735,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     };
     this._openPlayMenu = (onBack = null) => {
       if (this._playOverlay) return;
-      this._uhdContext = 'playMenu';
       const sw = screenWidth;
       const sh = screenHeight;
       this._playMenuBackTarget = onBack || (() => this._openCreatorMenu());
@@ -1120,10 +859,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
 
       const diffIconX = centerX - (playBtn2.displayWidth / 2) - 100;
       const diffIconY = playBtnY;
-      const diffIcon = this.add.image(diffIconX, diffIconY, "GJ_GameSheet03", _diffFrames[diffIdx])
-        .setScrollFactor(0).setDepth(503).setOrigin(0.5)
-      if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
-      this._playOverlayObjects.push(diffIcon);
 
       let coinIcon = null;
       if (lvl.epic >= 3) {
@@ -1136,6 +871,11 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         coinIcon = this.add.image(diffIconX, diffIconY, "GJ_GameSheet03", "GJ_featuredCoin_001.png").setScrollFactor(0).setDepth(502).setOrigin(0.5);
       }
       if (coinIcon) this._playOverlayObjects.push(coinIcon);
+
+      const diffIcon = this.add.image(diffIconX, diffIconY, "GJ_GameSheet03", _diffFrames[diffIdx])
+        .setScrollFactor(0).setDepth(503).setOrigin(0.5)
+      if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
+      this._playOverlayObjects.push(diffIcon);
 
       const _progressKeyId = "online_" + (lvl.id || "0");
       const _bestNormal = parseFloat(localStorage.getItem("bestPercent_" + _progressKeyId) || "0");
@@ -1426,7 +1166,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     };
     this._openEditorMenu = () => {
         if (this._editorOverlay) return;
-        this._uhdContext = 'editor';
         const sw = screenWidth;
         const sh = screenHeight;
         const centerX = sw / 2;
@@ -1562,12 +1301,12 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
             });
         });
         blocker.on('pointerdown', (pointer) => {
-            startY = pointer.y - listContainer.y;
+            startY = (pointer.y / RES_SCALE) - listContainer.y;
         });
 
         blocker.on('pointermove', (pointer) => {
             if (pointer.isDown) {
-                listContainer.y = pointer.y - startY;
+                listContainer.y = (pointer.y / RES_SCALE) - startY;
                 listContainer.y = Phaser.Math.Clamp(listContainer.y, minY, maxY);
             }
         });
@@ -1829,7 +1568,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         return "local_" + (maxId + 1);
     };
     this._openLevelView = (level) => {
-        this._uhdContext = 'levelView';
         this._levelViewOverlay = true;
         const sw = screenWidth;
         const sh = screenHeight;
@@ -2103,7 +1841,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     };
     this._openSearchMenu = () => {
       if (this._searchOverlay) return;
-      this._uhdContext = 'search';
       const sw = screenWidth;
       const sh = screenHeight;
 
@@ -2314,47 +2051,16 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       const btnW = (totalBtnW - qsGapX * (gridCols - 1)) / gridCols;
       const btnH = (totalBtnH - qsGapY * (gridRows - 1)) / gridRows;
 
-      const lbFrame  = this.textures.getFrame("GJ_GameSheet03", "GJ_longBtn01_001.png");
-      const lbBorder = Math.round(lbFrame.height * 0.28);
-
       for (let row = 0; row < gridRows; row++) {
         for (let col = 0; col < gridCols; col++) {
           const btnCX = panelLeft + qsPadX + col * (btnW + qsGapX) + btnW / 2;
           const btnCY = qsPanelY + qsPadY + row * (btnH + qsGapY) + btnH / 2;
 
-          const atlas  = this.textures.get("GJ_GameSheet03");
-          const frameX = lbFrame.cutX;
-          const frameY = lbFrame.cutY;
-          const frameW = lbFrame.cutWidth;
-          const frameH = lbFrame.cutHeight;
-          const midW   = btnW  - lbBorder * 2;
-          const midH   = btnH  - lbBorder * 2;
-          const tag    = `_lbqs_${row}_${col}`;
-
-          const pieces = [
-            { sx: frameX,                     sy: frameY,                     sw: lbBorder,          sh: lbBorder,          dx: -btnW/2,             dy: -btnH/2,             dw: lbBorder, dh: lbBorder },
-            { sx: frameX + lbBorder,          sy: frameY,                     sw: frameW-lbBorder*2, sh: lbBorder,          dx: -btnW/2 + lbBorder,  dy: -btnH/2,             dw: midW,     dh: lbBorder },
-            { sx: frameX + frameW - lbBorder, sy: frameY,                     sw: lbBorder,          sh: lbBorder,          dx: btnW/2 - lbBorder,   dy: -btnH/2,             dw: lbBorder, dh: lbBorder },
-            { sx: frameX,                     sy: frameY + lbBorder,          sw: lbBorder,          sh: frameH-lbBorder*2, dx: -btnW/2,             dy: -btnH/2 + lbBorder,  dw: lbBorder, dh: midH     },
-            { sx: frameX + lbBorder,          sy: frameY + lbBorder,          sw: frameW-lbBorder*2, sh: frameH-lbBorder*2, dx: -btnW/2 + lbBorder,  dy: -btnH/2 + lbBorder,  dw: midW,     dh: midH     },
-            { sx: frameX + frameW - lbBorder, sy: frameY + lbBorder,          sw: lbBorder,          sh: frameH-lbBorder*2, dx: btnW/2 - lbBorder,   dy: -btnH/2 + lbBorder,  dw: lbBorder, dh: midH     },
-            { sx: frameX,                     sy: frameY + frameH - lbBorder, sw: lbBorder,          sh: lbBorder,          dx: -btnW/2,             dy: btnH/2 - lbBorder,   dw: lbBorder, dh: lbBorder },
-            { sx: frameX + lbBorder,          sy: frameY + frameH - lbBorder, sw: frameW-lbBorder*2, sh: lbBorder,          dx: -btnW/2 + lbBorder,  dy: btnH/2 - lbBorder,   dw: midW,     dh: lbBorder },
-            { sx: frameX + frameW - lbBorder, sy: frameY + frameH - lbBorder, sw: lbBorder,          sh: lbBorder,          dx: btnW/2 - lbBorder,   dy: btnH/2 - lbBorder,   dw: lbBorder, dh: lbBorder },
-          ];
-
           const btnContainer = this.add.container(btnCX, btnCY).setScrollFactor(0).setDepth(105);
-          const bgPieces = [];
-          pieces.forEach((p, i) => {
-            const frameKey = `${tag}_p${i}`;
-            if (!atlas.has(frameKey)) {
-              atlas.add(frameKey, 0, p.sx, p.sy, p.sw, p.sh);
-            }
-            const bgPiece = this.add.image(p.dx, p.dy, "GJ_GameSheet03", frameKey)
-              .setOrigin(0, 0).setDisplaySize(p.dw, p.dh);
-            bgPieces.push(bgPiece);
-            btnContainer.add(bgPiece);
-          });
+          const bg = this.add.image(0, 0, "GJ_GameSheet03", "GJ_longBtn04_001.png")
+            .setOrigin(0.5).setDisplaySize(btnW, btnH);
+          btnContainer.add(bg);
+          const bgPieces = [bg];
 
           const hitZone = this.add.zone(0, 0, btnW, btnH).setInteractive();
           btnContainer.add(hitZone);
@@ -2480,7 +2186,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       this._diffFilterIcons = [];
       const _diffFilterInactiveTint = 0x666666;
       const _diffFilterBaseScale = 0.85;
-      const _diffFilterPressScale = 1;
       const _diffFilterExclusiveIdx = [0, 6, 7];
       _diffFilterFrames.forEach((frame, i) => {
         const cx = panelLeft + _diffFilterSlotW * i + _diffFilterSlotW / 2;
@@ -2493,23 +2198,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         icon._diffFilterExclusive = _diffFilterExclusiveIdx.includes(i);
         this._diffFilterIcons.push(icon);
 
-        icon.on("pointerdown", () => {
-          icon._pressed = true;
-          this.tweens.killTweensOf(icon, "scale");
-          this.tweens.add({ targets: icon, scale: _diffFilterPressScale, duration: 300, ease: "Bounce.Out" });
-        });
-        icon.on("pointerout", () => {
-          if (icon._pressed) {
-            icon._pressed = false;
-            this.tweens.killTweensOf(icon, "scale");
-            this.tweens.add({ targets: icon, scale: _diffFilterBaseScale, duration: 400, ease: "Bounce.Out" });
-          }
-        });
-        icon.on("pointerup", () => {
-          if (!icon._pressed) return;
-          icon._pressed = false;
-          this.tweens.killTweensOf(icon, "scale");
-          icon.setScale(_diffFilterBaseScale);
+        this._makeBouncyButton(icon, _diffFilterBaseScale, () => {
           const wasActive = icon._diffFilterActive;
           if (icon._diffFilterExclusive) {
             this._diffFilterIcons.forEach(other => {
@@ -2995,7 +2684,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
 
     this._openIconSelector = (startTab = "icon") => {
       if (this._iconOverlay) return;
-      this._uhdContext = 'icon';
 
       const sw = screenWidth;
       const sh = screenHeight;
@@ -3684,18 +3372,18 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     this._positionMenuItems();
     //icon stuff sequel
     if (this._iconBtn) {
-  this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 50 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
+  this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 85 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
   this.tweens.killTweensOf(this._iconBtn, "y");
   this._iconBtn.y = 320;
   if (this._chrSelDecor) this._chrSelDecor.destroy();
-  this._chrSelDecor = this.add.image(this._iconBtn.x - 110, this._iconBtn.y - (this._iconBtn.height * this._iconBtn.scaleY) / 2 + 160, "GJ_GameSheet03", "GJ_chrSel_001.png").setScrollFactor(0).setDepth(31);
+  this._chrSelDecor = this.add.image(this._iconBtn.x - 110, this._iconBtn.y - (this._iconBtn.height * this._iconBtn.scaleY) / 2 + 125, "GJ_GameSheet03", "GJ_chrSel_001.png").setScrollFactor(0).setDepth(31);
 }
     if (this._creatorBtn) {
-  this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 50 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
+  this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 85 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
   this.tweens.killTweensOf(this._creatorBtn, "y");
   this._creatorBtn.y = 320;
   if (this._lvlEditDecor) this._lvlEditDecor.destroy();
-  this._lvlEditDecor = this.add.image(this._creatorBtn.x + 110, this._creatorBtn.y - (this._creatorBtn.height * this._creatorBtn.scaleY) / 2 + 160, "GJ_GameSheet03", "GJ_lvlEdit_001.png").setScrollFactor(0).setDepth(31);
+  this._lvlEditDecor = this.add.image(this._creatorBtn.x + 110, this._creatorBtn.y - (this._creatorBtn.height * this._creatorBtn.scaleY) / 2 + 125, "GJ_GameSheet03", "GJ_lvlEdit_001.png").setScrollFactor(0).setDepth(31);
 }
     this._spaceWasDown = false;
     this._spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -3755,10 +3443,10 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       .setVisible(false);
 
     this.noclipFlash = this.add.rectangle(
-      this.cameras.main.centerX, 
-      this.cameras.main.centerY, 
-      this.cameras.main.width, 
-      this.cameras.main.height, 
+      screenWidth / 2,
+      screenHeight / 2,
+      screenWidth,
+      screenHeight,
       0xff0000
     );
     this.noclipFlash.setScrollFactor(0);
@@ -3825,12 +3513,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       }
       if (this._megaHackMenu) {
         this._closeMegaHackMenu();
-        return;
-      }
-      if (this._macroPopup) {
-        this.events.off("update", this._refreshMacroButtons);
-        this._macroPopup.destroy();
-        this._macroPopup = null;
         return;
       }
       if (this._settingsLayerOverlay) {
@@ -4099,7 +3781,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
   }
   _openLevelSelect() {
     if (this._levelSelectOverlay) return;
-    this._uhdContext = 'levelSelect';
     const sw = screenWidth;
     const sh = screenHeight;
     const cx = sw / 2;
@@ -4170,26 +3851,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     const cornerBL = this.add.image(0,  sh, "GJ_GameSheet03", "GJ_sideArt_001.png").setScrollFactor(0).setDepth(152).setOrigin(0, 1).setFlipY(false);
     const cornerBR = this.add.image(sw, sh, "GJ_GameSheet03", "GJ_sideArt_001.png").setScrollFactor(0).setDepth(152).setOrigin(1, 1).setFlipX(true);
     const backBtn = this.add.image(50, 48, "GJ_GameSheet03", "GJ_arrow_01_001.png").setScrollFactor(0).setDepth(154).setFlipX(true).setScale(1, -1).setRotation(Math.PI).setInteractive();
-    backBtn.on("pointerdown", () => {
-      backBtn._pressed = true;
-      this.tweens.killTweensOf(backBtn);
-      this.tweens.add({ targets: backBtn, scaleX: 1.26, scaleY: -1.26, duration: 300, ease: "Bounce.Out" });
-    });
-    backBtn.on("pointerout", () => {
-      if (backBtn._pressed) {
-        backBtn._pressed = false;
-        this.tweens.killTweensOf(backBtn);
-        this.tweens.add({ targets: backBtn, scaleX: 1, scaleY: -1, duration: 400, ease: "Bounce.Out" });
-      }
-    });
-    backBtn.on("pointerup", () => {
-      if (backBtn._pressed) {
-        backBtn._pressed = false;
-        this.tweens.killTweensOf(backBtn);
-        backBtn.setScale(1, -1);
-        this._closeLevelSelect();
-      }
-    });
+    this._makeBouncyButton(backBtn, 1, () => this._closeLevelSelect());
     const infoBtn = this.add.image(sw - 40, 40, "GJ_GameSheet03", "GJ_infoIcon_001.png").setScrollFactor(0).setDepth(154).setInteractive();
     const arrowL = this.add.image(55, cy - 25, "GJ_GameSheet03", "navArrowBtn_001.png").setScrollFactor(0).setDepth(154).setScale(1.1).setFlipX(true).setInteractive();
     const arrowR = this.add.image(sw - 55, cy - 25, "GJ_GameSheet03", "navArrowBtn_001.png").setScrollFactor(0).setDepth(154).setScale(1.1).setFlipX(false).setInteractive();
@@ -4336,8 +3998,15 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
           this.events.on("preupdate", snapUpdate);
         }
       } else {
-        if (ptr.x >= cardX - cardW/2 && ptr.x <= cardX + cardW/2 &&
-            ptr.y >= cardY - cardH/2 && ptr.y <= cardY + cardH/2) {
+        // ptr.x/y are in canvas-pixel space (RES_SCALE times the logical coordinates
+        // cardX/Y/W/H are defined in -- confirmed empirically: a click at the exact
+        // logical center (569,320) reports ptr.x=1138, ptr.y=640, exactly 2x. Comparing
+        // the raw pointer coords against logical bounds made this hit-test fail for
+        // effectively every click, which is why clicking a card never started the level.
+        const ptrX = ptr.x / RES_SCALE;
+        const ptrY = ptr.y / RES_SCALE;
+        if (ptrX >= cardX - cardW/2 && ptrX <= cardX + cardW/2 &&
+            ptrY >= cardY - cardH/2 && ptrY <= cardY + cardH/2) {
             if (isComingSoonPage()) {
               return;
             }
@@ -4583,11 +4252,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
             }
             cardContentObjs.length = 0;
             barObjs.length = 0;
-            // update() resets _uhdContext to null every frame; this runs from a "preupdate"
-            // handler on a later frame than _openLevelSelect()'s synchronous build, so it must
-            // re-assert the tag before creating new icons or their UHD overlays get group:null
-            // and stay hidden forever (same bug/fix as the settings-popup page rebuild).
-            this._uhdContext = 'levelSelect';
             drawCardBg(newColors.bgHex, dark, isComingSoonPage());
             buildCardContent();
             buildBar();
@@ -4880,7 +4544,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     return _0x4864cc;
   }
 _buildPauseOverlay() {
-    this._uhdContext = 'pause';
     const textureY = screenWidth / 2;
     const _0xf70e04 = 320;
     const _0x4eb71b = screenWidth - 40;
@@ -4909,10 +4572,6 @@ _buildPauseOverlay() {
     this._expandHitArea(settingsBtn, 2.5);
     this._pauseContainer.add(settingsBtn);
     this._makeBouncyButton(settingsBtn, 0.64, () => this._buildSettingsPopup());
-
-    this._macroBtn = this.add.image(textureY + _0x4eb71b / 2 - 60, 150, "macroBot").setScale(0.4).setInteractive();
-    this._pauseContainer.add(this._macroBtn);
-    this._makeBouncyButton(this._macroBtn, 0.4, () => this._buildMacroPopup());
 
     this._pauseContainer.add(this.add.bitmapText(textureY, 65, "bigFont", window.currentlevel[1], 40).setOrigin(0.5, 0.5));
 
@@ -4946,8 +4605,8 @@ _buildPauseOverlay() {
 
     const _0x4791ac = [
         { frame: this._practicedMode.practiceMode ? "GJ_normalBtn_001.png" : "GJ_practiceBtn_001.png", atlas: "GJ_GameSheet03", action: null },
-        { frame: "GJ_playBtn2_001.png", atlas: "GJ_WebSheet", action: () => this._resumeGame() },
-        { frame: "GJ_menuBtn_001.png", atlas: "GJ_WebSheet", action: () => {
+        { frame: "GJ_playBtn2_001.png", atlas: "GJ_GameSheet03", action: () => this._resumeGame() },
+        { frame: "GJ_menuBtn_001.png", atlas: "GJ_GameSheet03", action: () => {
             this._audio.playEffect("quitSound_01");
             this._queueGameplayLevelViewReturn();
             this.game.registry.remove("autoStartGame");
@@ -4956,13 +4615,24 @@ _buildPauseOverlay() {
             this._resumeGame();
             this.scene.restart();
         }},
-        { frame: "GJ_replayBtn_001.png", atlas: "GJ_WebSheet", action: () => {
+        { frame: "GJ_replayBtn_001.png", atlas: "GJ_GameSheet03", action: () => {
             this._resumeGame();
             this._restartLevel();
         }}
     ];
 
-    const _0x25aa59 = _0x4791ac.map(btn => this.textures.getFrame(btn.atlas, btn.frame)?.width || 123);
+    // this.textures.getFrame(...).width reads the raw atlas frame's pixel width directly,
+    // bypassing the per-instance UHD compensation wrapSceneForResScale applies to objects
+    // created via this.add.image() -- for a UHD-upgraded frame that's the doubled raw
+    // pixel width, not the intended display width, which made this row's total width (and
+    // so every button's spacing) come out roughly 2x too large. window._uhdOrigSizes holds
+    // the correct pre-upgrade footprint per frame (see loading-screen.js); fall back to the
+    // raw frame width for frames that were never UHD-upgraded.
+    const _0x25aa59 = _0x4791ac.map(btn =>
+      window._uhdOrigSizes?.[btn.atlas]?.[btn.frame]?.w
+      ?? this.textures.getFrame(btn.atlas, btn.frame)?.width
+      ?? 123
+    );
     let _0x599a9b = textureY - (_0x25aa59.reduce((a, b) => a + b, 0) + (_0x4791ac.length - 1) * 40) / 2;
 
     for (let i = 0; i < _0x4791ac.length; i++) {
@@ -4993,16 +4663,18 @@ _buildPauseOverlay() {
     const _0x22b43a = 0.7;
     const _0x41925a = this.textures.getFrame("GJ_WebSheet", "slidergroove.png");
     const _0x372782 = _0x41925a ? _0x41925a.width : 420;
+    const _sliderGap = 90;
+    const _sliderOffset = _0x372782 * _0x22b43a / 2 + _sliderGap / 2;
 
-    const createSlider = (posX, iconFrame, initialVal, setter) => {
-        this._pauseContainer.add(this.add.image(posX - 180 - 5, _0x1008ae, "GJ_WebSheet", iconFrame).setScale(1.2));
+    const createSlider = (posX, label, initialVal, setter) => {
+        this._pauseContainer.add(this.add.bitmapText(posX, _0x1008ae - 40, "bigFont", label, 30).setOrigin(0.5, 0.5));
         const barMaxW = (_0x372782 - 8) * _0x22b43a;
         const barStartX = posX - _0x372782 * _0x22b43a / 2 + 2.8;
         const fillW = initialVal * barMaxW;
         const fillBar = this.add.tileSprite(barStartX, _0x1008ae, fillW > 0 ? fillW : 1, 11.2, "sliderBar").setOrigin(0, 0.5);
         this._pauseContainer.add(fillBar);
         this._pauseContainer.add(this.add.image(posX, _0x1008ae, "GJ_WebSheet", "slidergroove.png").setScale(_0x22b43a));
-        
+
         const thumb = this.add.image(barStartX + fillW, _0x1008ae, "GJ_WebSheet", "sliderthumb.png").setScale(_0x22b43a).setInteractive({ draggable: true });
         this._pauseContainer.add(thumb);
         thumb.on("drag", (p, dragX) => {
@@ -5013,8 +4685,8 @@ _buildPauseOverlay() {
         });
     };
 
-    createSlider(textureY - 200, "gj_songIcon_001.png", this._audio.getUserMusicVolume(), v => this._audio.setUserMusicVolume(v));
-    createSlider(textureY + 200, "GJ_sfxIcon_001.png", this._sfxVolume, v => {
+    createSlider(textureY - _sliderOffset, "MUSIC", this._audio.getUserMusicVolume(), v => this._audio.setUserMusicVolume(v));
+    createSlider(textureY + _sliderOffset, "SFX", this._sfxVolume, v => {
         this._sfxVolume = v;
         localStorage.setItem("userSfxVol", v);
     });
@@ -5387,6 +5059,7 @@ _closeSettingsPopup() {
         }
         #gj-s03-menu-dom .mh-item.active .mh-indicator { background-color: var(--mh-accent); }
         #gj-s03-menu-dom .mh-item-arrow {
+            /* Original size/position, unchanged — purely visual, not the click target. */
             width: 0; height: 0;
             margin-left: 8px;
             border-bottom: 8px solid #333333;
@@ -5395,6 +5068,17 @@ _closeSettingsPopup() {
             transition: border-bottom-color 0.1s;
         }
         #gj-s03-menu-dom .mh-item.active .mh-item-arrow { border-bottom-color: var(--mh-accent); }
+        #gj-s03-menu-dom .mh-arrow-hitzone {
+            /* Real element, not a pseudo-element — an empty ::before/::after with no
+               painted pixels is unreliable to hit-test in some engines. Absolutely
+               positioned against the row (already position:relative), so it adds zero
+               width to the row's own flex layout while covering a much bigger click
+               target than the tiny triangle alone. */
+            position: absolute;
+            top: 0; bottom: 0; right: 6px;
+            width: 32px;
+            cursor: pointer;
+        }
         #gj-s03-menu-dom .mh-item.label-row {
             cursor: default;
             font-weight: 700;
@@ -5422,6 +5106,73 @@ _closeSettingsPopup() {
             outline: none;
         }
         #gj-s03-menu-dom .mh-input:focus { border-color: var(--mh-accent); }
+        #gj-s03-menu-dom .mh-pair-row { padding: 0; gap: 1px; }
+        #gj-s03-menu-dom .mh-pair-half {
+            flex: 1;
+            min-width: 0;
+            padding: 5px 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        #gj-s03-menu-dom .mh-pair-half:first-child {
+            background: rgba(0,0,0,0.35);
+            border-radius: 3px;
+        }
+        #gj-s03-menu-dom .mh-pair-half:not(.placebo):hover { background-color: rgba(255, 255, 255, 0.08); }
+        #gj-s03-menu-dom .mh-pair-half.active { color: var(--mh-accent); }
+        #gj-s03-menu-dom .mh-pair-half.placebo { color: #6f6f6f; cursor: default; }
+        #gj-s03-menu-dom .mh-pair-edit {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: inherit;
+            font-family: inherit;
+            font-size: inherit;
+            padding: 0;
+        }
+        #gj-s03-menu-dom .mh-pair-dot {
+            width: 8px;
+            height: 8px;
+            margin-left: 8px;
+            border-radius: 2px;
+            background-color: #4a4a4a;
+            flex: none;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        #gj-s03-menu-dom .mh-pair-dot.active { background-color: var(--mh-accent); }
+        #gj-s03-menu-dom .mh-filename-row .mh-item-text {
+            flex: 1;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid #444;
+            padding: 3px 8px;
+            color: #6f6f6f;
+        }
+        #gj-s03-menu-dom .mh-center-row { justify-content: center; }
+        #gj-s03-menu-dom .mh-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 10px;
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 3px;
+            z-index: 20;
+            min-width: 110px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #gj-s03-menu-dom .mh-dropdown.open { display: block; }
+        #gj-s03-menu-dom .mh-dropdown-item {
+            padding: 6px 12px;
+            color: #f0f0f0;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        #gj-s03-menu-dom .mh-dropdown-item:not(.placebo):hover { background-color: rgba(255, 255, 255, 0.08); }
+        #gj-s03-menu-dom .mh-dropdown-item.placebo { color: #6f6f6f; cursor: default; }
       `;
       document.head.appendChild(style);
     }
@@ -5547,8 +5298,61 @@ _closeSettingsPopup() {
       showEditorGlow: { get: () => !!window.showEditorGlow, set: v => { window.showEditorGlow = v; this._saveSettings(); } },
       portalGuide: { get: () => window.enablePortalGuide !== false, set: v => { window.enablePortalGuide = v; this._saveSettings(); } },
       orbGuide: { get: () => !!window.enableOrbGuide, set: v => { window.enableOrbGuide = v; this._saveSettings(); } },
-      macroBot: { get: () => !!window.macroBot, set: v => { window.macroBot = v; this._saveSettings(); } },
       fullscreen: { get: () => this.scale.isFullscreen, set: v => { if (v && !this.scale.isFullscreen) this.scale.startFullscreen(); else if (!v && this.scale.isFullscreen) this.scale.stopFullscreen(); } },
+      // Web Bot controls, moved here from the old pause-menu popup (_buildMacroPopup) —
+      // same MacroBot backend (_initMacroBot/_startMacroRecording/etc.), new home.
+      macroRecord: {
+        get: () => !!this._macroBot?.recording,
+        set: v => {
+          if (this._macroBot?.playing) return;
+          if (v) {
+            if (!this._macroLoaded) {
+              const name = prompt('Enter macro name');
+              if (!name) return;
+              if (!this._macroBot) this._initMacroBot();
+              this._macroBot.resetAll();
+              this._macroBot.meta.name = name;
+              this._macroName = name;
+              this._macroLoaded = true;
+            }
+            this._startMacroRecording({ level: window.currentlevel?.[2] || '', name: this._macroName });
+          } else {
+            this._stopMacroRecording();
+            if (window._mhFlags?.macroAutoSave) this._exportMacroFile(this._macroName ? `${this._macroName}.wbgdr` : null);
+          }
+        }
+      },
+      macroPlay: {
+        get: () => !!this._macroBot?.playing,
+        set: v => {
+          if (this._macroBot?.recording) return;
+          if (v) {
+            if (!this._macroBot || !this._macroLoaded) return;
+            this._startMacroPlayback(this._macroBot.exportObject());
+          } else {
+            this._stopMacroPlayback();
+          }
+        }
+      },
+      macroAutoSave: {
+        get: () => window._mhFlags?.macroAutoSave === true,
+        set: v => { window._mhFlags = window._mhFlags || {}; window._mhFlags.macroAutoSave = v; this._saveSettings(); }
+      },
+      macroFilename: {
+        get: () => this._macroName || 'No macro loaded',
+        rename: () => {
+          if (this._macroBot?.playing || this._macroBot?.recording) return;
+          const renamePrompt = prompt(this._macroLoaded ? 'New name' : 'Enter macro name', this._macroName || '');
+          if (!renamePrompt || !renamePrompt.trim()) return;
+          const cleanName = renamePrompt.trim();
+          if (!this._macroBot) this._initMacroBot();
+          if (!this._macroLoaded) this._macroBot.resetAll();
+          if (!this._macroBot.meta) this._macroBot.meta = {};
+          this._macroBot.meta.name = cleanName;
+          this._macroName = cleanName;
+          this._macroLoaded = true;
+        }
+      },
       speedhack: {
         get: () => this._mhSpeedStore ?? (window.speedHack && window.speedHack !== 1 ? window.speedHack : 2),
         set: v => { this._mhSpeedStore = v; if (window.speedHack !== 1) { window.speedHack = v; this._saveSettings(); } }
@@ -5556,6 +5360,10 @@ _closeSettingsPopup() {
       speedhackEnabled: {
         get: () => window.speedHack !== 1,
         set: v => { window.speedHack = v ? (this._mhSpeedStore ?? 2) : 1; this._saveSettings(); }
+      },
+      speedhackAudio: {
+        get: () => window._mhFlags?.speedhackAudio !== false,
+        set: v => { window._mhFlags = window._mhFlags || {}; window._mhFlags.speedhackAudio = v; this._saveSettings(); }
       },
       theme: {
         get: () => window._mhTheme || 'Pink',
@@ -5585,6 +5393,39 @@ _closeSettingsPopup() {
         });
       },
       restartLevel: () => { if (!this._menuActive && !this._slideIn && !this._levelWon) { this._closeMegaHackMenu(); this._restartLevel(); } },
+      macroSave: () => {
+        // Persists to the saved-macros library (shows up in Filename's dropdown) —
+        // distinct from Export, which downloads a .wbgdr file and touches nothing saved.
+        if (this._macroBot?.playing || this._macroBot?.recording) return;
+        if (!this._macroLoaded || !this._macroBot) return;
+        this._saveMacroToLibrary(this._macroName, this._macroBot.exportObject());
+      },
+      macroExport: () => {
+        if (this._macroBot?.playing || this._macroBot?.recording) return;
+        if (!this._macroLoaded) return;
+        this._exportMacroFile(this._macroName ? `${this._macroName}.wbgdr` : null);
+      },
+      macroClearNew: () => {
+        if (this._macroBot?.playing || this._macroBot?.recording) return;
+        const name = prompt('Enter macro name');
+        if (!name) return;
+        if (!this._macroBot) this._initMacroBot();
+        this._macroBot.resetAll();
+        this._macroBot.meta.name = name;
+        this._macroName = name;
+        this._macroLoaded = true;
+      },
+      macroDelete: () => {
+        if (this._macroBot?.playing || this._macroBot?.recording) return;
+        if (!this._macroLoaded) return;
+        if (this._macroBot) this._macroBot.resetAll();
+        this._macroName = null;
+        this._macroLoaded = false;
+      },
+      macroImport: () => {
+        if (this._macroBot?.playing || this._macroBot?.recording) return;
+        this._importMacroFile();
+      },
       practiceMode: () => {
         const isP = this._practicedMode.togglePracticeMode();
         if (this._checkpointBtnContainer) this._checkpointBtnContainer.setVisible(isP);
@@ -5598,6 +5439,53 @@ _closeSettingsPopup() {
     const applySearch = (term) => {
       const t = term.trim().toLowerCase();
       allRows.forEach(r => r.el.classList.toggle('dimmed-match', !!t && !r.label.toLowerCase().includes(t)));
+    };
+
+    // Small action menus anchored to a row's arrow (Filename's "Save", Convert's
+    // "Export"/"Import") — only one open at a time, dismissed by any other click.
+    const closeAllDropdowns = () => {
+      content.querySelectorAll('.mh-dropdown.open').forEach(d => d.classList.remove('open'));
+    };
+    on(document, 'click', closeAllDropdowns);
+    const buildDropdown = (row, arrow, itemsSource) => {
+      // itemsSource is either a static array (Convert's Export/Import, fixed at build
+      // time) or a function returning one (Filename's saved-macro list, which changes
+      // as macros get saved/imported — re-read fresh on every open instead of once).
+      const dd = document.createElement('div');
+      dd.className = 'mh-dropdown';
+      const renderItems = () => {
+        const items = typeof itemsSource === 'function' ? itemsSource() : itemsSource;
+        dd.innerHTML = '';
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'mh-dropdown-item placebo';
+          empty.textContent = 'None saved';
+          dd.appendChild(empty);
+          return;
+        }
+        items.forEach(it => {
+          const action = it.action || (it.real && ACTIONS[it.real]);
+          const opt = document.createElement('div');
+          opt.className = 'mh-dropdown-item' + (action ? '' : ' placebo');
+          opt.textContent = it.l;
+          if (action) opt.onclick = (e) => { e.stopPropagation(); dd.classList.remove('open'); action(); };
+          dd.appendChild(opt);
+        });
+      };
+      row.appendChild(dd);
+      // Real invisible element covering a wider area than the arrow glyph itself (see
+      // .mh-arrow-hitzone) — the actual click target; the tiny arrow stays purely visual.
+      const hitzone = document.createElement('span');
+      hitzone.className = 'mh-arrow-hitzone';
+      row.appendChild(hitzone);
+      hitzone.onclick = (e) => {
+        e.stopPropagation();
+        const wasOpen = dd.classList.contains('open');
+        closeAllDropdowns();
+        if (!wasOpen) renderItems();
+        dd.classList.toggle('open', !wasOpen);
+      };
+      return dd;
     };
 
     const createRow = (item) => {
@@ -5627,9 +5515,106 @@ _closeSettingsPopup() {
         return row;
       }
 
+      if (raw.t === 'pair') {
+        // Two related settings sharing one row (e.g. Speedhack's "Speed"/"Enabled") —
+        // matches the real client's compact layout instead of each getting its own
+        // full-width row. Only 'number' and 'toggle' sub-items are needed so far.
+        const row = document.createElement('div');
+        row.className = 'mh-item mh-pair-row';
+        const buildHalf = (sub) => {
+          const half = document.createElement('div');
+          half.className = 'mh-pair-half';
+          const subReal = sub.real && REAL[sub.real];
+          const subAction = sub.real && ACTIONS[sub.real];
+          if (!subReal && !subAction) { half.classList.add('placebo'); half.textContent = sub.l; return half; }
+          if (sub.t === 'action') {
+            half.textContent = sub.l;
+            half.onclick = (e) => { e.stopPropagation(); subAction(); };
+          } else if (sub.t === 'number') {
+            const render = () => { half.textContent = `${sub.l} ${subReal.get()}x`; };
+            render();
+            half.onclick = (e) => {
+              e.stopPropagation();
+              const input = document.createElement('input');
+              input.type = 'number';
+              input.className = 'mh-pair-edit';
+              input.step = 0.1;
+              input.value = subReal.get();
+              half.textContent = '';
+              half.appendChild(input);
+              input.focus();
+              input.select();
+              const commit = () => {
+                const v = parseFloat(input.value);
+                if (!isNaN(v) && v > 0) subReal.set(v);
+                render();
+              };
+              on(input, 'blur', commit);
+              on(input, 'keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') input.blur(); });
+              on(input, 'keyup', ev => ev.stopPropagation());
+              on(input, 'click', ev => ev.stopPropagation());
+            };
+          } else {
+            half.textContent = sub.l;
+            // Some toggle pairs show a small on/off square next to the label (e.g.
+            // Replay's "Record"/"Play"), others don't (Speedhack's "Enabled") — opt in
+            // per sub-item rather than guessing from context.
+            let dot = null;
+            if (sub.indicator) {
+              dot = document.createElement('span');
+              dot.className = 'mh-pair-dot';
+              half.appendChild(dot);
+            }
+            const refresh = () => {
+              const on = !!subReal.get();
+              half.classList.toggle('active', on);
+              if (dot) dot.classList.toggle('active', on);
+            };
+            refresh();
+            half.onclick = (e) => { e.stopPropagation(); subReal.set(!subReal.get()); refresh(); };
+          }
+          return half;
+        };
+        row.appendChild(buildHalf(raw.items[0]));
+        row.appendChild(buildHalf(raw.items[1]));
+        allRows.push({ el: row, label: raw.items[0].l + ' ' + raw.items[1].l });
+        return row;
+      }
+
+      if (raw.t === 'filename') {
+        // Replay's file-picker row: styled like a dark input box with a dropdown
+        // arrow. When wired (macroFilename) it shows the loaded macro's name and
+        // clicking it renames/creates one; otherwise it's just inert placeholder text.
+        const row = document.createElement('div');
+        const wired = raw.real && REAL[raw.real];
+        row.className = 'mh-item mh-filename-row' + (wired ? '' : ' placebo');
+        const textSpan = document.createElement('span');
+        textSpan.className = 'mh-item-text';
+        const render = () => { textSpan.textContent = wired ? wired.get() : raw.l; };
+        render();
+        row.appendChild(textSpan);
+        const arrow = document.createElement('span');
+        arrow.className = 'mh-item-arrow';
+        row.appendChild(arrow);
+        if (wired && wired.rename) textSpan.onclick = (e) => { e.stopPropagation(); wired.rename(); render(); };
+        if (raw.dropdown) buildDropdown(row, arrow, raw.dropdown);
+        allRows.push({ el: row, label: raw.l });
+        return row;
+      }
+
+      if (raw.t === 'center') {
+        // A single full-width, centered, inert action label (e.g. Replay's "Open Folder").
+        const row = document.createElement('div');
+        row.className = 'mh-item mh-center-row placebo';
+        row.textContent = raw.l;
+        allRows.push({ el: row, label: raw.l });
+        return row;
+      }
+
       const wiredReal = raw.real && REAL[raw.real];
       const wiredAction = raw.real && ACTIONS[raw.real];
-      const isReal = !!(wiredReal || wiredAction);
+      const hasDropdownAction = raw.dropdown && raw.dropdown.some(it => it.real && ACTIONS[it.real]);
+      const isReal = !!(wiredReal || wiredAction || hasDropdownAction);
 
       const row = document.createElement('div');
       row.className = 'mh-item' + (isReal ? '' : ' placebo');
@@ -5671,7 +5656,7 @@ _closeSettingsPopup() {
 
       if (raw.t === 'value') {
         const values = raw.values || [];
-        let idx = isReal ? Math.max(0, values.indexOf(wiredReal.get())) : 0;
+        let idx = wiredReal ? Math.max(0, values.indexOf(wiredReal.get())) : 0;
         const val = document.createElement('span');
         val.className = 'mh-item-value';
         val.textContent = String(values[idx] ?? '');
@@ -5679,12 +5664,18 @@ _closeSettingsPopup() {
         const arrow = document.createElement('span');
         arrow.className = 'mh-item-arrow';
         row.appendChild(arrow);
-        if (isReal) {
+        if (raw.dropdown) {
+          // Arrow opens a small action menu (e.g. Replay's "Convert" -> Export/Import)
+          // instead of cycling values or firing a single action directly.
+          buildDropdown(row, arrow, raw.dropdown);
+        } else if (wiredReal) {
           row.onclick = () => {
             idx = (idx + 1) % values.length;
             val.textContent = String(values[idx]);
             wiredReal.set(values[idx]);
           };
+        } else if (wiredAction) {
+          row.onclick = () => wiredAction();
         }
         return row;
       }
@@ -5733,7 +5724,7 @@ _closeSettingsPopup() {
     // than the game's.
     const positionContent = () => {
       const canvas = this.game.canvas;
-      const parent = this._uhdParent || canvas.parentElement;
+      const parent = this._domParent || canvas.parentElement;
       if (!canvas || !parent) return;
       const cRect = canvas.getBoundingClientRect();
       const pRect = parent.getBoundingClientRect();
@@ -5755,8 +5746,9 @@ _closeSettingsPopup() {
     const SCREENSHOT_SUB = [{ l: 'Screenshot', t: 'action', real: 'screenshot' }, { l: 'Mode: Save & copy', t: 'value', values: ['Save & copy', 'Save', 'Copy'] }];
     const BYPASS = ['Anti-Kick', 'Challenge Level', 'Keymaster', 'Main Levels', 'Music Customiser', 'Slider Limit',
       'Text Length', 'Treasure Room', 'Unlock Icons', 'Unlock Shops', 'Unlock Vaults'];
-    const SPEEDHACK_SUB = [{ l: 'Speed', t: 'number', real: 'speedhack' }, { l: 'Enabled', t: 'toggle', real: 'speedhackEnabled' },
-      'Speedhack Audio', 'Classic Mode'];
+    const SPEEDHACK_SUB = [
+      { t: 'pair', items: [{ l: 'Speed', t: 'number', real: 'speedhack' }, { l: 'Enabled', t: 'toggle', real: 'speedhackEnabled' }] },
+      { l: 'Speedhack Audio', t: 'toggle', real: 'speedhackAudio' }, 'Classic Mode'];
     const CREATOR = ['Accurate Save', 'Copy Hack', 'Custom Object Bypass', 'Default Song Bypass', 'Editor Extension',
       'Free Scroll', 'Hide UI', 'Level Edit', 'Multiple Editor Trails', 'No C Mark', 'Place Over', 'Smooth Editor Trail',
       'Toolbox Button Bypass', 'Trigger Value Bypass', 'Verify Hack',
@@ -5782,8 +5774,7 @@ _closeSettingsPopup() {
       { l: 'Show Hitboxes on Death', t: 'toggle', real: 'hitboxesOnDeath' },
       { l: 'Show Hitboxes Trail', t: 'toggle', real: 'hitboxTrail' }, 'Show Layout', 'Show Trajectory', 'Show Triggers',
       'Smart StartPos', { l: 'StartPos Switcher', t: 'toggle', real: 'startPosSwitcher' },
-      { l: 'Enable Portal Guide', t: 'toggle', real: 'portalGuide' }, { l: 'Enable Orb Guide', t: 'toggle', real: 'orbGuide' },
-      { l: 'Macro Bot', t: 'toggle', real: 'macroBot' }];
+      { l: 'Enable Portal Guide', t: 'toggle', real: 'portalGuide' }, { l: 'Enable Orb Guide', t: 'toggle', real: 'orbGuide' }];
     const STATUS = ['Field Formatting', { l: 'Font', t: 'value', values: FONT_VALUES, real: 'font' },
       { l: 'Scale', t: 'value', values: [0.8, 1, 1.25, 1.5], real: 'menuScale' }, { l: 'Opacity', t: 'value', values: [1, 0.75, 0.5], real: 'menuOpacity' },
       'Hide Status', 'Message', 'Testmode', 'Cheat Indicator', { l: 'FPS Counter', t: 'toggle', real: 'showFPS' },
@@ -5807,8 +5798,20 @@ _closeSettingsPopup() {
     const UTILITY = ['P1 Click', 'P2 Click', 'Left', 'Right', 'Uncomplete Level',
       { l: 'Restart Level', t: 'action', real: 'restartLevel' }, { l: 'Practice Mode', t: 'action', real: 'practiceMode' },
       'Settings', 'Resources', 'AppData', 'Toggle DevTools', 'Crash Game'];
-    const REPLAY_SUB = ['Record', 'Play', 'Filename', 'Auto-save', 'Save', 'Clear & New', 'Delete', 'Gameplay Options',
-      'Convert (.json, .gdr)', 'Open Folder'];
+    const REPLAY_SUB = [
+      { t: 'pair', items: [{ l: 'Record', t: 'toggle', real: 'macroRecord', indicator: true }, { l: 'Play', t: 'toggle', real: 'macroPlay', indicator: true }] },
+      {
+        l: 'Filename', t: 'filename', real: 'macroFilename',
+        // Re-read on every open (buildDropdown supports a function here) so a macro
+        // saved or imported a minute ago shows up without rebuilding the whole menu.
+        dropdown: () => this._getSavedMacros().map(m => ({ l: m.name, action: () => this._loadSavedMacro(m.name) }))
+      },
+      { t: 'pair', items: [{ l: 'Auto-save', t: 'toggle', real: 'macroAutoSave' }, { l: 'Save', t: 'action', real: 'macroSave' }] },
+      { t: 'pair', items: [{ l: 'Clear & New', t: 'action', real: 'macroClearNew' }, { l: 'Delete', t: 'action', real: 'macroDelete' }] },
+      { l: 'Gameplay Options', t: 'value', values: [] },
+      { l: 'Convert (.json, .gdr)', t: 'value', values: [], dropdown: [{ l: 'Export', real: 'macroExport' }, { l: 'Import', real: 'macroImport' }] },
+      { l: 'Open Folder', t: 'center' }
+    ];
 
     const group = () => { const g = document.createElement('div'); g.className = 'mh-group'; content.appendChild(g); return g; };
 
@@ -5843,7 +5846,7 @@ _closeSettingsPopup() {
 
     this._megaHackCleanups = cleanups;
     this._megaHackMenu = container;
-    (this._uhdParent || document.body).appendChild(container);
+    (this._domParent || document.body).appendChild(container);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       container.classList.remove('is-closed');
       // Wait out the open transition (see .mh-window transition duration below) so
@@ -5867,7 +5870,6 @@ _closeSettingsPopup() {
         showObjectIds: window.showObjectIds,
         showCPS: window.showCPS,
         speedHack: window.speedHack,
-        macroBot: window.macroBot,
         practiceMusicBypass: window.practiceMusicBypass,
         showGlow: window.showGlow,
         showEditorGlow: window.showEditorGlow,
@@ -5921,7 +5923,6 @@ _closeSettingsPopup() {
     window.hitboxesOnDeath = data.hitboxesOnDeath;
     window.showCPS = data.showCPS;
     window.speedHack = data.speedHack;
-    window.macroBot = data.macroBot;
     window.practiceMusicBypass = !!data.practiceMusicBypass;
     window.showGlow = data.showGlow;
     window.showEditorGlow = data.showEditorGlow;
@@ -5935,174 +5936,10 @@ _closeSettingsPopup() {
     window._mhFont = data.mhFont || 'Default';
     localStorage.setItem("gd_useDirectInternet", String(!!window.useDirectInternet));
   }
-  _buildMacroPopup() {
-      if (this._macroPopup) return;
-      this._uhdContext = 'macro';
-      const centerX = screenWidth / 2;
-      const centerY = 320;
-      const panelWidth = 800;
-      const panelHeight = 400;
-      this._macroPopup = this.add.container(0, 0).setScrollFactor(0).setDepth(250);
-      const dim = this.add.rectangle(centerX, centerY, screenWidth, screenHeight, 0x000000, 150 / 255).setInteractive();
-      this._macroPopup.add(dim);
-
-      const corner = 0.325 * this.textures.get("GJ_square02").source[0].width;
-      const panel = this._drawScale9(centerX, centerY, panelWidth, panelHeight, "GJ_square02", corner, 0xffffff, 1);
-      this._macroPopup.add(panel);
-
-      this._macroPopup.add(this.add.bitmapText(centerX, centerY - (panelHeight / 2) + 45, "bigFont", "Web Bot v1.0", 40).setOrigin(0.5));
-
-      if (this._macroName === undefined) {
-          this._macroName = this._macroBot?.meta?.name || null;
-      }
-      if (this._macroLoaded === undefined) {
-          this._macroLoaded = !!this._macroName || (this._macroBot && this._macroBot.inputs && this._macroBot.inputs.length > 0);
-      }
-
-      const loadedNameText = this.add.bitmapText(centerX, centerY - (panelHeight / 2) + 95, "goldFont", this._macroLoaded ? `Currently loaded "${this._macroName || 'macro'}"` : "No macro loaded", 24).setOrigin(0.5);
-      this._macroPopup.add(loadedNameText);
-
-      const optionsBtn = this.add.image(centerX, centerY - (panelHeight / 2) + 95, "GJ_GameSheet03", "GJ_optionsBtn02_001.png").setInteractive().setScale(0.45);
-      this._macroPopup.add(optionsBtn);
-
-      const closeBtn = this.add.image(centerX - (panelWidth / 2) + 20, centerY - (panelHeight / 2) + 20, "GJ_WebSheet", "GJ_closeBtn_001.png").setInteractive().setScale(0.8);
-      this._macroPopup.add(closeBtn);
-
-      this._makeBouncyButton(closeBtn, 0.8, () => {
-          this.events.off("update", this._refreshMacroButtons);
-          this._macroPopup.destroy();
-          this._macroPopup = null;
-      });
-
-      const importBtn = this.add.image(centerX - 300, centerY + 20,"importMacro").setInteractive();
-      const exportBtn = this.add.image(centerX - 150, centerY + 20, "GJ_GameSheet03", "GJ_shareBtn_001.png").setInteractive().setFlipY(true).setAngle(90).setScale(0.53);
-      const createBtn = this.add.image(centerX, centerY + 20, "GJ_GameSheet03", "GJ_plusBtn_001.png").setInteractive().setFlipY(true).setAngle(90).setScale(1.2);
-      const playbackBtn = this.add.image(centerX + 150, centerY + 20, this._macroBot?.playing ? "stopPlayback" : "playbackMacro").setInteractive().setScale(0.25);
-      const recordBtn = this.add.image(centerX + 300, centerY + 20, this._macroBot?.recording ? "stopRecord" : "recordMacro").setInteractive().setScale(0.25);
-
-      this._macroPopup.add([createBtn, importBtn, exportBtn, playbackBtn, recordBtn]);
-
-      this._refreshMacroButtons = () => {
-          const playing = !!this._macroBot?.playing;
-          const recording = !!this._macroBot?.recording;
-
-          let currentMetaName = this._macroBot?.meta?.name;
-          if (currentMetaName && currentMetaName !== this._macroName) {
-              this._macroName = currentMetaName;
-              this._macroLoaded = true;
-          }
-
-          if (this._macroLoaded) {
-              loadedNameText.setText(`Currently loaded "${this._macroName || 'macro'}"`);
-              optionsBtn.setAlpha(1).setActive(true);
-              optionsBtn.x = centerX + (loadedNameText.width / 2) + 25;
-          } else {
-              loadedNameText.setText("No macro loaded");
-              optionsBtn.setAlpha(0).setActive(false);
-          }
-
-          playbackBtn.setTexture(
-              playing
-                  ? "stopPlayback"
-                  : "playbackMacro"
-          );
-
-          recordBtn.setTexture(
-              recording
-                  ? "stopRecord"
-                  : "recordMacro"
-          );
-
-          createBtn.setAlpha((playing || recording || this._macroLoaded) ? 0.5 : 1);
-          importBtn.setAlpha((playing || recording) ? 0.5 : 1);
-          exportBtn.setAlpha((playing || recording || !this._macroLoaded) ? 0.5 : 1);
-          playbackBtn.setAlpha((recording || !this._macroLoaded) ? 0.5 : 1);
-          recordBtn.setAlpha((playing || !this._macroLoaded) ? 0.5 : 1);
-      };
-
-      this._refreshMacroButtons();
-
-      this._makeBouncyButton(optionsBtn, 0.45, () => {
-          if (!this._macroLoaded) return;
-          const renamePrompt = prompt("New name", this._macroName);
-          if (renamePrompt && renamePrompt.trim() !== "") {
-              const cleanName = renamePrompt.trim();
-              if (!this._macroBot) this._initMacroBot();
-              
-              if (!this._macroBot.meta) {
-                  this._macroBot.meta = {};
-              }
-              this._macroBot.meta.name = cleanName;
-              this._macroName = cleanName;
-              this._refreshMacroButtons();
-          }
-      });
-
-      this._makeBouncyButton(importBtn, 1, () => {
-          if (this._macroBot?.playing) return;
-          if (this._macroBot?.recording) return;
-          this._importMacroFile();
-      });
-
-      this._makeBouncyButton(exportBtn, 0.53, () => {
-          if (this._macroBot?.playing) return;
-          if (this._macroBot?.recording) return;
-          if (!this._macroLoaded) return;
-          this._exportMacroFile(this._macroName ? `${this._macroName}.wbgdr` : null);
-      });
-
-      this._makeBouncyButton(createBtn, 1.2, () => {
-          if (this._macroBot?.playing || this._macroBot?.recording || this._macroLoaded) return;
-          const name = prompt("Enter macro name");
-          if (name) {
-              if (!this._macroBot) this._initMacroBot();
-              this._macroBot.resetAll();
-              this._macroBot.meta.name = name;
-              this._macroName = name;
-              this._macroLoaded = true;
-              this._refreshMacroButtons();
-          }
-      });
-
-      this._makeBouncyButton(playbackBtn, 0.25, () => {
-          if (this._macroBot?.recording) return;
-          if (!this._macroLoaded) return;
-
-          if (this._macroBot?.playing) {
-              this._stopMacroPlayback();
-          } else {
-              if (!this._macroBot) {
-                  return;
-              }
-              const macro = this._macroBot.exportObject();
-              this._startMacroPlayback(macro);
-          }
-          this._refreshMacroButtons();
-      });
-
-      this._makeBouncyButton(recordBtn, 0.25, () => {
-          if (this._macroBot?.playing) return;
-          if (!this._macroLoaded) return;
-
-          if (this._macroBot?.recording) {
-              this._stopMacroRecording();
-          } else {
-              this._startMacroRecording({
-                  level: window.currentlevel?.[2] || "",
-                  name: this._macroName
-              });
-          }
-
-          this._refreshMacroButtons();
-      });
-
-      this.events.on("update", this._refreshMacroButtons);
-  }
   _buildInfoPopup() {
     if (this._infoPopup) {
       return;
     }
-    this._uhdContext = 'info';
     const xPos = screenWidth / 2;
     const popupHeight = 320;
     const popupWidth = 336;
@@ -6202,12 +6039,12 @@ _closeSettingsPopup() {
     let dragStartY = 0;
     let dragStartScroll = 0;
     scrollZone.on('pointerdown', (pointer) => {
-      dragStartY = pointer.y;
+      dragStartY = (pointer.y / RES_SCALE);
       dragStartScroll = scrollY;
     });
     scrollZone.on('pointermove', (pointer) => {
       if (pointer.isDown) {
-        const dy = dragStartY - pointer.y;
+        const dy = dragStartY - (pointer.y / RES_SCALE);
         scrollY = Phaser.Math.Clamp(dragStartScroll + dy, 0, maxScrollDown);
         applyScroll();
       }
@@ -6521,7 +6358,6 @@ _closeSettingsPopup() {
     if (this._updateLogPopup || window.levelID) {
       return;
     }
-    this._uhdContext = 'updateLog';
     const xPos = screenWidth / 2;
     const popupHeight = 320;
     const popupWidth = 336;
@@ -6619,12 +6455,12 @@ _closeSettingsPopup() {
     let dragStartY = 0;
     let dragStartScroll = 0;
     scrollZone.on('pointerdown', (pointer) => {
-      dragStartY = pointer.y;
+      dragStartY = (pointer.y / RES_SCALE);
       dragStartScroll = scrollY;
     });
     scrollZone.on('pointermove', (pointer) => {
       if (pointer.isDown) {
-        const dy = dragStartY - pointer.y;
+        const dy = dragStartY - (pointer.y / RES_SCALE);
         scrollY = Phaser.Math.Clamp(dragStartScroll + dy, 0, maxScrollDown);
         applyScroll();
       }
@@ -6654,7 +6490,6 @@ _closeSettingsPopup() {
   }
   _buildNewgroundsPopup() {
     if (this._newgroundsPopup || window.levelID) return;
-    this._uhdContext = 'newgrounds';
     const xPos = screenWidth / 2;
     const centerY = screenHeight / 2;
     this._newgroundsPopup = this.add.container(0, 0).setScrollFactor(0).setDepth(1000);
@@ -6809,23 +6644,7 @@ _closeSettingsPopup() {
       bounceContainer.add(icon);
       tierIcons.push(icon);
 
-      icon.on("pointerdown", () => {
-        icon._pressed = true;
-        this.tweens.killTweensOf(icon, "scale");
-        this.tweens.add({ targets: icon, scale: baseScale * 1.15, duration: 300, ease: "Bounce.Out" });
-      });
-      icon.on("pointerout", () => {
-        if (icon._pressed) {
-          icon._pressed = false;
-          this.tweens.killTweensOf(icon, "scale");
-          this.tweens.add({ targets: icon, scale: baseScale, duration: 400, ease: "Bounce.Out" });
-        }
-      });
-      icon.on("pointerup", () => {
-        if (!icon._pressed) return;
-        icon._pressed = false;
-        this.tweens.killTweensOf(icon, "scale");
-        icon.setScale(baseScale);
+      this._makeBouncyButton(icon, baseScale, () => {
         selectedTierIdx = i;
         tierIcons.forEach((other, oi) => other.setTint(oi === i ? 0xffffff : 0x8f8f8f));
       });
@@ -6839,13 +6658,7 @@ _closeSettingsPopup() {
     const okLabel = this.add.bitmapText(-3, -4, "goldFont", "OK", 44).setOrigin(0.5, 0.5);
     okGroup.add(okLabel);
     bounceContainer.add(okGroup);
-    okBtn9.on("pointerdown", () => { okGroup._pressed = true; this.tweens.killTweensOf(okGroup); this.tweens.add({ targets: okGroup, scaleX: 1.26, scaleY: 1.26, duration: 300, ease: "Bounce.Out" }); });
-    okBtn9.on("pointerout", () => { if (okGroup._pressed) { okGroup._pressed = false; this.tweens.killTweensOf(okGroup); this.tweens.add({ targets: okGroup, scaleX: 1, scaleY: 1, duration: 400, ease: "Bounce.Out" }); } });
-    okBtn9.on("pointerup", () => {
-      if (!okGroup._pressed) return;
-      okGroup._pressed = false;
-      this.tweens.killTweensOf(okGroup);
-      okGroup.setScale(1);
+    this._makeCompositeBouncyButton(okBtn9, okGroup, 1, () => {
       const chosen = _tierDefs[selectedTierIdx];
       this._selectedDemonTier = chosen.tier;
       const demonIcon = this._diffFilterIcons && this._diffFilterIcons[6];
@@ -6870,15 +6683,46 @@ _closeSettingsPopup() {
       this._demonFilterPopup = null;
     }
   }
+  _createScreenSpaceMask(x, y, w, h) {
+    // GeometryMask doesn't reliably account for a masked object's full ancestor
+    // transform chain when the mask's own graphics shape is ALSO nested inside a
+    // scaled container -- here specifically wrapSceneForResScale's shared
+    // _resContainer (scale RES_SCALE), which every this.add.X() call auto-reparents
+    // into. Verified empirically on the Saved/Online/Search level list panels: with
+    // the mask applied, only the first row and change render, all crammed near the
+    // panel's top-left; clearing the mask (leaving content unclipped) makes every
+    // row appear correctly at its intended position. Building the mask shape via the
+    // raw, unpatched graphics factory (bypassing the _resContainer auto-reparent, so
+    // it's a direct child of the scene's main display list instead) and manually
+    // applying the same RES_SCALE the container would have applied keeps its
+    // effective screen position correct while sidestepping the masking bug entirely.
+    const rawGraphics = Phaser.GameObjects.GameObjectFactory.prototype.graphics.call(this.add, 0, 0);
+    rawGraphics.setScale(RES_SCALE).setVisible(false);
+    rawGraphics.fillStyle(0xffffff);
+    rawGraphics.fillRect(x, y, w, h);
+    return { shape: rawGraphics, mask: rawGraphics.createGeometryMask() };
+  }
   _expandHitArea(_0x122213, _0x37180a) {
-    const _0x46ea45 = _0x122213.width;
-    const _0x43b461 = _0x122213.height;
+    // Derive the object's natural (raw, unscaled) frame size from displayOrigin rather than
+    // .width/.height -- those can be overridden post-creation for layout purposes (see the
+    // UHD auto-shrink correction in wrapSceneForResScale/config.js), but displayOrigin is
+    // never touched by that override and still accurately reflects originX/Y * true frame
+    // size. Phaser scales the hit area by the object's own scaleX/scaleY during hit-testing
+    // (same as it scales the render quad), so building the hit area from the natural frame
+    // size keeps it both correctly sized and correctly centered after that scaling.
+    const _0x46ea45 = _0x122213.originX ? _0x122213.displayOriginX / _0x122213.originX : _0x122213.width;
+    const _0x43b461 = _0x122213.originY ? _0x122213.displayOriginY / _0x122213.originY : _0x122213.height;
     const _0x960250 = _0x46ea45 * (_0x37180a - 1) / 2;
     const _0x3f88a1 = _0x43b461 * (_0x37180a - 1) / 2;
     _0x122213.input.hitArea.setTo(-_0x960250, -_0x3f88a1, _0x46ea45 + _0x960250 * 2, _0x43b461 + _0x3f88a1 * 2);
   }
   _makeBouncyButton(textureX, _0x57b645, _0x2f13d0, _0xda0c21) {
     textureX._bouncyBaseScale = _0x57b645;
+    // Atlas frames auto-shrunk by wrapSceneForResScale (UHD upgrade) can leave the
+    // object's real resting scale different from the baseScale argument callers pass
+    // in, so capture the object's actual current scale here as the true baseline.
+    textureX._bouncyBaseScaleX = textureX.scaleX;
+    textureX._bouncyBaseScaleY = textureX.scaleY;
     const getBouncyVisualTargets = () => {
       const configured = Array.isArray(textureX._bouncyVisualTargets) && textureX._bouncyVisualTargets.length
         ? textureX._bouncyVisualTargets
@@ -6896,10 +6740,12 @@ _closeSettingsPopup() {
           const baseScaleX =
             (entry && typeof entry.getBaseScaleX === "function" ? entry.getBaseScaleX() : undefined) ??
             (entry && entry.baseScaleX !== undefined ? entry.baseScaleX : undefined) ??
+            target._bouncyBaseScaleX ??
             baseScale;
           const baseScaleY =
             (entry && typeof entry.getBaseScaleY === "function" ? entry.getBaseScaleY() : undefined) ??
             (entry && entry.baseScaleY !== undefined ? entry.baseScaleY : undefined) ??
+            target._bouncyBaseScaleY ??
             baseScale;
           return { target, baseScaleX, baseScaleY };
         })
@@ -6922,7 +6768,13 @@ _closeSettingsPopup() {
         this.tweens.killTweensOf(entry.target);
 
         if (instant) {
-          entry.target.setScale(entry.baseScaleX, entry.baseScaleY);
+          // Assign scaleX/scaleY directly rather than calling .setScale() -- baseScaleX/Y are
+          // an already-correct actual scale captured earlier (see _bouncyBaseScaleX/Y above),
+          // not a fresh design-intent value, and UHD-corrected objects have .setScale() wrapped
+          // (config.js) to divide by the atlas upgrade ratio for exactly that fresh-value case.
+          // Routing an already-corrected value back through it would halve it a second time.
+          entry.target.scaleX = entry.baseScaleX;
+          entry.target.scaleY = entry.baseScaleY;
         } else {
           this.tweens.add({
             targets: entry.target,
@@ -7317,6 +7169,36 @@ _closeSettingsPopup() {
     this._macroBot = new MacroBot(this);
     window.macroBot = this._macroBot;
   }
+  // Library of named macros, separate from the single currently-loaded one — populated
+  // by the "Save" button and by successful imports, listed in Filename's dropdown so a
+  // previously-saved (or imported) macro can be picked back up without re-recording it.
+  _getSavedMacros() {
+    try {
+      const list = JSON.parse(localStorage.getItem("gd_saved_macros") || "[]");
+      return Array.isArray(list) ? list : [];
+    } catch (_e) { return []; }
+  }
+  _setSavedMacros(list) {
+    localStorage.setItem("gd_saved_macros", JSON.stringify(list));
+  }
+  _saveMacroToLibrary(name, data) {
+    if (!name) return;
+    const list = this._getSavedMacros();
+    const idx = list.findIndex(m => m.name === name);
+    const entry = { name, data };
+    if (idx >= 0) list[idx] = entry; else list.push(entry);
+    this._setSavedMacros(list);
+  }
+  _loadSavedMacro(name) {
+    if (this._macroBot?.playing || this._macroBot?.recording) return;
+    const saved = this._getSavedMacros().find(m => m.name === name);
+    if (!saved) return;
+    if (!this._macroBot) this._initMacroBot();
+    this._macroBot.inputs = Array.isArray(saved.data?.inputs) ? saved.data.inputs.slice() : [];
+    this._macroBot.meta = { ...(saved.data?.meta || {}), name };
+    this._macroName = name;
+    this._macroLoaded = true;
+  }
   _startMacroRecording(meta = {}) {
     if (!this._macroBot) this._initMacroBot();
     this._macroBot.startRecording({
@@ -7338,7 +7220,7 @@ _closeSettingsPopup() {
   }
   _exportMacroFile(filename = null) {
     if (!this._macroBot) return;
-    const safeName = (filename || `${window.currentlevel?.[2] || "macro"}.gdr`)
+    const safeName = (filename || `${window.currentlevel?.[2] || "macro"}.wbgdr`)
       .replace(/[^\w.\-]+/g, "_");
     this._macroBot.download(safeName);
   }
@@ -7364,6 +7246,7 @@ _closeSettingsPopup() {
 
         this._macroName = macroName;
         this._macroLoaded = true;
+        this._saveMacroToLibrary(macroName, this._macroBot.exportObject());
       } catch (err) {
         alert("Failed to import: " + err.message);
       }
@@ -7404,7 +7287,7 @@ _closeSettingsPopup() {
       }
     }
     if (this._iconBtn) {
-      this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 100 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
+      this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 85 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
       this.tweens.killTweensOf(this._iconBtn, "y");
       this._iconBtn.y = 320;
       this.tweens.add({
@@ -7417,9 +7300,17 @@ _closeSettingsPopup() {
       });
     }
     if (this._creatorBtn) {
-      this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 100 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
+      this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 85 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
       this.tweens.killTweensOf(this._creatorBtn, "y");
       this._creatorBtn.y = 320;
+      this.tweens.add({
+        targets: this._creatorBtn,
+        y: 324,
+        duration: 750,
+        ease: "Quad.InOut",
+        yoyo: true,
+        repeat: -1
+      });
     }
     if (this._robLogo) {
       this._robLogo.x = 110;
@@ -7861,12 +7752,12 @@ _closeSettingsPopup() {
     // startFullscreen() it creates its own wrapper div, inserts it as a new
     // sibling of the canvas, and moves the canvas inside that (reversed on
     // exit, restoring the canvas to its original parent). That reparenting
-    // already happened by the time this fires. Our UHD overlay layer and the
+    // already happened by the time this fires. The noclip flash div and the
     // MegaHack DOM menu were appended into the canvas's *old* parent, so once
     // fullscreen starts they're siblings of the new fullscreen element rather
     // than descendants of it — outside what the browser actually paints while
     // fullscreen is active, so they simply vanish. Follow the canvas.
-    this._resyncUhdParent();
+    this._resyncDomParent();
     // Chrome/Edge only: while fullscreen, lock the Escape key via the Keyboard
     // Lock API so a single tap doesn't instantly exit — the browser then
     // requires a press-and-hold instead (and shows its own "Hold ESC to exit
@@ -7889,12 +7780,11 @@ _closeSettingsPopup() {
     }
     this.time.delayedCall(200, () => this._applyScreenResize());
   }
-  _resyncUhdParent() {
+  _resyncDomParent() {
     const newParent = this.game.canvas.parentElement || document.body;
-    if (newParent === this._uhdParent) return;
-    this._uhdParent = newParent;
-    if (this._uhdCont) newParent.appendChild(this._uhdCont);
-    if (this._uhdFlashDiv) newParent.appendChild(this._uhdFlashDiv);
+    if (newParent === this._domParent) return;
+    this._domParent = newParent;
+    if (this._noclipFlashDiv) newParent.appendChild(this._noclipFlashDiv);
     if (this._megaHackMenu) newParent.appendChild(this._megaHackMenu);
   }
   _applyScreenResize() {
@@ -8036,228 +7926,12 @@ _closeSettingsPopup() {
     this._deltaBuffer = _0x578d1b - _0xd8019e;
     return _0xd8019e * 60;
   }
-  _syncUhdOverlays = () => {
-    if (this._uhdCont && this._uhdMap && this._uhdMap.size > 0) {
-      const _cr = this.game.canvas.getBoundingClientRect();
-      const _sx = _cr.width / screenWidth;
-      const _sy = _cr.height / screenHeight;
-      const _pr = this._uhdParent.getBoundingClientRect();
-      const _ox = _cr.left - _pr.left;
-      const _oy = _cr.top - _pr.top;
-      // Each entry's img.style.width/height is only ever written once (see
-      // `entry._sized` below) — cheap, since it almost never changes. But the
-      // canvas's rendered size (and so _sx/_sy) does change across a fullscreen
-      // toggle, so a stale cached size then renders at the wrong scale while its
-      // position (which IS recomputed every frame) jumps to match the new one.
-      // Force every entry to re-measure whenever the scale itself has moved.
-      if (this._uhdLastSx !== _sx || this._uhdLastSy !== _sy) {
-        for (const entry of this._uhdMap.values()) entry._sized = false;
-        this._uhdLastSx = _sx;
-        this._uhdLastSy = _sy;
-      }
-      // Noclip death flash: mirror the canvas rectangle's alpha above everything
-      if (this._uhdFlashDiv) {
-        const _flashOp = (this.noclipFlash && this.noclipFlash.alpha > 0) ? this.noclipFlash.alpha.toFixed(2) : '0';
-        if (this._uhdFlashDiv._op !== _flashOp) { this._uhdFlashDiv.style.opacity = _flashOp; this._uhdFlashDiv._op = _flashOp; }
-      }
-      // Priority-ordered: most-nested overlay first. Only its group's DOM canvases are shown.
-      const _effectiveCtx =
-        this._editorColorPickerPopup                      ? 'editorColorPicker' :
-        this._editorHorizontalOptionPopup                 ? 'editorHorizontalOption' :
-        this._editorStartOptionsPopup                     ? 'editorStartOptions' :
-        this._editorLevelSettingsPopup                    ? 'editorSettings' :
-        (this._editorMenuContainer && this._editorMenuContainer.visible) ? 'editorPause' :
-        this._nongPopupObjs                               ? 'nong' :
-        this._levelInfoContainer                          ? 'levelInfo' :
-        this._questPopup                                  ? 'quest' :
-        this._macroPopup                                  ? 'macro' :
-        (this._settingsPopup || this._megaHackMenu)        ? 'megaHack' :
-        this._settingsLayerOverlay                         ? 'settings' :
-        this._achLayerOverlay                             ? 'achLayer' :
-        this._statsLayerOverlay                           ? 'stats' :
-        this._iconOverlay                                 ? 'icon' :
-        this._playOverlay                                 ? 'playMenu' :
-        this._onlineLevelsOverlay                         ? 'online' :
-        this._searchResultOverlay                         ? 'searchResult' :
-        this._searchOverlay                               ? 'search' :
-        this._savedOverlay                                ? 'saved' :
-        this._newgroundsPopup                             ? 'newgrounds' :
-        this._infoPopup                                   ? 'info' :
-        this._updateLogPopup                              ? 'updateLog' :
-        this._levelViewOverlay                            ? 'levelView' :
-        this._creatorOverlay                              ? 'creator' :
-        this._editorOverlay                               ? 'editor' :
-        this._levelSelectOverlay                          ? 'levelSelect' :
-        this._pauseContainer                              ? 'pause' :
-        null;
-      // Graphics settings: master UHD switch (default on) and in-game object UHD
-      // (default off). Checked live each frame so the toggles apply instantly.
-      const _uhdOn = window.uhdTextures !== false;
-      const _uhdObjOn = _uhdOn && !!window.uhdInGameTextures;
-      const _uhdHideOld = localStorage.getItem('uhdHideOldTextures') !== '0';
-      for (const [go, entry] of this._uhdMap) {
-        if (!go.active) {
-          if (entry.img) entry.img.remove();
-          if (entry.hitZone) entry.hitZone.destroy();
-          this._uhdMap.delete(go);
-          continue;
-        }
-        // Fast path for culled level objects — the overwhelmingly common case in a long
-        // level. No DOM canvas exists and the section container is hidden: two reads, skip.
-        if (entry.obj && !entry.img) {
-          if (!_uhdObjOn) continue;
-          const _pc = go.parentContainer;
-          if (!go.visible || (_pc && !_pc.visible)) continue;
-        }
-        let _parVis = true; { let _chk = go.parentContainer; while (_chk) { if (!_chk.visible) { _parVis = false; break; } _chk = _chk.parentContainer; } }
-        // Keep the companion hit-zone (see the setInteractive patch above) tracking
-        // this sprite's current world transform and depth every frame, and mirror
-        // the game's own intended visibility (not the UHD-hiding state below, which
-        // is purely cosmetic) into whether it's actually clickable.
-        if (entry.hitZone) {
-          const _hz = entry.hitZone;
-          if (_hz.parentContainer !== go.parentContainer) {
-            if (_hz.parentContainer) _hz.parentContainer.remove(_hz);
-            if (go.parentContainer) go.parentContainer.add(_hz);
-            else this.sys.displayList.add(_hz);
-          }
-          _hz.setPosition(go.x, go.y).setScale(go.scaleX, go.scaleY).setRotation(go.rotation);
-          _hz.setScrollFactor(go.scrollFactorX, go.scrollFactorY);
-          if (_hz.depth !== go.depth) _hz.setDepth(go.depth);
-          const _hzActive = go._uhdWantsInteractive && go.visible && _parVis;
-          if (_hz.input && _hz.input.enabled !== _hzActive) {
-            if (_hzActive) _hz.setInteractive(); else _hz.disableInteractive();
-          }
-        }
-        // Object-sheet sprites with a color tint (not white/black) can't be replicated
-        // by a DOM canvas; nor can any sprite with a non-normal blend mode (e.g. the
-        // additive spider dash streak from GJ_GameSheet04) — hide the overlay so the
-        // canvas sprite shows through.
-        const _objUnsupported = (entry.obj && go.tintTopLeft !== 0xffffff && go.tintTopLeft !== 0) || (go.blendMode && go.blendMode !== 0);
-        const vis = go.visible && _parVis && entry.group === _effectiveCtx && !_objUnsupported && (entry.obj ? _uhdObjOn : _uhdOn);
-        if (!vis) {
-          if (entry.obj) {
-            // Level objects release their DOM node entirely while off screen; the
-            // browser's image cache makes re-creation on approach cheap.
-            if (entry.img) { entry.img.remove(); entry.img = null; entry._vis = false; entry._t = null; entry._al = ''; entry._op = ''; entry._sized = false; }
-            continue;
-          }
-          // Un-hide the canvas sprite (see below) now that its overlay isn't showing.
-          if (entry._forceHidden) { go.alpha = entry._authoredAlpha != null ? entry._authoredAlpha : 1; entry._forceHidden = false; }
-          if (entry._vis !== false) { entry.img.style.display = 'none'; entry._vis = false; }
-          continue;
-        }
-        // Nineslice panels routinely have separate content (text labels, icons) drawn
-        // on top of them at a higher Phaser depth but composited into the same single
-        // canvas — hiding the original like any other overlay would hide that content
-        // too. So nineslice originals are left fully visible; their overlay only draws
-        // a crisp border-image frame around the (transparent-centered) corners/edges,
-        // matching the same rect the original renders, rather than replacing it outright.
-        if (_uhdHideOld && !entry.obj && !entry.nineslice && (entry.hitZone || !go.input)) {
-          // Purely decorative sprites (corner art, backgrounds, etc.) were never made
-          // interactive at all, so there's no hitbox to protect — safe to hide
-          // outright. Interactive ones only get hidden once their own zone (see the
-          // setInteractive patch above) exists to keep handling clicks for them.
-          // The real alpha is stashed so the dim/disabled-look filter below still
-          // reflects what the game actually intended, not our forced 0.
-          if (!entry._forceHidden) { entry._authoredAlpha = go.alpha; entry._forceHidden = true; }
-          if (go.alpha !== 0) go.alpha = 0;
-        }
-        if (!entry.img) {
-          const _di = document.createElement('img');
-          _di.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;object-fit:' + (entry.fit || 'contain') + ';';
-          if (!this._uhdDrawFrame(_di, entry.key, entry.frame)) _di.style.display = 'none';
-          this._uhdCont.appendChild(_di);
-          entry.img = _di;
-          entry._vis = null; entry._t = null; entry._al = ''; entry._op = ''; entry._sized = false;
-        }
-        const _isSideArt = go.frame && go.frame.name === 'GJ_sideArt_001.png';
-        const _uhdScale = entry.uhdScale || 1;
-        const dw = go.width * _sx * _uhdScale;
-        const dh = go.height * _sy * _uhdScale;
-        const ox = go.originX != null ? go.originX : 0.5;
-        const oy = go.originY != null ? go.originY : 0.5;
-        if (!entry._sized) {
-          entry.img.style.width = dw.toFixed(1) + 'px';
-          entry.img.style.height = dh.toFixed(1) + 'px';
-          entry.img.style.transformOrigin = _isSideArt ? '0% 0%' : ((ox * 100).toFixed(0) + '% ' + (oy * 100).toFixed(0) + '%');
-          if (entry.nineslice) {
-            const _c = entry.corners;
-            entry.img.style.borderWidth = (_c.t * _sy).toFixed(1) + 'px ' + (_c.r * _sx).toFixed(1) + 'px '
-              + (_c.b * _sy).toFixed(1) + 'px ' + (_c.l * _sx).toFixed(1) + 'px';
-            // No "fill" keyword: the center stays transparent so the original canvas
-            // rendering (and anything drawn on top of it) shows through untouched —
-            // only the border frame itself is replaced with the crisp DOM version.
-            entry.img.style.borderImageSlice = _c.t + ' ' + _c.r + ' ' + _c.b + ' ' + _c.l;
-          }
-          entry._sized = true;
-        }
-        if (entry._vis !== true) { entry.img.style.display = ''; entry._vis = true; }
-        let al = '';
-        if (entry.obj) {
-          // World objects: alpha is a real gameplay fade, not a disabled-button look.
-          const op = go.alpha < 1 ? go.alpha.toFixed(2) : '';
-          if (entry._op !== op) { entry.img.style.opacity = op; entry._op = op; }
-        } else if ((entry._forceHidden ? entry._authoredAlpha : go.alpha) < 1) {
-          al = 'grayscale(1) brightness(0.55)';
-        }
-        // Grey-tinted sprites (sawblades use setTint(0); dimmed/unselected UI icons
-        // use a mid-grey tint) — a neutral multiply tint is equivalent to a CSS
-        // brightness() scale by the tint's channel value, with hue/saturation
-        // untouched (unlike grayscale()). Only exact/near-neutral tints are
-        // approximated this way; colored tints aren't used on non-obj UHD sprites.
-        // NineSlice game objects don't expose tintTopLeft (always undefined there) —
-        // they carry their tint in a single .tint property instead.
-        const _tintVal = entry.nineslice ? go.tint : go.tintTopLeft;
-        if (_tintVal !== 0xffffff) {
-          const _tintR = (_tintVal >> 16) & 0xff;
-          al += (al ? ' ' : '') + 'brightness(' + (_tintR / 255).toFixed(2) + ')';
-        }
-        if (entry._al !== al) { entry.img.style.filter = al; entry._al = al; }
-        let _wx = go.x, _wy = go.y, _ws = go.scaleX, _wsY = go.scaleY;
-        { let _wp = go.parentContainer; while (_wp) { _wx = _wp.x + _wx * (_wp.scaleX || 1); _wy = _wp.y + _wy * (_wp.scaleY || 1); _ws *= (_wp.scaleX || 1); _wsY *= (_wp.scaleY || 1); _wp = _wp.parentContainer; } }
-        let t;
-        if (_isSideArt) {
-          const _sFX = (_wx * _sx < _cr.width * 0.5 ? 1 : -1) * _ws;
-          const _sFY = (_wy * _sy < _cr.height * 0.5 ? -1 : 1) * _ws;
-          const _cX = (_sFX > 0 ? _ox : _wx * _sx + _ox).toFixed(1);
-          const _cY = (_sFY > 0 ? _wy * _sy - dh + _oy : dh + _oy).toFixed(1);
-          t = 'translate(' + _cX + 'px,' + _cY + 'px) scale(' + _sFX.toFixed(3) + ',' + _sFY.toFixed(3) + ')';
-        } else {
-          const _isAtlasComp = go.frame && go.frame.rotated && go.flipX && Math.abs(go.rotation + Math.PI * 0.5) < 0.01;
-          if (_isAtlasComp) {
-            const _fr = go.frame;
-            const _corX = (_fr.realWidth - _fr.realHeight + (_fr.y - _fr.x) * 2 + _fr.height - _fr.width) * 0.5;
-            _wx += _corX; _wy -= _corX;
-          }
-          const _isAtlasRotated = go.frame && go.frame.rotated;
-          // CSS scale(-1) mirrors around the origin point, which relocates an off-center
-          // box's footprint to the other side of that point (it does NOT mirror in place
-          // like Phaser's flip, which just reverses texture sampling within a fixed quad).
-          // Compensate by shifting translate so the footprint stays where Phaser puts it.
-          const _flipCorX = (!_isAtlasRotated && go.flipX) ? dw * _ws * (1 - 2 * ox) : 0;
-          const _flipCorY = (!_isAtlasRotated && go.flipY) ? dh * _wsY * (1 - 2 * oy) : 0;
-          const _uhdOffX = entry.uhdOffset ? entry.uhdOffset.x * _sx : 0;
-          const _uhdOffY = entry.uhdOffset ? entry.uhdOffset.y * _sy : 0;
-          const tx = (_wx * _sx - dw * ox + _flipCorX + _uhdOffX + _ox).toFixed(1);
-          const ty = (_wy * _sy - dh * oy + _flipCorY + _uhdOffY + _oy).toFixed(1);
-          const _cFX = (!_isAtlasRotated && go.flipX) ? -_ws : _ws;
-          const _cFY = (!_isAtlasRotated && go.flipY) ? -_wsY : _wsY;
-          const _cRot = _isAtlasRotated ? (entry.uhdRot != null ? go.rotation + entry.uhdRot : 0) : go.rotation;
-          if (_cRot === 0 && _cFX === _cFY) {
-            t = 'translate(' + tx + 'px,' + ty + 'px) scale(' + _cFX.toFixed(3) + ')';
-          } else {
-            t = 'translate(' + tx + 'px,' + ty + 'px)'
-              + (_cRot !== 0 ? ' rotate(' + _cRot.toFixed(4) + 'rad)' : '')
-              + ' scale(' + _cFX.toFixed(3) + ',' + _cFY.toFixed(3) + ')';
-          }
-        }
-        if (entry._t !== t) { entry.img.style.transform = t; entry._t = t; }
-      }
-    }
+  _syncNoclipFlash = () => {
+    if (!this._noclipFlashDiv) return;
+    const _flashOp = (this.noclipFlash && this.noclipFlash.alpha > 0) ? this.noclipFlash.alpha.toFixed(2) : '0';
+    if (this._noclipFlashDiv._op !== _flashOp) { this._noclipFlashDiv.style.opacity = _flashOp; this._noclipFlashDiv._op = _flashOp; }
   };
   update(_0x54fa47, deltaTime) {
-    this._uhdContext = null; // reset between frames so only current overlay's add.image calls get tagged
     // Speedhack is universal: scale Phaser's own tween/timer/animation clocks too, so
     // menus, popups and UI transitions speed up along with gameplay (_quantizeDelta
     // handles the gameplay simulation tick separately, via a raw multiply, not via
@@ -8266,6 +7940,7 @@ _closeSettingsPopup() {
     if (this.tweens.timeScale !== _shSpeed) this.tweens.timeScale = _shSpeed;
     if (this.time.timeScale !== _shSpeed) this.time.timeScale = _shSpeed;
     if (this.anims.globalTimeScale !== _shSpeed) this.anims.globalTimeScale = _shSpeed;
+    if (this._audio) this._audio.setPlaybackRate(window._mhFlags?.speedhackAudio !== false ? _shSpeed : 1);
     if (window.isEditor) {
         if (this._editorPlaytestActive && !this._editorPlaytestPaused) {
             this._levelEditor._updateEditorPlaytest(deltaTime);
@@ -8283,8 +7958,8 @@ _closeSettingsPopup() {
             if (this._isSwipeEnabled) {
               if (this._editorTab !== "edit") {
                 if (this._hitObjects.length !== 0) return;
-                const currentGridX = Math.floor((pointer.x + this._cameraX) / 60) * 60;
-                const currentGridY = Math.floor((pointer.y + this._cameraY + 20) / 60) * 60;
+                const currentGridX = Math.floor(((pointer.x / RES_SCALE) + this._cameraX) / 60) * 60;
+                const currentGridY = Math.floor(((pointer.y / RES_SCALE) + this._cameraY + 20) / 60) * 60;
 
                 if (currentGridX !== this._lastSwipeGridX || currentGridY !== this._lastSwipeGridY) {
                     this._levelEditor._editorAction();
@@ -8294,8 +7969,8 @@ _closeSettingsPopup() {
               }
             } else {
                 if (!this._isDragging && this._hitObjects.length !== 0) return;
-                const dragX = pointer.x - this._clickStartPos.x;
-                const dragY = pointer.y - this._clickStartPos.y;
+                const dragX = (pointer.x / RES_SCALE) - this._clickStartPos.x;
+                const dragY = (pointer.y / RES_SCALE) - this._clickStartPos.y;
                 const dragDistance = Math.sqrt(dragX * dragX + dragY * dragY);
                 if (dragDistance > 10) {
                     this._isDragging = true;
@@ -8355,9 +8030,6 @@ _closeSettingsPopup() {
 
     this._bottedIndicator.setVisible(this._macroBot?.playing);
     this._bottedIndicator.setPosition(10, _stackOffset + (window.showCPS ? 20 : 0));
-    if (this._macroBtn){
-      this._macroBtn.setVisible(window.macroBot);
-    }
 
     this._fpsAccum += deltaTime;
     this._fpsFrames++;
@@ -9628,16 +9300,6 @@ _applyMirrorEffect() {
     _0x2de55e.width;
     this._endStarX = containerX + _0x45540f;
     this._endStarY = _0x241209 - 77.5;
-    if (window.macroBot){
-      const botMenuBtn = this.add.image(containerX - 225, 255, "macroBot").setScale(0.4).setInteractive();
-      this._endLayerInternal.add(botMenuBtn);
-      this._makeBouncyButton(botMenuBtn, 0.4, () => {
-          this._buildMacroPopup();
-          if (this._macroPopup) {
-              this._macroPopup.setDepth(300); 
-          }
-      });
-    }
     const _0x45fc2b = [{
       frame: "GJ_replayBtn_001.png",
       dx: -200,
@@ -9657,13 +9319,12 @@ _applyMirrorEffect() {
       }
     }];
     for (const _0x2d4335 of _0x45fc2b) {
-      const _0xdde774 = this.add.image(containerX + _0x2d4335.dx, 555, "GJ_WebSheet", _0x2d4335.frame).setInteractive();
+      const _0xdde774 = this.add.image(containerX + _0x2d4335.dx, 555, "GJ_GameSheet03", _0x2d4335.frame).setInteractive();
       this._endLayerInternal.add(_0xdde774);
       this._makeBouncyButton(_0xdde774, 1, _0x2d4335.action);
     }
   }
   _showSettingsScreen() {
-    this._uhdContext = 'settings';
     this._settingsScreenClosing = false;
     if (this._pauseBtn) {
       this.tweens.add({
@@ -9912,7 +9573,6 @@ _applyMirrorEffect() {
     });
   }
   _showStatsScreen() {
-    this._uhdContext = 'stats';
     if (this._pauseBtn) {
       this.tweens.add({
         targets: this._pauseBtn,
@@ -10265,7 +9925,6 @@ _applyMirrorEffect() {
 
   _openOnlineLevelsScene(params = {}) {
     if (this._onlineLevelsOverlay) return;
-    this._uhdContext = 'online';
 
     const sw = screenWidth;
     const sh = screenHeight;
@@ -10353,10 +10012,9 @@ _applyMirrorEffect() {
     let _lastLevelData = [];
     const _panelBoundaryTop = listTop + 12;
     const _panelBoundaryBottom = listTop + panelH - 22;
-    const _panelMaskShape = this.add.graphics().setScrollFactor(0);
-    _panelMaskShape.fillStyle(0xffffff);
-    _panelMaskShape.fillRect(listLeft, _panelBoundaryTop, panelW, _panelBoundaryBottom - _panelBoundaryTop);
-    const _panelMask = _panelMaskShape.createGeometryMask();
+    const { shape: _panelMaskShape, mask: _panelMask } = this._createScreenSpaceMask(
+      listLeft, _panelBoundaryTop, panelW, _panelBoundaryBottom - _panelBoundaryTop
+    );
     objects.push(_panelMaskShape);
 
     const _diffFrames = [
@@ -10417,12 +10075,6 @@ _applyMirrorEffect() {
       const _scaleH   = _diffMeta ? _diffMeta.h : 85;
       const _scale    = Math.min(_targetH / _scaleH, _maxW / _scaleW);
       const _diffIconExtraScale = { 6: 1.04, 9: 1.04, 10: 1.1 }[diffIdx] || 1;
-      const diffIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", _diffFrames[diffIdx])
-        .setScrollFactor(0).setDepth(204).setOrigin(0.5).setAlpha(1)
-        .setDisplaySize(_scaleW * _scale * _diffIconExtraScale, _scaleH * _scale * _diffIconExtraScale);
-      if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
-      diffIcon.setMask(_panelMask);
-      cellObjs.push(diffIcon);
       let coinIcon = null;
       if (levelData.epic >= 3) {
         coinIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", "GJ_epicCoin3_001.png")
@@ -10441,6 +10093,12 @@ _applyMirrorEffect() {
         coinIcon.setMask(_panelMask);
         cellObjs.push(coinIcon);
       }
+      const diffIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", _diffFrames[diffIdx])
+        .setScrollFactor(0).setDepth(204).setOrigin(0.5).setAlpha(1)
+        .setDisplaySize(_scaleW * _scale * _diffIconExtraScale, _scaleH * _scale * _diffIconExtraScale);
+      if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
+      diffIcon.setMask(_panelMask);
+      cellObjs.push(diffIcon);
       const nameX = rx + 105;
       const btnX = rx + panelW - 88;
       const _progressKeyId = "online_" + (levelData.id || "0");
@@ -10700,9 +10358,6 @@ _applyMirrorEffect() {
           }));
         }
         _processedCache[page] = _lastLevelData;
-        // Re-arm: _uhdContext resets to null every frame, and several awaits above
-        // mean this always runs frames later than that reset.
-        this._uhdContext = 'online';
         _lastLevelData.forEach((levelData, idx) => {
           const cellObjs = _buildLevelCell(levelData, idx);
           activeCellObjs.push(...cellObjs);
@@ -10721,8 +10376,8 @@ _applyMirrorEffect() {
     nextBtn.on("pointerup", () => { if (!_loading) _setPage(currentPage + 1); });
     this._makeBouncyButton(refreshBtn, 1, () => { delete cache[currentPage]; delete _processedCache[currentPage]; _setPage(currentPage); });
     const _onWheel = (pointer, gameObjects, deltaX, deltaY) => {
-      if (pointer.x < listLeft || pointer.x > listLeft + panelW) return;
-      if (pointer.y < listTop  || pointer.y > listTop + panelH) return;
+      if ((pointer.x / RES_SCALE) < listLeft || (pointer.x / RES_SCALE) > listLeft + panelW) return;
+      if ((pointer.y / RES_SCALE) < listTop  || (pointer.y / RES_SCALE) > listTop + panelH) return;
       const maxScroll = Math.max(0, (_lastLevelStrs ? _lastLevelStrs.length : 0) * 180 - (panelH - 33));
       const newScrollOffset = Math.max(0, Math.min(scrollOffsetY + deltaY * 0.5, maxScroll));
       if (newScrollOffset !== scrollOffsetY) {
@@ -10733,7 +10388,7 @@ _applyMirrorEffect() {
           const cellObjs = _buildLevelCell(levelData, idx);
           activeCellObjs.push(...cellObjs);
         });
-        
+
         redrawStripes(scrollOffsetY);
       }
     };    this.input.on("wheel", _onWheel);
@@ -10744,21 +10399,21 @@ _applyMirrorEffect() {
     let dragThreshold = 5;
     let bounceBackTween = null;
     const onDragStart = (pointer) => {
-      if (pointer.x < listLeft || pointer.x > listLeft + panelW) return;
-      if (pointer.y < listTop  || pointer.y > listTop + panelH) return;
+      if ((pointer.x / RES_SCALE) < listLeft || (pointer.x / RES_SCALE) > listLeft + panelW) return;
+      if ((pointer.y / RES_SCALE) < listTop  || (pointer.y / RES_SCALE) > listTop + panelH) return;
       if (bounceBackTween) {
         bounceBackTween.destroy();
         bounceBackTween = null;
       }
       isDragging = true;
-      dragStartY = pointer.y;
+      dragStartY = (pointer.y / RES_SCALE);
       dragStartScrollOffset = scrollOffsetY;
     };
     const onDragMove = (pointer) => {
       if (!isDragging || !pointer.isDown) return;
-      if (pointer.x < listLeft || pointer.x > listLeft + panelW) return;
-      if (pointer.y < listTop  || pointer.y > listTop + panelH) return;
-      const deltaY = dragStartY - pointer.y;
+      if ((pointer.x / RES_SCALE) < listLeft || (pointer.x / RES_SCALE) > listLeft + panelW) return;
+      if ((pointer.y / RES_SCALE) < listTop  || (pointer.y / RES_SCALE) > listTop + panelH) return;
+      const deltaY = dragStartY - (pointer.y / RES_SCALE);
       if (Math.abs(deltaY) < dragThreshold) return;
       const maxScroll = Math.max(0, (_lastLevelStrs ? _lastLevelStrs.length : 0) * 180 - (panelH - 33));
       let newScrollOffset = dragStartScrollOffset + deltaY * 0.5;
@@ -10807,7 +10462,7 @@ _applyMirrorEffect() {
               const cellObjs = _buildLevelCell(levelData, idx);
               activeCellObjs.push(...cellObjs);
             });
-            
+
             redrawStripes(scrollOffsetY);
           },
           onComplete: () => {
@@ -10833,7 +10488,6 @@ _applyMirrorEffect() {
   }
 
   _openSavedLevelsScene() {
-    this._uhdContext = 'saved';
     this._savedOverlay = true;
     const sw = screenWidth;
     const sh = screenHeight;
@@ -11013,10 +10667,9 @@ _applyMirrorEffect() {
 
     const _panelBoundaryTop    = listTop + 12;
     const _panelBoundaryBottom = listTop + panelH - 22;
-    const _panelMaskShape = this.add.graphics().setScrollFactor(0);
-    _panelMaskShape.fillStyle(0xffffff);
-    _panelMaskShape.fillRect(listLeft, _panelBoundaryTop, panelW, _panelBoundaryBottom - _panelBoundaryTop);
-    const _panelMask = _panelMaskShape.createGeometryMask();
+    const { shape: _panelMaskShape, mask: _panelMask } = this._createScreenSpaceMask(
+      listLeft, _panelBoundaryTop, panelW, _panelBoundaryBottom - _panelBoundaryTop
+    );
     objects.push(_panelMaskShape);
     let scrollOffsetY   = 0;
     let activeCellObjs  = []; 
@@ -11075,12 +10728,6 @@ _applyMirrorEffect() {
       const _scaleH   = _diffMeta ? _diffMeta.h : 85;
       const _scale    = Math.min(_targetH / _scaleH, _maxW / _scaleW);
       const _diffIconExtraScale = { 6: 1.04, 9: 1.04, 10: 1.1 }[diffIdx] || 1;
-      const diffIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", diffFrames[diffIdx])
-        .setScrollFactor(0).setDepth(204).setOrigin(0.5).setAlpha(1)
-        .setDisplaySize(_scaleW * _scale * _diffIconExtraScale, _scaleH * _scale * _diffIconExtraScale);
-      if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
-      diffIcon.setMask(_panelMask);
-      cellObjs.push(diffIcon);
       let coinIcon = null;
       if (levelData.epic >= 3) {
         coinIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", "GJ_epicCoin3_001.png")
@@ -11099,6 +10746,12 @@ _applyMirrorEffect() {
         coinIcon.setMask(_panelMask);
         cellObjs.push(coinIcon);
       }
+      const diffIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", diffFrames[diffIdx])
+        .setScrollFactor(0).setDepth(204).setOrigin(0.5).setAlpha(1)
+        .setDisplaySize(_scaleW * _scale * _diffIconExtraScale, _scaleH * _scale * _diffIconExtraScale);
+      if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
+      diffIcon.setMask(_panelMask);
+      cellObjs.push(diffIcon);
       const nameX = rx + 105;
       const btnX = rx + panelW - 88;
       const _progressKeyId = "online_" + (levelData.id || "0");
@@ -11199,10 +10852,6 @@ _applyMirrorEffect() {
     };
 
     const _rebuildCells = () => {
-      // Re-arm: _uhdContext resets to null every frame, and this can run a frame
-      // (or a fetch) later than that reset — e.g. deferred behind the metadata
-      // Promise.all below, or from the prev/next page buttons.
-      this._uhdContext = 'saved';
       for (const o of activeCellObjs) if (o && o.destroy) o.destroy();
       activeCellObjs = [];
       clearRows();
@@ -11328,8 +10977,8 @@ _applyMirrorEffect() {
       }});
       const _getSavedPageCount = () => Math.min(savedPerPage, savedLevelData.length - currentPage * savedPerPage);
       const _onWheel = (pointer, gameObjects, deltaX, deltaY) => {
-        if (pointer.x < listLeft || pointer.x > listLeft + panelW) return;
-        if (pointer.y < listTop  || pointer.y > listTop + panelH) return;
+        if ((pointer.x / RES_SCALE) < listLeft || (pointer.x / RES_SCALE) > listLeft + panelW) return;
+        if ((pointer.y / RES_SCALE) < listTop  || (pointer.y / RES_SCALE) > listTop + panelH) return;
         const maxScroll = Math.max(0, _getSavedPageCount() * 180 - (panelH - 33));
         const newOffset = Math.max(0, Math.min(scrollOffsetY + deltaY * 0.5, maxScroll));
         if (newOffset !== scrollOffsetY) {
@@ -11342,14 +10991,14 @@ _applyMirrorEffect() {
       objects.push({ destroy: () => this.input.off("wheel", _onWheel) });
       let isDragging = false, dragStartY = 0, dragStartOffset = 0;
       const onDragStart = (pointer) => {
-        if (pointer.x < listLeft || pointer.x > listLeft + panelW) return;
-        if (pointer.y < listTop  || pointer.y > listTop + panelH) return;
-        isDragging = true; dragStartY = pointer.y; dragStartOffset = scrollOffsetY;
+        if ((pointer.x / RES_SCALE) < listLeft || (pointer.x / RES_SCALE) > listLeft + panelW) return;
+        if ((pointer.y / RES_SCALE) < listTop  || (pointer.y / RES_SCALE) > listTop + panelH) return;
+        isDragging = true; dragStartY = (pointer.y / RES_SCALE); dragStartOffset = scrollOffsetY;
       };
       const onDragMove = (pointer) => {
         if (!isDragging || !pointer.isDown) return;
         const maxScroll = Math.max(0, _getSavedPageCount() * 180 - (panelH - 33));
-        const newOffset = Math.max(0, Math.min(dragStartOffset + (dragStartY - pointer.y) * 0.5, maxScroll));
+        const newOffset = Math.max(0, Math.min(dragStartOffset + (dragStartY - (pointer.y / RES_SCALE)) * 0.5, maxScroll));
         if (newOffset !== scrollOffsetY) {
           scrollOffsetY = newOffset;
           _rebuildCells();
@@ -11366,6 +11015,7 @@ _applyMirrorEffect() {
     }
   }
 
+
   _closeOnlineLevelsScene() {
     if (this._onlineLevelsOverlay) {
       if (this._closeOnlineLevelsOverlay) {
@@ -11377,7 +11027,6 @@ _applyMirrorEffect() {
 
   _openSearchResultScene(levelData) {
     if (this._searchResultOverlay) return;
-    this._uhdContext = 'searchResult';
 
     const sw = screenWidth;
     const sh = screenHeight;
@@ -11394,10 +11043,9 @@ _applyMirrorEffect() {
 
     const _panelBoundaryTop = listTop + 12;
     const _panelBoundaryBottom = listTop + panelH - 22;
-    const _panelMaskShape = this.add.graphics().setScrollFactor(0);
-    _panelMaskShape.fillStyle(0xffffff);
-    _panelMaskShape.fillRect(listLeft, _panelBoundaryTop, panelW, _panelBoundaryBottom - _panelBoundaryTop);
-    const _panelMask = _panelMaskShape.createGeometryMask();
+    const { shape: _panelMaskShape, mask: _panelMask } = this._createScreenSpaceMask(
+      listLeft, _panelBoundaryTop, panelW, _panelBoundaryBottom - _panelBoundaryTop
+    );
     objects.push(_panelMaskShape);
 
     const _diffFrames = [
@@ -11449,13 +11097,6 @@ _applyMirrorEffect() {
     const _scaleH   = _diffMeta ? _diffMeta.h : 85;
     const _scale    = Math.min(_targetH / _scaleH, _maxW / _scaleW);
     const _diffIconExtraScale = { 6: 1.04, 9: 1.04, 10: 1.1 }[diffIdx] || 1;
-    const diffIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", _diffFrames[diffIdx])
-      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setAlpha(1)
-      .setDisplaySize(_scaleW * _scale * _diffIconExtraScale, _scaleH * _scale * _diffIconExtraScale);
-    if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
-    diffIcon.setMask(_panelMask);
-    objects.push(diffIcon);
-
     let coinIcon = null;
     if (levelData.epic >= 3) {
       coinIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", "GJ_epicCoin3_001.png")
@@ -11474,6 +11115,13 @@ _applyMirrorEffect() {
       coinIcon.setMask(_panelMask);
       objects.push(coinIcon);
     }
+
+    const diffIcon = this.add.image(rx + 52, rowCenterY, "GJ_GameSheet03", _diffFrames[diffIdx])
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setAlpha(1)
+      .setDisplaySize(_scaleW * _scale * _diffIconExtraScale, _scaleH * _scale * _diffIconExtraScale);
+    if (_diffMeta && _diffMeta.rotated) diffIcon.setAngle(90).setFlipY(true);
+    diffIcon.setMask(_panelMask);
+    objects.push(diffIcon);
 
     const nameX = rx + 105;
     const btnX = rx + panelW - 88;

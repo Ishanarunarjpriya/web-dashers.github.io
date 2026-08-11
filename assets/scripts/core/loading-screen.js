@@ -65,28 +65,36 @@ function loadFont(scene, fontName, fontData) {
   scene.cache.bitmapFont.add(fontName, { data: fontConfig, texture: fontName, frame: null });
 }
 
-// Crops every frame out of the 5 packed UHD sheets into a data URL up front, during the
-// loading screen, so game-scene.js's DOM overlays never pay a first-use crop cost mid-game.
-function buildUhdDataUrlCache(scene) {
-  const cache = {};
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  ["GJ_GameSheet", "GJ_GameSheet02", "GJ_GameSheet03", "GJ_GameSheet04", "GJ_WebSheet"].forEach(key => {
-    const tex = scene.textures.get('uhd_' + key);
-    const atlasJson = scene.cache.json.get('uhd_' + key + '_atlas');
-    if (!tex || tex.key === '__MISSING' || !atlasJson) return;
-    const img = tex.getSourceImage();
-    for (const frame in atlasJson.frames) {
-      const rect = atlasJson.frames[frame].w > 0 && atlasJson.frames[frame].h > 0 ? atlasJson.frames[frame] : null;
-      if (!rect) continue;
-      canvas.width = rect.w;
-      canvas.height = rect.h;
-      ctx.clearRect(0, 0, rect.w, rect.h);
-      ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-      cache[key + ':' + frame] = canvas.toDataURL();
-    }
-  });
-  window._uhdDataUrlCache = cache;
+// Merges higher-res UHD frames into an already-loaded base atlas texture, in place, so every
+// existing scene.add.image(baseKey, frameName) call picks up the sharper source pixels with
+// zero code changes elsewhere. load.atlas() only accepts an array for the *key* argument (loads
+// multiple independent atlases), not for merging two image+json pairs into one key -- so this
+// does it directly via Phaser's public Texture/Frame/TextureSource classes instead.
+function mergeUhdFrames(scene, baseKey, uhdSrcKey, uhdFramesKey) {
+  const framesData = scene.cache.json.get(uhdFramesKey);
+  if (!framesData) return;
+  const baseTex = scene.textures.get(baseKey);
+  const uhdImg = scene.textures.get(uhdSrcKey).getSourceImage();
+  const sourceIndex = baseTex.source.length;
+  baseTex.source.push(new Phaser.Textures.TextureSource(baseTex, uhdImg));
+  // Records each upgraded frame's ORIGINAL logical size (before swapping in the higher-res
+  // pixels), keyed by frame name, so wrapSceneForResScale can restore GameObject.width/.height
+  // after creation -- that property is a snapshot taken once from frame.realWidth at creation
+  // time (Components.Size's setSizeToFrame), NOT a live getter, so it can't be fixed via Frame
+  // trim tricks the way displayWidth (a live scaleX*realWidth getter) can.
+  if (!window._uhdOrigSizes) window._uhdOrigSizes = {};
+  window._uhdOrigSizes[baseKey] = window._uhdOrigSizes[baseKey] || {};
+
+  for (const name in framesData.frames) {
+    const origFrame = baseTex.frames[name];
+    if (!origFrame) continue;
+    window._uhdOrigSizes[baseKey][name] = { w: origFrame.data.sourceSize.w, h: origFrame.data.sourceSize.h };
+    const fr = framesData.frames[name].frame;
+    // Untrimmed by default: sourceSize == frame size == cutWidth/cutHeight (the full higher-res
+    // pixel crop), so realWidth naturally matches cutWidth and displayWidth's getter math
+    // (scaleX * realWidth) correctly reflects the true render size once we scale down below.
+    baseTex.frames[name] = new Phaser.Textures.Frame(baseTex, name, sourceIndex, fr.x, fr.y, fr.w, fr.h);
+  }
 }
 
 class BootScene extends Phaser.Scene {
@@ -95,6 +103,7 @@ class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    wrapSceneForResScale(this);
     if (window.gameCache) window.gameCache.init();
     (function (game) {
       if (game.renderer.type === Phaser.WEBGL) {
@@ -142,8 +151,8 @@ class BootScene extends Phaser.Scene {
       }
     })(this.game);
 
-    const W = this.cameras.main.width;
-    const H = this.cameras.main.height;
+    const W = screenWidth;
+    const H = screenHeight;
     const cx = W / 2;
     const cy = H / 2;
 
@@ -262,17 +271,21 @@ class BootScene extends Phaser.Scene {
       }
 
       this.load.atlas("GJ_GameSheet", "assets/sheets/GJ_GameSheet.png", "assets/sheets/GJ_GameSheet.json");
+      this.load.image("GJ_GameSheet_uhd_src", "assets/sheets/GJ_GameSheet-uhd-packed.png");
+      this.load.json("GJ_GameSheet_uhd_frames", "assets/sheets/GJ_GameSheet-uhd-converted.json");
       this.load.atlas("GJ_GameSheet02", "assets/sheets/GJ_GameSheet02.png", "assets/sheets/GJ_GameSheet02.json");
+      this.load.image("GJ_GameSheet02_uhd_src", "assets/sheets/GJ_GameSheet02-uhd-packed.png");
+      this.load.json("GJ_GameSheet02_uhd_frames", "assets/sheets/GJ_GameSheet02-uhd-converted.json");
       this.load.atlas("GJ_GameSheet03", "assets/sheets/GJ_GameSheet03.png", "assets/sheets/GJ_GameSheet03.json");
+      this.load.image("GJ_GameSheet03_uhd_src", "assets/sheets/GJ_GameSheet03-uhd-packed.png");
+      this.load.json("GJ_GameSheet03_uhd_frames", "assets/sheets/GJ_GameSheet03-uhd-converted.json");
       this.load.atlas("GJ_GameSheet04", "assets/sheets/GJ_GameSheet04.png", "assets/sheets/GJ_GameSheet04.json");
-      this.load.atlas("GJ_GameSheet04_UHD", "assets/sheets/GJ_GameSheet04_UHD.png", "assets/sheets/GJ_GameSheet04_UHD.json");
+      this.load.image("GJ_GameSheet04_uhd_src", "assets/sheets/GJ_GameSheet04-uhd-packed.png");
+      this.load.json("GJ_GameSheet04_uhd_frames", "assets/sheets/GJ_GameSheet04-uhd-converted.json");
+      this.load.json("_uhdUpgradedManifest", "assets/sheets/_uhd_upgraded_manifest.json");
       this.load.atlas("GJ_GameSheetEditor", "assets/sheets/GJ_GameSheetEditor.png", "assets/sheets/GJ_GameSheetEditor.json");
       this.load.atlas("GJ_GameSheetGlow", "assets/sheets/GJ_GameSheetGlow.png", "assets/sheets/GJ_GameSheetGlow.json");
       this.load.atlas("GJ_GameSheetIcons", "assets/sheets/GJ_GameSheetIcons.png", "assets/sheets/GJ_GameSheetIcons.json");
-      ["GJ_GameSheet", "GJ_GameSheet02", "GJ_GameSheet03", "GJ_GameSheet04", "GJ_WebSheet"].forEach(k => {
-        this.load.image("uhd_" + k, "assets/sheets/" + k + "-uhd-packed.png?v=uhd2");
-        this.load.json("uhd_" + k + "_atlas", "assets/sheets/" + k + "-uhd-packed.json?v=uhd2");
-      });
       this.load.json("Spider_AnimDesc", "assets/sheets/Spider_AnimDesc.json");
       this.load.json("Robot_AnimDesc", "assets/sheets/Robot_AnimDesc.json");
       this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
@@ -359,7 +372,10 @@ class BootScene extends Phaser.Scene {
           const gfd = this.cache.text.get("goldFontFnt");
           if (gfd && !this.cache.bitmapFont.has("goldFont")) loadFont(this, "goldFont", gfd);
 
-          buildUhdDataUrlCache(this);
+          mergeUhdFrames(this, "GJ_GameSheet04", "GJ_GameSheet04_uhd_src", "GJ_GameSheet04_uhd_frames");
+          mergeUhdFrames(this, "GJ_GameSheet", "GJ_GameSheet_uhd_src", "GJ_GameSheet_uhd_frames");
+          mergeUhdFrames(this, "GJ_GameSheet02", "GJ_GameSheet02_uhd_src", "GJ_GameSheet02_uhd_frames");
+          mergeUhdFrames(this, "GJ_GameSheet03", "GJ_GameSheet03_uhd_src", "GJ_GameSheet03_uhd_frames");
 
           localStorage.setItem('webdash_assets_loaded', 'true');
           localStorage.setItem('webdash_last_load_time', Date.now().toString());

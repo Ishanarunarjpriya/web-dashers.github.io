@@ -17,6 +17,24 @@ class AudioManager {
     this._pendingOnlineSongLoadKey = null;
     this._pendingOnlineSongLoadOffset = 0;
     this._pendingOnlineSongFadeDuration = null;
+    this._playbackRate = 1;
+  }
+  // Called every frame from the scene's update() alongside the tween/timer/anim timeScale
+  // sync (see game-scene.js update()) so speedhack pitches music/SFX up with it, like the
+  // real MegaHack. Compares against this._music.rate rather than a "did the value change"
+  // flag, so a freshly-created Sound object (rate defaults to 1) self-heals on the next tick
+  // even though the target rate itself didn't change.
+  setPlaybackRate(rate) {
+    rate = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    this._playbackRate = rate;
+    if (!this._music) return;
+    try {
+      // A Sound object can exist before its underlying source/audio element has
+      // finished initializing (e.g. the instant a new song starts loading, or the
+      // AudioContext is still suspended pending a user gesture) — Phaser's own
+      // `rate` getter/setter throws in that window, so this must stay best-effort.
+      if (this._music.rate !== rate) this._music.rate = rate;
+    } catch (_e) {}
   }
   _effectiveVolume() {
     return this._userMusicVol * 0.8;
@@ -266,9 +284,11 @@ class AudioManager {
     const dest = soundMgr.masterVolumeNode || soundMgr.destination || ctx.destination;
     gainNode.connect(dest);
     const safeOffset = Math.max(0, Math.min(startOffset, audioBuffer.duration - 0.01));
+    let _rate = this._playbackRate;
     const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     source.loop = true;
+    source.playbackRate.value = _rate;
     source.connect(gainNode);
     source.start(0, safeOffset);
     this._onlineSource = source;
@@ -297,7 +317,8 @@ class AudioManager {
       destroy: () => { musicObj.stop(); },
       pause: () => {
         if (!_isPlaying || _isPaused) return;
-        _pauseOffset = (ctx.currentTime - _startedAt + _pauseOffset) % audioBuffer.duration;
+        // Buffer-time elapsed runs at _rate x real time, not 1:1, while speedhack is active.
+        _pauseOffset = (_pauseOffset + (ctx.currentTime - _startedAt) * _rate) % audioBuffer.duration;
         _stopSource(self._onlineSource);
         self._onlineSource = null;
         _isPlaying = false;
@@ -308,12 +329,18 @@ class AudioManager {
         const newSrc = ctx.createBufferSource();
         newSrc.buffer = audioBuffer;
         newSrc.loop = true;
+        newSrc.playbackRate.value = _rate;
         newSrc.connect(gainNode);
         newSrc.start(0, _pauseOffset);
         self._onlineSource = newSrc;
         _startedAt  = ctx.currentTime;
         _isPlaying  = true;
         _isPaused   = false;
+      },
+      get rate() { return _rate; },
+      set rate(v) {
+        _rate = v;
+        if (self._onlineSource) self._onlineSource.playbackRate.value = v;
       },
       setLoop: () => {},
       get volume() { return gainNode.gain.value; },
@@ -453,7 +480,8 @@ class AudioManager {
       const baseVolume = Number.isFinite(rawBaseVolume) ? rawBaseVolume : 1;
       const sfxVolume = Number.isFinite(rawSfxVolume) ? rawSfxVolume : 1;
       soundObject.play({
-        volume: Math.max(0, baseVolume * sfxVolume)
+        volume: Math.max(0, baseVolume * sfxVolume),
+        rate: this._playbackRate
       });
     }
   }
