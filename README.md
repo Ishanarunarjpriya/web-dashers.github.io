@@ -1,3 +1,7 @@
+
+> [!NOTE]
+> This project is still in development, and is not yet complete. Please be patient with us as we work on it, and please report any bugs you find to the Discord server (specifically on the #`bug-report` forum) or the Issues page on this repository. Thank you for your support!
+
 <div align="center">
   <img 
   width="400" 
@@ -54,7 +58,8 @@
 ### Come try out the WIP Web Dashers demo at:
 **[web-dashers.github.io](https://web-dashers.github.io/)**
 
-*(Last updated 5/16/2026)*
+<sub> Last updated: 8/7/2026
+
 ---
-> - Special thanks to all of the people that help the project by contributing, and Please support us by starring the repo, as it helps us out a ton!!
-> - Also, please report bugs found to the Discord server or the Issues page on github, just please dont be annoying about it, and don't make bug reports about bugs already being worked on or ones that are already known about.
+> - <sub>Special thanks to all of the people that help the project by contributing, and Please support us by starring the repo, as it helps us out a ton!!<sub>
+> - <sub>Also, please report bugs found to the Discord server or the Issues page on github, just please dont be annoying about it, and don't make bug reports about bugs already being worked on or ones that are already known about.<sub>

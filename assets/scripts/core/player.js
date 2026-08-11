@@ -23,6 +23,7 @@ class PlayerState {
     this.isJetpack = false;
     this.isMini = false;
     this.wasBoosted = false;
+    this._slopeBounceActive = false;
     this.pendingVelocity = null;
     this.collideTop = 0;
     this.collideBottom = 0;
@@ -40,6 +41,11 @@ class PlayerState {
     this._robotHold = false;
     this._robotHoldTimer = 0;
     this._spiderTeleportNoclipDeathPending = false;
+    this.ballShouldRotate = false;
+    this.ballRotateOpposite = false;
+    this.ballNormalRotate = 1;
+    this.ballHitPad = false;
+    this.ballRotation2 = 0;
   }
 }
 
@@ -396,6 +402,12 @@ class PlayerObject {
     this.p = _0x3f50cc;
     this._gameLayer = _0x2811e1;
     this._rotation = 0;
+    this._onSlopeAngle = null;
+    this._activeSlopeObj = null;
+    this._activeSlopeAngle = null;
+    this._prevSlopeObj = null;
+    this._prevSlopeAngle = null;
+    this._slopeEntryX = null;
     this.rotateActionActive = false;
     this.rotateActionTime = 0;
     this.rotateActionDuration = 0;
@@ -1841,7 +1853,7 @@ if (this.p.isFlying || this.p.isUfo) {
             if (this.p.isWave && this._waveLayers.includes(playerLayer)) {
               _miniS *= 0.94; //fix wave size
             }
-            playerLayer.sprite.scaleY = (this.p.gravityFlipped ? -_miniS : _miniS);
+            playerLayer.sprite.scaleY = isBallLayer ? _miniS : (this.p.gravityFlipped ? -_miniS : _miniS);
             playerLayer.sprite.scaleX = (this.p.mirrored ? -_miniS : _miniS);
         }
       }
@@ -1861,7 +1873,7 @@ if (this.p.isFlying || this.p.isUfo) {
             if (this.p.isWave && this._waveLayers.includes(playerLayer)) {
               _miniS *= 0.94; //fix wave size
             }
-            playerLayer.sprite.scaleY = (this.p.gravityFlipped ? -_miniS : _miniS);
+            playerLayer.sprite.scaleY = isBallLayer ? _miniS : (this.p.gravityFlipped ? -_miniS : _miniS);
             playerLayer.sprite.scaleX = (this.p.mirrored ? -_miniS : _miniS);
         }
       }
@@ -1994,6 +2006,11 @@ if (this.p.isFlying || this.p.isUfo) {
     this.exitRobotMode();
     this.exitWaveMode();
     this.p.isBall = true;
+    this.p.ballShouldRotate = false;
+    this.p.ballRotateOpposite = false;
+    this.p.ballNormalRotate = 1;
+    this.p.ballHitPad = false;
+    this.p.ballRotation2 = 0;
     this.p.onGround = false;
     this.p.canJump = false;
     this.p.isJumping = false;
@@ -2013,6 +2030,11 @@ if (this.p.isFlying || this.p.isUfo) {
       return;
     }
     this.p.isBall = false;
+    this.p.ballShouldRotate = false;
+    this.p.ballRotateOpposite = false;
+    this.p.ballNormalRotate = 1;
+    this.p.ballHitPad = false;
+    this.p.ballRotation2 = 0;
     this.p.onGround = false;
     this.p.canJump = false;
     this.p.isJumping = false;
@@ -2259,6 +2281,11 @@ if (this.p.isFlying || this.p.isUfo) {
       if (_0x4a38a5) {
         this._rotation = Math.round(this._rotation / Math.PI) * Math.PI;
       }
+      this.p.ballShouldRotate = true;
+      this.p.ballRotateOpposite = false;
+      this.p.ballHitPad = false;
+      const gravityDir = this.p.gravityFlipped ? -1 : 1;
+      this.p.ballNormalRotate = this.p.mirrored ? -gravityDir : gravityDir;
     } else if (this.p.isSpider) {
       if (_0x4a38a5) {
         this._rotation = Math.round(this._rotation / Math.PI) * Math.PI;
@@ -2865,6 +2892,197 @@ if (this.p.isFlying || this.p.isUfo) {
       });
     }
   }
+  _getSlopeHitSize(playerSize, waveHitSize) {
+    return this.p.isWave ? waveHitSize : playerSize;
+  }
+  _isOnSlopeSurface(surfaceY, footProbe, headProbe, hitSize, useFloorLanding) {
+    const tolerance = Math.max(14, hitSize * 0.45);
+    if (useFloorLanding) {
+      return Math.abs(footProbe - surfaceY) < tolerance && footProbe >= surfaceY - 2;
+    }
+    return Math.abs(headProbe - surfaceY) < tolerance && headProbe <= surfaceY + 2;
+  }
+  _landOnSlopeFloor(gameObj, surfaceY, hitSize, footProbe, lastFootProbe, playersY) {
+    const margin = Math.max(8, Math.abs(footProbe - lastFootProbe) + 4);
+    if (!this.p.gravityFlipped &&
+      (footProbe >= surfaceY || lastFootProbe >= surfaceY) &&
+      (this.p.yVelocity <= 0 || this.p.onGround) &&
+      playersY <= surfaceY + hitSize + margin) {
+      return { y: surfaceY + hitSize, onCeiling: false, collideBottom: surfaceY, collideTop: null, slopeAngle: gameObj.getSlopeAngleRad() };
+    }
+    return null;
+  }
+  _landOnSlopeCeiling(gameObj, surfaceY, hitSize, headProbe, lastHeadProbe, playersY) {
+    const margin = Math.max(8, Math.abs(headProbe - lastHeadProbe) + 4);
+    if ((headProbe <= surfaceY || lastHeadProbe <= surfaceY) &&
+      (this.p.yVelocity >= 0 || this.p.onGround) &&
+      playersY >= surfaceY - hitSize - margin) {
+      return { y: surfaceY - hitSize, onCeiling: true, collideBottom: null, collideTop: surfaceY, slopeAngle: gameObj.getSlopeAngleRad() };
+    }
+    return null;
+  }
+  _landOnSlopeCeilingFlipped(gameObj, surfaceY, hitSize, footProbe, lastFootProbe, playersY) {
+    const margin = Math.max(8, Math.abs(footProbe - lastFootProbe) + 4);
+    if (this.p.gravityFlipped &&
+      (footProbe >= surfaceY || lastFootProbe >= surfaceY) &&
+      (this.p.yVelocity <= 0 || this.p.onGround) &&
+      playersY <= surfaceY + hitSize + margin) {
+      return { y: surfaceY + hitSize, onCeiling: true, collideBottom: null, collideTop: surfaceY, slopeAngle: gameObj.getSlopeAngleRad() };
+    }
+    return null;
+  }
+  _trySnapToSlopeSurface(gameObj, pieceWidth, playersY, hitSize, gamemodeAddition, useFloorLanding) {
+    const surfaceY = gameObj.getSlopeSurfaceY(pieceWidth);
+    if (surfaceY === null) return null;
+    const isFlyMode = this.p.isFlying || this.p.isUfo;
+    const pad = isFlyMode ? Math.max(10, hitSize * 0.4) : 9;
+    const footProbe = playersY - hitSize + gamemodeAddition;
+    const headProbe = playersY + hitSize - gamemodeAddition;
+    if (useFloorLanding) {
+      if (footProbe < surfaceY - pad) return null;
+      if (footProbe > surfaceY + pad) return null;
+      return { y: surfaceY + hitSize, onCeiling: false, collideBottom: surfaceY, collideTop: null, slopeAngle: gameObj.getSlopeAngleRad() };
+    }
+    if (headProbe < surfaceY - pad) return null;
+    if (headProbe > surfaceY + pad) return null;
+    return { y: surfaceY - hitSize, onCeiling: true, collideBottom: null, collideTop: surfaceY, slopeAngle: gameObj.getSlopeAngleRad() };
+  }
+  _trySlopeVelocityLanding(gameObj, surfaceY, hitSize, footProbe, lastFootProbe, headProbe, lastHeadProbe, playersY, useFloorLanding) {
+    if (useFloorLanding) {
+      if (this.p.gravityFlipped) {
+        return this._landOnSlopeCeilingFlipped(gameObj, surfaceY, hitSize, footProbe, lastFootProbe, playersY);
+      }
+      return this._landOnSlopeFloor(gameObj, surfaceY, hitSize, footProbe, lastFootProbe, playersY);
+    }
+    return this._landOnSlopeCeiling(gameObj, surfaceY, hitSize, headProbe, lastHeadProbe, playersY);
+  }
+  _handleSlopeCollision(gameObj, pieceWidth, playersY, playersLastY, left, right, top, bottom, playerSize, waveHitSize, gamemodeAddition) {
+    const surfaceY = gameObj.getSlopeSurfaceY(pieceWidth);
+    if (surfaceY === null) return { landed: false, died: false };
+    const hitSize = this._getSlopeHitSize(playerSize, waveHitSize);
+    const footProbe = playersY - hitSize + gamemodeAddition;
+    const lastFootProbe = playersLastY - hitSize + gamemodeAddition;
+    const headProbe = playersY + hitSize - gamemodeAddition;
+    const lastHeadProbe = playersLastY + hitSize - gamemodeAddition;
+    const tightPad = this.p.isWave ? 5 : 9;
+    const inXRange = pieceWidth + hitSize - 5 > left && pieceWidth - hitSize + 5 < right;
+    const useFloorLanding = gameObj.usesFloorLanding(this.p.gravityFlipped);
+    const onSlopeSurface = this._isOnSlopeSurface(surfaceY, footProbe, headProbe, hitSize, useFloorLanding);
+
+    let candidate = null;
+    if (inXRange) {
+      candidate = this._trySlopeVelocityLanding(gameObj, surfaceY, hitSize, footProbe, lastFootProbe, headProbe, lastHeadProbe, playersY, useFloorLanding);
+      if (!candidate) {
+        candidate = this._trySnapToSlopeSurface(gameObj, pieceWidth, playersY, hitSize, gamemodeAddition, useFloorLanding);
+      }
+      if (!candidate && onSlopeSurface) {
+        if (useFloorLanding) {
+          candidate = {
+            y: surfaceY + hitSize,
+            onCeiling: this.p.gravityFlipped,
+            collideBottom: this.p.gravityFlipped ? null : surfaceY,
+            collideTop: this.p.gravityFlipped ? surfaceY : null,
+            slopeAngle: gameObj.getSlopeAngleRad()
+          };
+        } else {
+          candidate = {
+            y: surfaceY - hitSize,
+            onCeiling: true,
+            collideBottom: null,
+            collideTop: surfaceY,
+            slopeAngle: gameObj.getSlopeAngleRad()
+          };
+        }
+      }
+    }
+
+    if (candidate) {
+      candidate.gameObj = gameObj;
+      return { landed: true, died: false, candidate };
+    }
+
+    const overlapping = pieceWidth + tightPad > left && pieceWidth - tightPad < right &&
+      playersY + tightPad > top && playersY - tightPad < bottom;
+    if (this.p.isWave && overlapping) {
+      return { landed: false, died: true };
+    } 
+    if (overlapping && !onSlopeSurface) {
+      if (!gameObj.slopeIsFilled && gameObj.isSlopeSolidAt(pieceWidth, playersY, this.p.gravityFlipped)) {
+        if (window.noClip) this.p.diedThisFrame = true;
+        else return { landed: false, died: true };
+      } else {
+        const backSide = gameObj.getSlopeBackWallSide(this.p.gravityFlipped);
+        const wallX = backSide === "left" ? left : right;
+        const wallSurface = gameObj.getSlopeSurfaceY(wallX);
+        let hitBackWall = false;
+        if (useFloorLanding) {
+          if (backSide === "left") {
+            hitBackWall = pieceWidth < wallX + tightPad && pieceWidth + hitSize > wallX &&
+              footProbe < wallSurface - 2 && headProbe > top + 2;
+          } else {
+            hitBackWall = pieceWidth > wallX - tightPad && pieceWidth - hitSize < wallX &&
+              footProbe < wallSurface - 2 && headProbe > top + 2;
+          }
+        } else if (backSide === "left") {
+          hitBackWall = pieceWidth < wallX + tightPad && pieceWidth + hitSize > wallX &&
+            headProbe > wallSurface + 2 && footProbe < bottom - 2;
+        } else {
+          hitBackWall = pieceWidth > wallX - tightPad && pieceWidth - hitSize < wallX &&
+            headProbe > wallSurface + 2 && footProbe < bottom - 2;
+        }
+        if (hitBackWall || gameObj.slopeIsFilled) {
+          if (window.noClip) this.p.diedThisFrame = true;
+          else return { landed: false, died: true };
+        }
+      }
+    }
+
+    return { landed: false, died: false };
+  }
+  static SLOPE_BOUNCE_SCALE = {
+    291: 1,
+  };
+  _applySlopeExitBounce(slopeObj, slopeAngle, pieceWidth) {
+    if (!slopeObj || slopeAngle === null || slopeAngle === undefined) return;
+    if (this.p.isJumping && !this.p.onGround) return;
+    const angleRad = Math.abs(slopeAngle);
+    if (angleRad < 0.05) return;
+    const halfW = slopeObj.w / 2;
+    const left = slopeObj.x - halfW;
+    const right = slopeObj.x + halfW;
+    const exitMargin = 14;
+    let exitHighEnd = slopeObj.slopeDir > 0
+      ? pieceWidth >= right - exitMargin
+      : pieceWidth <= left + exitMargin;
+    if (slopeObj.slopeFlipY) exitHighEnd = !exitHighEnd;
+    if (!exitHighEnd) return;
+    let highEndIsRight = slopeObj.slopeDir > 0;
+    if (slopeObj.slopeFlipY) highEndIsRight = !highEndIsRight;
+    const highEndX = highEndIsRight ? right : left;
+    const lowEndX = highEndIsRight ? left : right;
+    const slopeSpan = Math.abs(right - left) || 1;
+    const entryX = Number.isFinite(this._slopeEntryX) ? this._slopeEntryX : lowEndX;
+    const traveledFraction = Math.min(1, Math.max(0, Math.abs(highEndX - entryX) / slopeSpan));
+    let bounceVel = Math.tan(angleRad) * playerSpeed * this.flipMod();
+    const idScale = PlayerObject.SLOPE_BOUNCE_SCALE[slopeObj.objid];
+    if (idScale !== undefined) bounceVel *= idScale;
+    bounceVel *= traveledFraction;
+    if (slopeObj.slopeFlipY) bounceVel = -bounceVel;
+    if (this.p.isWave) bounceVel *= 0.85;
+    else if (this.p.isMini) bounceVel *= 0.8;
+    if (Math.abs(bounceVel) < 0.5) return;
+    this.p.yVelocity = bounceVel;
+    this.p.onGround = false;
+    this.p.canJump = false;
+    if (this.p.isFlying) {
+      this.p._slopeBounceActive = true;
+    }
+    if (!this.p.isFlying && !this.p.isWave && !this.p.isUfo && !this.p.isSpider && !this.p.isRobot) {
+      this.p.isJumping = true;
+      this._rotation = slopeAngle;
+      this.stopRotation();
+    }
+  }
   _checkSnapJump(_0x1f801b) {
     const _0x483058 = [{
       dx: 240,
@@ -2877,7 +3095,7 @@ if (this.p.isFlying || this.p.isUfo) {
       dy: 120
     }];
     const _0x2b806a = this._lastLandObject;
-    if (_0x2b806a && _0x2b806a !== _0x1f801b && _0x2b806a.type === solidType) {
+    if (_0x2b806a && _0x2b806a !== _0x1f801b && (_0x2b806a.type === solidType || _0x2b806a.type === slopeType)) {
       const _0x34ef27 = _0x2b806a.x;
       const _0x4652bb = _0x2b806a.y;
       const _0x5de781 = _0x1f801b.x;
@@ -2923,6 +3141,9 @@ if (this.p.isFlying || this.p.isUfo) {
       this.p.yVelocity *= _0x11bbde;
       this.p.onGround = false;
       this.p.canJump = false;
+      if (this.p.isBall) {
+        this.p.ballShouldRotate = true;
+      }
   }
   runRotateAction() {
     this.rotateActionActive = true;
@@ -2983,20 +3204,39 @@ if (this.p.isFlying || this.p.isUfo) {
     return out + out;
   }
   updateGroundRotation(_0x5c24f7) {
-    if (this.p.isBall || this.p.isWave || this.p.isSpider || this.p.isRobot) {
+    if (this.p.isBall || this.p.isWave) {
       return;
     }
-    let _0x183c2a = this.convertToClosestRotation();
+    let _0x183c2a = this._onSlopeAngle !== null ? this._onSlopeAngle : this.convertToClosestRotation();
     let _0x108955 = 0.47250000000000003;
     let _0x17a9a6 = Math.min(_0x5c24f7 * 1, _0x108955 * _0x5c24f7);
     this._rotation = this.slerp2D(this._rotation, _0x183c2a, _0x17a9a6);
   }
   updateBallRoll(_0x1dd8af, onSurface) {
-    const gravityDir = this.p.gravityFlipped ? -1 : 1;
-	  const rollDir = this.p.mirrored ? -gravityDir : gravityDir;
-    const speedFactor = onSurface ? 0.5 : 0.35;
+    if (!this.p.ballShouldRotate) {
+      return;
+    }
+    let rollDir = this.p.ballNormalRotate || 1;
+    if (this.p.ballRotateOpposite) {
+      rollDir = -rollDir;
+    }
+    const groundSpeedFactor = 0.48;
+    let airSpeedFactor = this.p.ballRotateOpposite ? 0.27 : 0.48;
+    if (this.p.isDashing) {
+      const dashSpeed = Math.abs(this.p.dashYVelocity || this.p.yVelocity || 0);
+      const speedScale = Math.max(0.15, Math.min(1, dashSpeed / 24));
+      airSpeedFactor = 0.32 + speedScale * 0.32;
+    } else if (this.p.ballHitPad) {
+      airSpeedFactor *= 1.2;
+    }
+    const speedFactor = onSurface ? groundSpeedFactor : airSpeedFactor;
+    let bidenblast= 1;
+    if (this.p.ballRotation2 > 0) {
+      bidenblast= 2.1;
+      this.p.ballRotation2 -= 1;
+    }
     const miniRollScale = this.p.isMini ? 1 / 0.8 : 1;
-    this._rotation += _0x1dd8af / (g / 2) * gravityDir * speedFactor * miniRollScale;
+    this._rotation += _0x1dd8af / (g / 2) * rollDir * speedFactor * bidenblast* miniRollScale;
   }
   updateShipRotation(_0x217ad3) {
     let _0x48f422 = -(this.p.y - this.p.lastY);
@@ -3008,6 +3248,14 @@ if (this.p.isFlying || this.p.isUfo) {
       this._rotation = this.slerp2D(this._rotation, _0x5e6a2b, _0x1857d4);
     }
   }
+  breakabletheblock(gameObj) {
+    if (!gameObj) return false;
+    if (parseInt(gameObj.objid ?? 0, 10) !== 143) return false;
+    const linkedObjectId = Number.isInteger(gameObj._eeObjectId) ? gameObj._eeObjectId : null;
+    if (linkedObjectId === null) return false;
+    return this._gameLayer?._breakblock?.(linkedObjectId) ?? false;
+  }
+
   playerIsFalling() {
     if (this.p.gravityFlipped) {
       return this.p.yVelocity > p;
@@ -3133,18 +3381,26 @@ if (this.p.isFlying || this.p.isUfo) {
     if (this.p.upKeyDown) {
       _0x203040 = -1;
     }
-    if (!this.p.upKeyDown && !this.playerIsFalling()) {
+    let isFalling = this.playerIsFalling();
+    if (this._scene?._isDual) {
+      if (this.p.gravityFlipped) {
+        isFalling = this.p.yVelocity > p;
+      } else {
+        isFalling = this.p.yVelocity < -p; 
+      }
+    }
+    if (!this.p.upKeyDown && !isFalling && !this.p._slopeBounceActive) {
       _0x203040 = 1.2;
     }
     let _0x2d237f = 0.4;
-    if (this.p.upKeyDown && this.playerIsFalling()) {
+    if (this.p.upKeyDown && isFalling) {
       _0x2d237f = 0.5;
     }
     this.p.yVelocity -= p * _0x130c46 * this.flipMod() * _0x203040 * _0x2d237f * _shipMiniScale;
     if (this.p.upKeyDown) {
       this.p.onGround = false;
     }
-    if (!this.p.wasBoosted) {
+    if (!this.p.wasBoosted && !this.p._slopeBounceActive) {
       if (this.p.gravityFlipped) {
         this.p.yVelocity = Math.max(this.p.yVelocity, -16 * _shipMiniScale);
         this.p.yVelocity = Math.min(this.p.yVelocity, 12.8 * _shipMiniScale);
@@ -3153,70 +3409,76 @@ if (this.p.isFlying || this.p.isUfo) {
         this.p.yVelocity = Math.min(this.p.yVelocity, 16 * _shipMiniScale);
       }
     }
+    if (this.p._slopeBounceActive && (isFalling || this.p.onGround)) {
+      this.p._slopeBounceActive = false;
+    }
   }
-_updateBallJump(_0x2fe319) {
-    const _0x144266 = p * 0.6;
-    let prioritizeOrb = this._shouldPrioritizeGroundOrbInput();
+  _updateBallJump(_0x2fe319) {
+      const _0x144266 = p * 0.6;
+      let prioritizeOrb = this._shouldPrioritizeGroundOrbInput();
 
-    if (!prioritizeOrb && this.p.upKeyPressed && this.p.canJump) {
-      const _0x47d739 = this.flipMod();
-      this.p.upKeyPressed = false;
-      this.p.queuedHold = false;
-      this.p.yVelocity = _0x47d739 * 22.360064 * (this.p.isMini ? 0.8 : 1);
-      this.flipGravity(!this.p.gravityFlipped);
-      this.p.onGround = false;
-      this.p.canJump = false;
-      this.p.yVelocity *= 0.6;
-      return;
-    }
-    
-    if (this.playerIsFalling()) {
-      this.p.canJump = false;
-    }
-    this.p.yVelocity -= _0x144266 * _0x2fe319 * this.flipMod();
-    if (this.p.gravityFlipped) {
-      this.p.yVelocity = Math.min(this.p.yVelocity, 30);
-    } else {
-      this.p.yVelocity = Math.max(this.p.yVelocity, -30);
-    }
-    if (this.playerIsFalling()) {
-      const _0x1439be = this.p.gravityFlipped ? this.p.yVelocity > p * 2 : this.p.yVelocity < -(p * 2);
-      if (_0x1439be) {
+      if (!prioritizeOrb && this.p.upKeyPressed && this.p.canJump) {
+        const _0x47d739 = this.flipMod();
+        this.p.upKeyPressed = false;
+        this.p.queuedHold = false;
+        this.p.yVelocity = _0x47d739 * 22.360064 * (this.p.isMini ? 0.8 : 1);
+        this.flipGravity(!this.p.gravityFlipped);
         this.p.onGround = false;
+        this.p.canJump = false;
+        this.p.yVelocity *= 0.6;
+        return;
+      }
+      
+      if (this.playerIsFalling()) {
+        this.p.canJump = false;
+      }
+      this.p.yVelocity -= _0x144266 * _0x2fe319 * this.flipMod();
+      if (this.p.gravityFlipped) {
+        this.p.yVelocity = Math.min(this.p.yVelocity, 30);
+      } else {
+        this.p.yVelocity = Math.max(this.p.yVelocity, -30);
+      }
+      if (this.playerIsFalling()) {
+        const _0x1439be = this.p.gravityFlipped ? this.p.yVelocity > p * 2 : this.p.yVelocity < -(p * 2);
+        if (_0x1439be) {
+          this.p.onGround = false;
+        }
       }
     }
+  _updateWaveJump(dt) {
+      const _baseSpeed = this.p.isMini ? 22.7700072 : 11.3850036;
+      const _speedMod = (playerSpeed / 11.540004);
+      const _waveVel = _baseSpeed * _speedMod;
+      const isPushingUp = this.p.upKeyDown; 
+      let _0x312a7f = (isPushingUp ? 1 : -1) * this.flipMod() * _waveVel;
+
+      if (this.p.onGround || this.p.onCeiling) {
+          const movingAwayFromCeiling = this.p.onCeiling && !isPushingUp;
+          const movingAwayFromFloor = this.p.onGround && isPushingUp;
+
+          if (movingAwayFromCeiling || movingAwayFromFloor) {
+              this.p.onGround = false;
+              this.p.onCeiling = false;
+          } else {
+              _0x312a7f = 0;
+          }
+      }
+
+      this.p.yVelocity = _0x312a7f;
+      this.p.canJump = false;
+      this.p.isJumping = false;
+
+      const _waveAngle = this.p.isMini ? (62 * Math.PI / 180) : Math.PI / 4;
+      const _targetRotation = _0x312a7f === 0 ? 0 : _0x312a7f > 0 ? -_waveAngle : _waveAngle;
+      const _turnRate = 0.55;
+      const _0x5c24f7 = dt || 0;
+      const _turnT = Math.min(1, _turnRate * _0x5c24f7);
+      this._rotation = this.slerp2D(this._rotation, _targetRotation, _turnT);
   }
-_updateWaveJump(dt) {
-    const _baseSpeed = this.p.isMini ? 22.7700072 : 11.3850036;
-    const _speedMod = (playerSpeed / 11.540004);
-    const _waveVel = _baseSpeed * _speedMod;
-    const isPushingUp = this.p.upKeyDown; 
-    let _0x312a7f = (isPushingUp ? 1 : -1) * this.flipMod() * _waveVel;
-
-    if (this.p.onGround || this.p.onCeiling) {
-        const movingAwayFromCeiling = this.p.onCeiling && !isPushingUp;
-        const movingAwayFromFloor = this.p.onGround && isPushingUp;
-
-        if (movingAwayFromCeiling || movingAwayFromFloor) {
-            this.p.onGround = false;
-            this.p.onCeiling = false;
-        } else {
-            _0x312a7f = 0;
-        }
-    }
-
-    this.p.yVelocity = _0x312a7f;
-    this.p.canJump = false;
-    this.p.isJumping = false;
-
-    const _waveAngle = this.p.isMini ? (62 * Math.PI / 180) : Math.PI / 4;
-    const _targetRotation = _0x312a7f === 0 ? 0 : _0x312a7f > 0 ? -_waveAngle : _waveAngle;
-    const _turnRate = 0.55;
-    const _0x5c24f7 = dt || 0;
-    const _turnT = Math.min(1, _turnRate * _0x5c24f7);
-    this._rotation = this.slerp2D(this._rotation, _targetRotation, _turnT);
-}
   _updateRobotJump(dt) {
+    if (!this.rotateActionActive) {
+      this.updateGroundRotation(dt);
+    }
     const dtSec = dt > 1 ? dt / 1000 : dt;
 
     const robotMiniJumpScale = this.p.isMini ? (1 / 1.2) : 1;
@@ -3431,6 +3693,9 @@ _updateWaveJump(dt) {
   }
 
   _updateSpiderJump(dt) {
+    if (!this.rotateActionActive) {
+      this.updateGroundRotation(dt);
+    }
     const playerSize = this.p.isMini ? 18 : 30;
     const _miniGrav = this.p.isMini ? 1.4 : 1;
     const _gravAmt = p * 0.6 * _miniGrav;
@@ -3667,16 +3932,22 @@ _updateWaveJump(dt) {
     const playersY = this.p.y;
     const playersLastY = this.p.lastY;
     const previousCollisionWorldY = Number.isFinite(this._lastCollisionWorldY) ? this._lastCollisionWorldY : playersLastY;
-    const gamemodeAddition = this.p.isFlying || this.p.isWave || this.p.isUfo ? 12 : 20;
+    const gamemodeAddition = this.p.isWave ? 0 : (this.p.isFlying || this.p.isUfo ? 12 : 20);
     this.p.collideTop = 0;
     this.p.collideBottom = 0;
     this.p.onCeiling = false;
     this.p.touchingRing = false;
+    this._onSlopeAngle = null;
+    this._activeSlopeObj = null;
+    this._activeSlopeAngle = null;
     let _0x30410f = false;
     let _boostedThisStep = false;
     let _teleportedThisStep = false;
     let _orbInputConsumedThisStep = false;
     let _touchingTeleportDuringRespawnIgnore = false;
+    let bestSlopeCandidate = null;
+    let bestSlopeGameObj = null;
+    const preferHighestSlopeSurface = !this.p.gravityFlipped;
     const _0x198534 = this._gameLayer.getNearbySectionObjects(pieceWidth);
     for (let gameObj of _0x198534) {
       let left = gameObj.x - gameObj.w / 2;
@@ -3845,18 +4116,33 @@ _updateWaveJump(dt) {
           if (!this._isObjectActivated(gameObj)) {
             this._setObjectActivated(gameObj, true);
             this._playPortalShine(gameObj, 2);
+            if (this.p.isBall) {
+              this.p.ballShouldRotate = true;
+              this.p.ballRotateOpposite = true;
+              this.p.ballRotation2 = 10;
+            }
             this.flipGravity(false, 0.5);
           }
         } else if (_colType === "portal_gravity_up") {
           if (!this._isObjectActivated(gameObj)) {
             this._setObjectActivated(gameObj, true);
             this._playPortalShine(gameObj, 2);
+            if (this.p.isBall) {
+              this.p.ballShouldRotate = true;
+              this.p.ballRotateOpposite = true;
+              this.p.ballRotation2 = 10;
+            }
             this.flipGravity(true, 0.5);
           }
         } else if (_colType === "portal_gravity_toggle") {
           if (!this._isObjectActivated(gameObj)) {
             this._setObjectActivated(gameObj, true);
             this._playPortalShine(gameObj, 2);
+            if (this.p.isBall) {
+              this.p.ballShouldRotate = true;
+              this.p.ballRotateOpposite = true;
+              this.p.ballRotation2 = 10;
+            }
             this.flipGravity(!this.p.gravityFlipped, 0.5);
           }
         } else if (_colType === "portal_mirror_on") {
@@ -3942,6 +4228,13 @@ _updateWaveJump(dt) {
               this.p.yVelocity = 0;
               this.p.onGround = false;
               this.p.canJump = false;
+              if (this.p.isBall) {
+                const gravityDir = this.p.gravityFlipped ? -1 : 1;
+                this.p.ballNormalRotate = this.p.mirrored ? -gravityDir : gravityDir;
+                this.p.ballShouldRotate = true;
+                this.p.ballRotateOpposite = this.p.gravityFlipped;
+                this.p.ballHitPad = true;
+              }
               this.p.isJumping = false;
               _boostedThisStep = true;
             } else {
@@ -3976,6 +4269,13 @@ _updateWaveJump(dt) {
               this.p.onGround = false;
               this.p.canJump = false;
               this.p.yVelocity = _fm * _padVel;
+              if (this.p.isBall) {
+                const gravityDir = this.p.gravityFlipped ? -1 : 1;
+                this.p.ballNormalRotate = this.p.mirrored ? -gravityDir : gravityDir;
+                this.p.ballShouldRotate = true;
+                this.p.ballRotateOpposite = this.p.gravityFlipped;
+                this.p.ballHitPad = true;
+              }
               if (_padFlip) {
                 this.flipGravity(!this.p.gravityFlipped);
                 if (_padId === 67) this._syncOtherDualGravityForBlueBoost();
@@ -4018,6 +4318,14 @@ _updateWaveJump(dt) {
                 this.p.onGround = false;
                 this.p.canJump = false;
                 this.p.isJumping = false;
+                if (this.p.isBall) {
+                  const gravityDir = this.p.gravityFlipped ? -1 : 1;
+                  this.p.ballNormalRotate = this.p.mirrored ? -gravityDir : gravityDir;
+                  this.p.ballShouldRotate = true;
+                  this.p.ballRotateOpposite = false;
+                  this.p.ballHitPad = true;
+                  this.p.ballRotation2 = 10;
+                }
                 this.runRotateAction();
                 _boostedThisStep = true;
                 this._markActivatedOrbSprites(gameObj);
@@ -4125,6 +4433,13 @@ _updateWaveJump(dt) {
                 if (_orbId === 1330) {
                   this.p.wasBoosted = false;
                 }
+                if (this.p.isBall) {
+                  const gravityDir = this.p.gravityFlipped ? -1 : 1;
+                  this.p.ballNormalRotate = this.p.mirrored ? -gravityDir : gravityDir;
+                  this.p.ballShouldRotate = true;
+                  this.p.ballRotateOpposite = true;
+                  this.p.ballRotation2 = 10;
+                }
                 this.runRotateAction();
                 _boostedThisStep = true;
                 if (_flipAfter) {
@@ -4180,8 +4495,30 @@ _updateWaveJump(dt) {
             const _hMinDist = gameObj.hitbox_radius + (this.p.isWave ? waveHitSize : playerSize);
             if (_hDistSq > _hMinDist * _hMinDist) continue;
           }
+          if (this.breakabletheblock(gameObj)) {
+            continue;
+          }
           this.killPlayer();
           return;
+        } else if (_colType === slopeType) {
+          const slopeResult = this._handleSlopeCollision(
+            gameObj, pieceWidth, playersY, playersLastY, left, right, top, bottom, playerSize, waveHitSize, gamemodeAddition
+          );
+          if (slopeResult.died) {
+            this.killPlayer();
+            return;
+          }
+          if (slopeResult.landed && slopeResult.candidate) {
+            const cand = slopeResult.candidate;
+            const isBetter = !bestSlopeCandidate || (preferHighestSlopeSurface
+              ? cand.y > bestSlopeCandidate.y
+              : cand.y < bestSlopeCandidate.y);
+            if (isBetter) {
+              bestSlopeCandidate = cand;
+              bestSlopeGameObj = gameObj;
+            }
+          }
+          continue;
         } else if (_colType === solidType) {
           let _0x146a97 = playersY - playerSize + gamemodeAddition;
           let _0x869e42 = playersLastY - playerSize + gamemodeAddition;
@@ -4206,8 +4543,13 @@ _updateWaveJump(dt) {
           const _0xLandTop = (this.p.yVelocity >= 0 || this.p.onGround) && (_0x3e7199 <= top || _0x135a9d <= top);
           const isstandingOnAPlatform = this.p.gravityFlipped ? _0xLandTop : _0xLandBot;
           if (iscolliding && !isstandingOnAPlatform) {
-            if (window.noClip) this.p.diedThisFrame = true;
-            if (window.noClip || gameObj.objid === 143) continue
+            if (window.noClip) {
+
+              continue;
+            }
+            if (this.breakabletheblock(gameObj)) {
+              continue;
+            }
             this.killPlayer();
             return;
           }
@@ -4260,8 +4602,9 @@ _updateWaveJump(dt) {
             }
             if (!this.p.gravityFlipped && (_0x3e7199 <= top || _0x135a9d <= top) && this.p.yVelocity >= 0) {
               if (iscolliding) {
-                if (window.noClip) this.p.diedThisFrame = true;
-                if (window.noClip || gameObj.objid === 143) continue;
+                if (this.breakabletheblock(gameObj)) {
+                  continue;
+                }
                 this.killPlayer();
                 return;
               }
@@ -4277,6 +4620,23 @@ _updateWaveJump(dt) {
             }
           }
         }
+      }
+    }
+    if (bestSlopeCandidate) {
+      this.p.y = bestSlopeCandidate.y;
+      this.hitGround();
+      this.p.onCeiling = !!bestSlopeCandidate.onCeiling;
+      if (bestSlopeCandidate.collideBottom !== null) this.p.collideBottom = bestSlopeCandidate.collideBottom;
+      if (bestSlopeCandidate.collideTop !== null) this.p.collideTop = bestSlopeCandidate.collideTop;
+      this._onSlopeAngle = bestSlopeCandidate.slopeAngle;
+      if (this._prevSlopeObj !== bestSlopeGameObj) {
+        this._slopeEntryX = pieceWidth;
+      }
+      this._activeSlopeObj = bestSlopeGameObj;
+      this._activeSlopeAngle = bestSlopeCandidate.slopeAngle;
+      _0x30410f = true;
+      if (!this.p.isFlying && !this.p.isWave) {
+        this._checkSnapJump(bestSlopeGameObj);
       }
     }
     if (this.p.collideTop !== 0 && this.p.collideBottom !== 0) {
@@ -4355,6 +4715,26 @@ _updateWaveJump(dt) {
     if (this._ignoreTeleportUntilClear && !_touchingTeleportDuringRespawnIgnore) {
       this._ignoreTeleportUntilClear = false;
     }
+    if (bestSlopeCandidate) {
+    this.p.y = bestSlopeCandidate.y;
+    this.hitGround();
+    this.p.onCeiling = !!bestSlopeCandidate.onCeiling;
+    if (bestSlopeCandidate.collideBottom !== null) this.p.collideBottom = bestSlopeCandidate.collideBottom;
+    if (bestSlopeCandidate.collideTop !== null) this.p.collideTop = bestSlopeCandidate.collideTop;
+    this._onSlopeAngle = bestSlopeCandidate.slopeAngle;
+    if (this._prevSlopeObj !== bestSlopeGameObj) {
+      this._slopeEntryX = pieceWidth;
+    }
+    this._activeSlopeObj = bestSlopeGameObj;
+    this._activeSlopeAngle = bestSlopeCandidate.slopeAngle;
+    _0x30410f = true;
+    if (!this.p.isFlying && !this.p.isWave) {
+    this._checkSnapJump(bestSlopeGameObj);
+    }
+  }
+    if (this._prevSlopeObj && !this._activeSlopeObj) {
+     this._applySlopeExitBounce(this._prevSlopeObj, this._prevSlopeAngle, pieceWidth);
+    }
     if (this.p.isFlying || this.p.isWave || this.p.isUfo || this.p.isSpider) {
       const _0x354b7c = this.p.y <= _0x3020c8 + _effectiveSize;
       const _0xdc296 = _0x496456 !== null && this.p.y >= _0x496456 - _effectiveSize;
@@ -4362,6 +4742,8 @@ _updateWaveJump(dt) {
         this.p.onGround = false;
       }
     }
+    this._prevSlopeObj = this._activeSlopeObj;
+    this._prevSlopeAngle = this._activeSlopeAngle;
     this._lastCollisionWorldX = pieceWidth;
     this._lastCollisionWorldY = this.p.y;
     this.p.wasUpKeyDown = this.p.upKeyDown;
@@ -4410,11 +4792,38 @@ _updateWaveJump(dt) {
         hitboxColor = 16744192;
       } else if (nearObject.type === jumpRingType) {
         hitboxColor = 16711935;
+      } else if (nearObject.type === slopeType) {
+        hitboxColor = 65535;
       }
       const xPos = isFlipped ? screenWidth - objXCenter : objXCenter;
       graphics.lineStyle(2, hitboxColor, 0.7);
       if (nearObject.hitbox_radius !== undefined && nearObject.hitbox_radius !== null) {
         graphics.strokeCircle(xPos, objYCenter, nearObject.hitbox_radius);
+      } else if (nearObject.type === slopeType && !nearObject.slopeIsFilled) {
+        const halfW = nearObject.w / 2;
+        const halfH = nearObject.h / 2;
+        const leftWorld = nearObject.x - halfW;
+        const rightWorld = nearObject.x + halfW;
+        const bboxBottom = nearObject.y - halfH;
+        const bboxTop = nearObject.y + halfH;
+        const leftSurfY = nearObject.getSlopeSurfaceY(leftWorld);
+        const rightSurfY = nearObject.getSlopeSurfaceY(rightWorld);
+        if (leftSurfY !== null && rightSurfY !== null) {
+          const solidBelow = nearObject.isSolidBelowSurface(this.p.gravityFlipped);
+          const leftIsBottom = Math.abs(leftSurfY - bboxBottom) < Math.abs(rightSurfY - bboxBottom);
+          const thirdWorldX = solidBelow ? (leftIsBottom ? rightWorld : leftWorld) : (leftIsBottom ? leftWorld : rightWorld);
+          const thirdWorldY = solidBelow ? bboxBottom : bboxTop;
+          const toScreenX = (wx) => isFlipped ? screenWidth - (wx - camX) : wx - camX;
+          const p1x = toScreenX(leftWorld), p1y = b(leftSurfY) + camY;
+          const p2x = toScreenX(rightWorld), p2y = b(rightSurfY) + camY;
+          const p3x = toScreenX(thirdWorldX), p3y = b(thirdWorldY) + camY;
+          graphics.beginPath();
+          graphics.moveTo(p1x, p1y);
+          graphics.lineTo(p2x, p2y);
+          graphics.lineTo(p3x, p3y);
+          graphics.closePath();
+          graphics.strokePath();
+        }
       } else {
         let rot = Phaser.Math.DegToRad(nearObject.rotationDegrees);
         let cos = Math.cos(rot);
@@ -4583,13 +4992,17 @@ _updateWaveJump(dt) {
     const _0x12bfe9 = _0x3a2c8e || _0x37f14a;
     const _0x3793a4 = [this._shipSpriteLayer, this._shipGlowLayer, this._shipOverlayLayer, this._shipExtraLayer];
     const _0xbd676f = [this._playerSpriteLayer, this._playerGlowLayer, this._playerOverlayLayer, this._playerExtraLayer];
-    const _0x476284 = (_0x12bfe9 && Number.isFinite(this._lastScreenX)) ? this._lastScreenX : (_0x4a45d7 - _0x3729ef._cameraX);
+    const _toEndScreenX = worldX => {
+      const screenX = worldX - _0x3729ef._cameraX;
+      return this.p.mirrored ? screenWidth - screenX : screenX;
+    };
+    const _0x476284 = (_0x12bfe9 && Number.isFinite(this._lastScreenX)) ? this._lastScreenX : _toEndScreenX(_0x4a45d7);
     const _0x1ed1ce = (_0x12bfe9 && Number.isFinite(this._lastScreenY)) ? this._lastScreenY : (b(_0x501b73) + _0x3729ef._cameraY);
     const _0x4d5f0d = _0x476284;
     const _0x3e4581 = _0x1ed1ce;
-    const _0x6f5a9d = _0x1f2e19 - _0x3729ef._cameraX;
+    const _0x6f5a9d = _toEndScreenX(_0x1f2e19);
     const _0x31cb6d = b(_0x8bc9f4) + _0x3729ef._cameraY;
-    const _0x46e2df = _0x457676 - _0x3729ef._cameraX;
+    const _0x46e2df = _toEndScreenX(_0x457676);
     const _0x23fbf2 = b(_0x3ade39) + _0x3729ef._cameraY;
     const _0x3fc5a5 = _0x11b580.map(_0x5c0e81 => {
       let _0x5cbb0a = 0;
@@ -4626,7 +5039,7 @@ _updateWaveJump(dt) {
         const spriteWidth = _0x51c4a8.val;
         const _0x2478d6 = (1 - spriteWidth) ** 3 * _0x1295ea + (1 - spriteWidth) ** 2 * 3 * spriteWidth * _0x1295ea + (1 - spriteWidth) * 3 * spriteWidth ** 2 * _0x1f2e19 + spriteWidth ** 3 * _0x457676;
         const _0x148e69 = (1 - spriteWidth) ** 3 * _0x47ae60 + (1 - spriteWidth) ** 2 * 3 * spriteWidth * _0x47ae60 + (1 - spriteWidth) * 3 * spriteWidth ** 2 * _0x8bc9f4 + spriteWidth ** 3 * _0x3ade39;
-        let _0x3d0365 = _0x2478d6 - _0x3729ef._cameraX;
+        let _0x3d0365 = _toEndScreenX(_0x2478d6);
         let _0x3790a9 = b(_0x148e69) + _0x3729ef._cameraY;
         if (_0x12bfe9) {
           _0x3d0365 = (1 - spriteWidth) ** 3 * _0x4d5f0d + (1 - spriteWidth) ** 2 * 3 * spriteWidth * _0x4d5f0d + (1 - spriteWidth) * 3 * spriteWidth ** 2 * _0x6f5a9d + spriteWidth ** 3 * _0x46e2df;
@@ -4677,6 +5090,12 @@ _updateWaveJump(dt) {
     this._endAnimating = false;
     this._lastLandObject = null;
     this._lastXOffset = 0;
+    this._prevSlopeObj = null;
+    this._prevSlopeAngle = null;
+    this._activeSlopeObj = null;
+    this._activeSlopeAngle = null;
+    this._onSlopeAngle = null;
+    this._slopeEntryX = null;
     this.stopRotation();
     this.rotateActionTime = 0;
     this._rotation = 0;

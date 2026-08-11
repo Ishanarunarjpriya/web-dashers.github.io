@@ -41,6 +41,10 @@ class PracticeMode {
       mirrored: playerState.mirrored,
       isDashing: playerState.isDashing,
       dashYVelocity: playerState.dashYVelocity,
+      ballShouldRotate: playerState.ballShouldRotate,
+      ballRotateOpposite: playerState.ballRotateOpposite,
+      ballNormalRotate: playerState.ballNormalRotate,
+      ballHitPad: playerState.ballHitPad,
       robotHold: !!playerState._robotHold,
       robotHoldTimer: playerState._robotHoldTimer || 0,
       cameraX: cameraX,
@@ -442,7 +446,7 @@ class GameScene extends Phaser.Scene {
     this._player.setCubeVisible(false);
     this._player.setShipVisible(false);
     this._player.setBallVisible(false);
-    this._logo = this.add.image(0, 100, "GJ_WebSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30);
+    this._logo = this.add.image(0, 100, "GJ_WebSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30).setScale(1.2);
     this._robLogo = this.add.image(110, 595, "GJ_WebSheet", "RobTopLogoBig_001.png").setScrollFactor(0).setDepth(30).setScale(0.525).setInteractive();
     this._makeBouncyButton(this._robLogo, 0.525, () => {
       window.open("https://geometrydash.com", "_blank");
@@ -497,7 +501,7 @@ class GameScene extends Phaser.Scene {
       color: "#ffffff",
       fontFamily: "Arial"
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(30).setAlpha(0.3);
-    this._tryMeImg = this.add.image(0, 182.5, "GJ_WebSheet", "tryMe_001.png").setScrollFactor(0).setDepth(30);
+    this._tryMeImg = this.add.image(0, 150, "GJ_MenuBeta").setScrollFactor(0).setDepth(30).setScale(0.75);
     this._downloadBtns = [];
     const _0x4fc67f = [{
       key: "downloadSteam_001",
@@ -969,6 +973,61 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       this._fitBitmapText(songAuthorText, songBoxW - 100);
       this._playOverlayObjects.push(songAuthorText);
 
+      if (lvl.customSongID && lvl.customSongID !== "0") {
+        const downloadBtnX = centerX + songBoxW / 2 - 50;
+        const downloadBtnY = songBoxY + 40;
+        const downloadBtn = this.add.image(downloadBtnX, downloadBtnY, "GJ_GameSheet03", "GJ_downloadBtn_001.png").setScrollFactor(0).setDepth(504).setInteractive();
+        this._playOverlayObjects.push(downloadBtn);
+        let isDownloading = false;
+        let abortController = null;
+        let isDownloaded = false;
+        const updateBtnState = async () => {
+          if (!downloadBtn || !downloadBtn.scene) return;
+          if (isDownloading) {
+            downloadBtn.setTexture("GJ_GameSheet03", "GJ_cancelDownloadBtn_001.png");
+          } else {
+            isDownloaded = await window.SongDB.isDownloaded(lvl.customSongID);
+            if (downloadBtn && downloadBtn.scene) {
+              downloadBtn.setTexture("GJ_GameSheet03", isDownloaded ? "GJ_trashBtn_001.png" : "GJ_downloadBtn_001.png");
+            }
+          }
+        };
+        updateBtnState();
+        this._makeBouncyButton(downloadBtn, 1, async () => {
+          if (isDownloading) {
+            if (abortController) abortController.abort();
+            isDownloading = false;
+            updateBtnState();
+            return;
+          }
+          if (isDownloaded) {
+            await window.SongDB.delete(lvl.customSongID);
+            updateBtnState();
+            return;
+          }
+          isDownloading = true;
+          updateBtnState();
+          abortController = new AbortController();
+          try {
+            const workerUrl = `https://fetchsongid.lasokar.workers.dev/?id=${encodeURIComponent(lvl.customSongID)}`;
+            const audioRes = await fetch(workerUrl, { signal: abortController.signal });
+            if (!audioRes.ok) throw new Error("Failed to download audio from worker");
+            const arrayBuf = await audioRes.arrayBuffer();
+            await window.SongDB.save(lvl.customSongID, arrayBuf, this.sound.context);
+          } catch (err) {
+            if (err.name === 'AbortError') {
+              console.log('Download cancelled.');
+            } else {
+              console.warn("Failed to download song:", err);
+            }
+          } finally {
+            isDownloading = false;
+            abortController = null;
+            updateBtnState();
+          }
+        });
+      }
+
       if (lvl.customSongID) {
         const PROXY_BASE = (window._gdProxyUrl || "").replace(/\/$/, "");
         if (!PROXY_BASE) {
@@ -987,10 +1046,17 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
               for (let i = 0; i + 1 < ngParts.length; i += 2) ngMap[ngParts[i]] = ngParts[i + 1];
 
               const artistName = (ngMap["4"] || "Unknown").trim();
+              const songName = (ngMap["2"] || "Unknown").trim();
+
               if (artistName) {
                 songAuthor = artistName;
                 songAuthorText.setText("By: " + songAuthor);
                 this._fitBitmapText(songAuthorText, songBoxW - 100);
+              }
+
+              if (songName && typeof songNameText !== "undefined" && songNameText) {
+                songNameText.setText(songName);
+                this._fitBitmapText(songTitleText, songBoxW - 100);
               }
             })
             .catch(err => {
@@ -1046,7 +1112,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         const isCustomSong = !!customSongID && customSongID !== "0";
         const offset       = parseFloat(m["45"] || "0") || 0;
 
-        window._onlineLevelId     = "online_" + lvl.id;
+        window._onlineLevelId    = "online_" + lvl.id;
         window._onlineLevelString = levelString;
         window._onlineLevelName   = lvl.name || "Online Level";
         window._onlineSongOffset  = offset;
@@ -1060,31 +1126,43 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         if (isCustomSong) {
           songKey = `ng_song_${customSongID}`;
           try {
+            const audioCtx = this.game.sound.context;
+            if (audioCtx.state === "suspended") await audioCtx.resume();
             const ngRes = await fetch(`${PROXY_BASE}/getGJSongInfo.php`, {
               method: "POST",
               headers: { "Content-Type": "application/x-www-form-urlencoded" },
               body: `songID=${customSongID}&secret=Wmfd2893gb7`
             });
             const ngText = ngRes.ok ? await ngRes.text() : "-1";
+            let ngMap = {};
             if (ngText && ngText !== "-1") {
               const ngParts = ngText.split("~|~");
-              const ngMap = {};
               for (let i = 0; i + 1 < ngParts.length; i += 2) ngMap[ngParts[i]] = ngParts[i + 1];
-              const songUrl = decodeURIComponent((ngMap["10"] || "").trim());
               songArtist = (ngMap["4"] || "Unknown").replace(/:$/, "").trim();
               songTitle  = (ngMap["2"] || "").trim() || null;
-              if (songUrl) {
-                const audioCtx = this.game.sound.context;
-                if (audioCtx.state === "suspended") await audioCtx.resume();
-                const proxiedUrl = songUrl.includes("geometrydashfiles.b-cdn.net")
-                  ? songUrl
-                  : `${PROXY_BASE}/audio-proxy?url=${encodeURIComponent(songUrl)}`;
-                const audioRes = await fetch(proxiedUrl);
-                const arrayBuf = await audioRes.arrayBuffer();
-                const decoded = await audioCtx.decodeAudioData(arrayBuf);
-                window._onlineSongBuffer = decoded;
-                window._onlineSongKey = songKey;
+            }
+            let arrayBuf = await window.SongDB.load(customSongID);
+            if (!arrayBuf) {
+              const workerUrl = `https://fetchsongid.lasokar.workers.dev/?id=${encodeURIComponent(customSongID)}`;
+              let audioRes = await fetch(workerUrl);
+              if (!audioRes.ok) {
+                const songUrl = decodeURIComponent((ngMap["10"] || "").trim());
+                if (songUrl) {
+                  const proxiedUrl = songUrl.includes("geometrydashfiles.b-cdn.net")
+                    ? songUrl
+                    : `${PROXY_BASE}/audio-proxy?url=${encodeURIComponent(songUrl)}`;
+                  audioRes = await fetch(proxiedUrl);
+                }
               }
+              if (audioRes && audioRes.ok) {
+                arrayBuf = await audioRes.arrayBuffer();
+                await window.SongDB.save(customSongID, arrayBuf);
+              }
+            }
+            if (arrayBuf) {
+              const decoded = await audioCtx.decodeAudioData(arrayBuf);
+              window._onlineSongBuffer = decoded;
+              window._onlineSongKey = songKey;
             }
           } catch (err) {
             console.warn("Failed to load custom song for online level", err);
@@ -3791,8 +3869,8 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       const rRaw = (colorHex >> 16) & 0xff;
       const gRaw = (colorHex >> 8)  & 0xff;
       const bRaw =  colorHex        & 0xff;
-      const topMul = isEveryEnd ? 0.30 : 0.65;
-      const botMul = isEveryEnd ? 0.18 : 0.42;
+      const topMul = isEveryEnd ? 0.48 : 0.92;
+      const botMul = isEveryEnd ? 0.18 : 0.52;
       const steps = 60;
       for (let i = 0; i < steps; i++) {
         const t = i / (steps - 1);
@@ -3823,9 +3901,9 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     const tileW = groundFrame ? groundFrame.width : 1012;
     const numTiles = Math.ceil(sw / tileW) + 2;
     const groundTintHex = (colorHex) => {
-      const r = Math.round(((colorHex >> 16) & 0xff) * 0.45);
-      const g = Math.round(((colorHex >> 8)  & 0xff) * 0.45);
-      const b = Math.round(( colorHex        & 0xff) * 0.45);
+      const r = Math.round(((colorHex >> 16) & 0xff) * 0.72);
+      const g = Math.round(((colorHex >> 8)  & 0xff) * 0.72);
+      const b = Math.round(( colorHex        & 0xff) * 0.72);
       return (r << 16) | (g << 8) | b;
     };
     const staticGroundTiles = [];
@@ -3904,8 +3982,8 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       const r = Math.round(((colorHex >> 16) & 0xff) * mul);
       const g = Math.round(((colorHex >> 8)  & 0xff) * mul);
       const b = Math.round(( colorHex        & 0xff) * mul);
-      cardBg.fillStyle((r << 16) | (g << 8) | b, 0.92);
-      cardBg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
+      cardBg.fillStyle((r << 16) | (g << 8) | b, 0.75);
+      cardBg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 18);
     };
     drawCardBg(bgHex, isEveryEnd(window.currentlevel[2]), isComingSoonPage());
     cardBounceContainer.add(cardBg);
@@ -4122,7 +4200,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       }
       let iconDisplayW = (iconFrame ? iconFrame.width : 80) * finalIconScale;
       const iconDisplayH = (iconFrame ? iconFrame.height : 80) * finalIconScale;
-      const nameLabel = this.add.bitmapText(0, 0, "bigFont", lvl[1], 50)
+      const nameLabel = this.add.bitmapText(0, 0, "bigFont", lvl[1], 60)
         .setScrollFactor(0).setDepth(155).setOrigin(0, 0.5);
       const gap = 25;
       const naturalGroupW = iconDisplayW + gap + nameLabel.width;
@@ -4136,7 +4214,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       const scaledGap = gap * groupScale;
       const totalW = scaledIconW + scaledGap + scaledLabelW;
       const groupStartX = cardX - totalW / 2;
-      demonIcon.setScale(finalIconScale * groupScale);
+      demonIcon.setScale((finalIconScale * groupScale)+0.1);
       demonIcon.setPosition(groupStartX + scaledIconW / 2 - cardX, 0);
       nameLabel.setScale(groupScale);
       nameLabel.setPosition(groupStartX + scaledIconW + scaledGap - cardX, 0);
@@ -4158,7 +4236,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       barObjs.push(modeLabel);
       cardContainer.add(modeLabel);
       const barBg = this.add.graphics().setScrollFactor(0).setDepth(154);
-      barBg.fillStyle(0x000000, 0.6);
+      barBg.fillStyle(0x000000, 0.5);
       barBg.fillRoundedRect(barX0, barAreaY - barH2 / 2, barW2, barH2, barH2 / 2);
       barObjs.push(barBg);
       cardContainer.add(barBg);
@@ -4192,7 +4270,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       barObjs.push(practModeLabel);
       cardContainer.add(practModeLabel);
       const practBarBg = this.add.graphics().setScrollFactor(0).setDepth(154);
-      practBarBg.fillStyle(0x000000, 0.6);
+      practBarBg.fillStyle(0x000000, 0.5);
       practBarBg.fillRoundedRect(barX0, practBarAreaY - barH2 / 2, barW2, barH2, barH2 / 2);
       barObjs.push(practBarBg);
       cardContainer.add(practBarBg);
@@ -5957,7 +6035,7 @@ _closeSettingsPopup() {
     bounceContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._closeInfoPopup());
-    const title = this.add.bitmapText(0, -124, "bigFont", "Credits", 30).setOrigin(0.5, 0.5);
+    const title = this.add.bitmapText(0, -124, "bigFont", "Credits", 42).setOrigin(0.5, 0.6);
     bounceContainer.add(title);
     const scrollAreaW = 420;
     const scrollAreaH = 230;
@@ -5977,7 +6055,9 @@ _closeSettingsPopup() {
       { text: "bog, Lasokar, AntiMatter,", scale: 0.7, font: "goldFont" },
       { text: "arbstro, and aloaf", scale: 0.7, font: "goldFont" },
       { text: "Contributors:", scale: 0.9, font: "bigFont" },
-      { text: "t0nchi7 and Itzar.", scale: 0.7, font: "goldFont" },
+      { text: "t0nchi7, Itzar, zainojdaf,", scale: 0.7, font: "goldFont" },
+      { text: "Ameth7st, and CoraBitz", scale: 0.7, font: "goldFont" },
+      { text: "we love you cora <3", scale: 0.4, font: "bigFont" },
       { text: "© 2026 RobTop Games. All rights reserved.", scale: 0.4, font: "Arial", color: 0x000000 },
     ]; 
     let yPos = 0;
@@ -6375,7 +6455,7 @@ _closeSettingsPopup() {
     bounceContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._closeUpdateLogPopup());
-    const title = this.add.bitmapText(0, -124, "bigFont", "BETA (EXPECT BUGS)", 30).setOrigin(0.5, 0.5).setTint(0xff6666);
+    const title = this.add.bitmapText(0, -124, "bigFont", "BETA (EXPECT BUGS)", 33).setOrigin(0.5, 0.55).setTint(0xff6666);
     bounceContainer.add(title);
     const scrollAreaW = 420;
     const scrollAreaH = 230;
@@ -6391,19 +6471,28 @@ _closeSettingsPopup() {
       0xff6666
       0xff9944
       0xaaddff - fun messages from me :)
-      0xff00ff - pink dev entries
+      0xFF008E - pink dev entries
     */
     const updateEntries = [
-      { text: "Update Log", scale: 0.85, font: "goldFont" },
-      { text: "- TELEPORT PORTALS!!!", scale: 0.7 },
-      { text: "- Fixed rotate triggers", scale: 0.7 },
-      { text: "- Fixed move trigger unit cap", scale: 0.7 },
-      { text: "- Fixed G2 not rendering", scale: 0.7 },
-      { text: "- Fingerdash is beatable now", scale: 0.7 },
-      { text: "- Fixed spider/robot portals", scale: 0.7 },
-      { text: "- Fix wave trail (credit 2 pinkdev)", scale: 0.7 },
-      { text: "There's probably more but I forgot", color: 0x808080, scale: 0.5 },
-      { text: "- Lasokar", scale: 0.7, color: 0x00e676 },
+      { text: "Update Log", scale: 1, font: "goldFont" },
+      { text: "Rotation for deco and saws", scale: 0.75, },
+      { text: "Particlesheet added <3", scale: 0.75, },
+      { text: "Better ball rotation ", scale: 0.75, },
+      { text: "Fixed ball noclip too.", scale: 0.75, },
+      { text: "Editor placing offsets", scale: 0.75, },
+      { text: "Pulsing rods reworked a lil", scale: 0.75, },
+      { text: "Breakable blocks break now.", scale: 0.75, },
+      { text: "Fixed objects not showing in editor", scale: 0.65, },
+      { text: "I call it, the QOD update.", scale: 0.6, color: 0x708090},
+      { text: "quality of dash", scale: 0.5, color: 0x708090},
+      { text: "im like, 90% sure at least ONE feature broke", scale: 0.4, color: 0x708090},
+      { text: "Slopes (very buggy)", scale: 0.75, color: 0xff9944 },
+      { text: "THEY WILL BE FIXED-", scale: 0.75, },
+      { text: "OVER TIME.", scale: 0.75, },
+      { text: "Slopes work in imported-", scale: 0.75, },
+      { text: "levels now (thanks lasokadadyy)", scale: 0.7, },
+      { text: "Fixed SOME objects", scale: 0.75 },
+      { text: "-pinkdih", scale: 0.65, color: 0xFF008E }
     ]; 
     let yPos = 0;
     const lineItems = [];
@@ -7266,7 +7355,7 @@ _closeSettingsPopup() {
       this._copyrightText.x = screenWidth - 20;
     }
     if (this._tryMeImg) {
-      this._tryMeImg.x = _0x1e5db8 + 175;
+      this._tryMeImg.x = _0x1e5db8 + 260;
     }
     if (this._menuGlitter) {
       this._menuGlitter.x = _0x1e5db8;
@@ -7401,6 +7490,36 @@ _closeSettingsPopup() {
       playerSpeed = SpeedPortal.FOUR_TIMES;
     }
     this._level.resetObjects();
+    this._level._setRodframe?.(this._levelAttempts);
+    try {
+      if (this._level && Array.isArray(this._level._sawSprites)) {
+        const groups = new Map();
+        for (const s of this._level._sawSprites) {
+          if (!s) continue;
+          const id = s._eeObjectId ?? null;
+          if (!groups.has(id)) groups.set(id, []);
+          groups.get(id).push(s);
+        }
+        for (const [id, arr] of groups.entries()) {
+          if (!arr || !arr.length) continue;
+          const sample = arr[0];
+          const base = Math.abs(sample._Sawrotationspeed) || 0.0034;
+          const sign = (Math.random() < 0.5) ? -1 : 1;
+          const newSpeed = sign * (base + (Math.random() * base * 0.2 - base * 0.1));
+          const newPhase = Math.random() * Math.PI * 2;
+          const newAmp = sample._SawRandom2 ?? (base * 0.12);
+          const baseAngle = Math.random() * Math.PI * 2;
+          for (const spr of arr) {
+            if (!spr) continue;
+            spr._Sawrotationspeed = newSpeed;
+            spr._SawRandom1 = newPhase;
+            spr._SawRandom2 = newAmp;
+            const offset = typeof spr._Sawoffset === "number" ? spr._Sawoffset : 0;
+            spr.rotation = baseAngle + offset;
+          }
+        }
+      }
+    } catch (e) { }
     this._level.shiftGroundTiles(this._cameraX - _0x2ba78a);
     this._level.resetGroundState();
     this._level.resetColorTriggers();
@@ -7514,6 +7633,7 @@ _closeSettingsPopup() {
       this._macroBot?.clearPlayback();
     }
     this._level._updateGlowVisibility?.();
+    this._updateCameraY(0, true);
   }
   _getSongOffsetForWorldX(worldX) {
     const startX = Number.isFinite(Number(worldX)) ? Number(worldX) : 0;
@@ -7547,6 +7667,7 @@ _closeSettingsPopup() {
     this._slideIn = false;
     this._playerWorldX = checkpoint.x;
     this._cameraX = checkpoint.cameraX;
+    this._cameraY = checkpoint.cameraY;
     this._cameraXRef._v = this._cameraX;
     this._state.y = checkpoint.y;
     this._state.yVelocity = checkpoint.yVelocity;
@@ -7574,6 +7695,10 @@ _closeSettingsPopup() {
     this._state.mirrored = checkpoint.mirrored;
     this._state.isDashing = checkpoint.isDashing;
     this._state.dashYVelocity = checkpoint.dashYVelocity;
+    this._state.ballShouldRotate = checkpoint.ballShouldRotate || false;
+    this._state.ballRotateOpposite = checkpoint.ballRotateOpposite || false;
+    this._state.ballNormalRotate = checkpoint.ballNormalRotate || 1;
+    this._state.ballHitPad = checkpoint.ballHitPad || false;
     this._state._robotHold = !!checkpoint.robotHold;
     this._state._robotHoldTimer = checkpoint.robotHoldTimer || 0;
     this._player.reset();
@@ -7730,6 +7855,7 @@ _closeSettingsPopup() {
     }
     if (this._player2?._hitboxGraphics) this._player2._hitboxGraphics.clear();
 
+    this._deltaBuffer = 0;
     this._physicsFrame = checkpoint.physicsFrame;
     if (this._macroBot?.recording == true){
       this._macroBot?.rollbackRecording(this._physicsFrame);
@@ -7877,7 +8003,7 @@ _closeSettingsPopup() {
     }
     this._bg.tilePositionY = tileY;
   }
-  _updateCameraY(_0xc7c517) {
+  _updateCameraY(_0xc7c517, snap = false) {
     let explosionPiece = this._cameraY;
     let _0x1a27be = explosionPiece;
     if (this._level.flyCameraTarget !== null) {
@@ -7886,25 +8012,27 @@ _closeSettingsPopup() {
       let _0x2bc8fb = this._state.y;
       let _0x259956 = 140;
       let _0x5025ec = 80;
-      let _0x1f7976 = explosionPiece - o + 320;
+      let _0x1f7976 = explosionPiece - (typeof o !== 'undefined' ? o : 0) + 320;
       if (this._state.gravityFlipped) {
         if (_0x2bc8fb > _0x1f7976 + _0x5025ec) {
-          _0x1a27be = _0x2bc8fb - 320 - _0x5025ec + o;
+          _0x1a27be = _0x2bc8fb - 320 - _0x5025ec + (typeof o !== 'undefined' ? o : 0);
         } else if (_0x2bc8fb < _0x1f7976 - _0x259956) {
-          _0x1a27be = _0x2bc8fb - 320 + _0x259956 + o;
+          _0x1a27be = _0x2bc8fb - 320 + _0x259956 + (typeof o !== 'undefined' ? o : 0);
         }
       } else {
         if (_0x2bc8fb > _0x1f7976 + _0x259956) {
-          _0x1a27be = _0x2bc8fb - 320 - _0x259956 + o;
+          _0x1a27be = _0x2bc8fb - 320 - _0x259956 + (typeof o !== 'undefined' ? o : 0);
         } else if (_0x2bc8fb < _0x1f7976 - _0x5025ec) {
-          _0x1a27be = _0x2bc8fb - 320 + _0x5025ec + o;
+          _0x1a27be = _0x2bc8fb - 320 + _0x5025ec + (typeof o !== 'undefined' ? o : 0);
         }
       }
     }
     if (_0x1a27be < 0) {
       _0x1a27be = 0;
     }
-    if (_0xc7c517 !== 0) {
+    if (snap) {
+      this._cameraY = _0x1a27be;
+    } else if (_0xc7c517 !== 0) {
       explosionPiece += (_0x1a27be - explosionPiece) / (10 / _0xc7c517);
       if (explosionPiece < 0) {
         explosionPiece = 0;
@@ -8226,7 +8354,7 @@ _closeSettingsPopup() {
     }
     if (this._state.isDead) {
       if (!this._deathSoundPlayed) {
-        if (!this._practicedMode.practiceMode) {
+        if (!this._audio._shouldUsePracticeSong()) {
           this._audio.stopMusic();
         }
         this._audio.playEffect("explode_11", {
@@ -8303,9 +8431,23 @@ _closeSettingsPopup() {
       }
     }
     if (this._level && this._level._sawSprites) {
-      const sawRotation = deltaTime * 0.003;
+      const sawTimer = (window._animTimer || 0) / 1000;
       for (let _saw of this._level._sawSprites) {
-        if (_saw && _saw.active) _saw.rotation += sawRotation;
+        if (!_saw || !_saw.active || !_saw.visible) continue;
+        const baseSpeed = _saw._Sawrotationspeed ?? 0.0034;
+        let sawRotationSpeed = baseSpeed;
+        if (_saw._SawRandom1 !== undefined) {
+          sawRotationSpeed += Math.sin(sawTimer + _saw._SawRandom1) * (_saw._SawRandom2 || 0);
+        }
+        _saw.rotation += deltaTime * sawRotationSpeed;
+      }
+    }
+    if (this._level && this._level._orbSprites) {
+      const gravityGuideRotation = (this._state?.gravityFlipped ? Math.PI : 0);
+      for (let _oSpr of this._level._orbSprites) {
+        if (!_oSpr || !_oSpr.active || !_oSpr._eeOrbGuide || !_oSpr._OrbGuideGrav) continue;
+        const baseRotation = Number.isFinite(_oSpr._OrbGuideRotation) ? _oSpr._OrbGuideRotation : 0;
+        _oSpr.rotation = baseRotation + gravityGuideRotation;
       }
     }
     this._level.updateAudioScale(this._audio.getMeteringValue());
@@ -8406,6 +8548,9 @@ _closeSettingsPopup() {
         const _secondaryBallInputGravity = this._state2.isBall && this._state2.upKeyPressed;
         const _secondarySpiderInputGravity = this._state2.isSpider && this._state2.upKeyPressed;
         this._player2.updateJump(verticalDelta);
+        if (!this._state2.upKeyPressed) this._state.upKeyPressed = false;
+        if (!this._state2.queuedHold) this._state.queuedHold = false;
+        if (this._state2._orbActivationConsumedForPress) this._state._orbActivationConsumedForPress = true;
         this._state2.y += this._state2.yVelocity * verticalDelta;
         this._player2.checkCollisions(this._playerWorldX - centerX - horizontalDelta);
         if (this._isDual && !this._state2.isDead && this._getDualSharedSignature(this._state2) !== _secondarySharedBefore) {

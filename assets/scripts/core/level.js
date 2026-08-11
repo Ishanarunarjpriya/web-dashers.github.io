@@ -29,8 +29,37 @@ class Collider {
     if (this.slopeFlipY) angleDeg = -angleDeg;
     return angleDeg * Math.PI / 180;
   }
+  usesFloorLanding(gravityFlipped) {
+    return this.isSolidBelowSurface(gravityFlipped);
+  }
+  isSolidBelowSurface(gravityFlipped) {
+    return this.slopeFlipY === gravityFlipped;
+  }
+  isSlopeSolidAt(worldX, worldY, gravityFlipped = false) {
+    if (this.type !== slopeType) return false;
+    const halfW = this.w / 2;
+    const halfH = this.h / 2;
+    const left = this.x - halfW;
+    const right = this.x + halfW;
+    const bboxBottom = this.y - halfH;
+    const bboxTop = this.y + halfH;
+    if (worldX < left || worldX > right || worldY < bboxBottom || worldY > bboxTop) {
+      return false;
+    }
+    if (this.slopeIsFilled) {
+      return true;
+    }
+    const surfaceY = this.getSlopeSurfaceY(worldX);
+    if (surfaceY === null) return false;
+    return this.isSolidBelowSurface(gravityFlipped) ? worldY < surfaceY : worldY > surfaceY;
+  }
+  getSlopeBackWallSide(gravityFlipped = false) {
+    let leftWall = this.slopeDir > 0;
+    if (!this.isSolidBelowSurface(gravityFlipped)) leftWall = !leftWall;
+    return leftWall ? "left" : "right";
+  }
 }
-
+ 
 function _decodeTextObjectString(value) {
   if (value === undefined || value === null) return "";
   const raw = String(value);
@@ -47,14 +76,14 @@ function _decodeTextObjectString(value) {
     return raw;
   }
 }
-
+ 
 function _encodeTextObjectString(value) {
   const bytes = new TextEncoder().encode(String(value ?? ""));
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-
+ 
 function parseObject(objectString) {
   let objectParts = objectString.split(",");
   let objectData = {};
@@ -94,7 +123,6 @@ function parseObject(objectString) {
       color1: parseInt(objectData[21] || "0", 10),
       color2: parseInt(objectData[22] || "0", 10),
       text: _decodeTextObjectString(objectData[31] ?? objectData["31"] ?? ""),
-      // Following are for startpos
       gameMode: parseInt(objectData['kA2'] ?? '0', 10),
       miniMode: parseInt(objectData['kA3'] ?? '0', 10),
       speed: parseInt(objectData['kA4'] ?? '0', 10),
@@ -106,22 +134,27 @@ function parseObject(objectString) {
   }
 }
 function parseLevel(levelString) {
-  let decompressedString = function (compressedString) {
-    let getBase64 = function (compressedString) {
-      let lessCluttered = compressedString.replace(/-/g, "+").replace(/_/g, "/");
-      while (lessCluttered.length % 4 != 0) {
-        lessCluttered += "=";
+  let decompressedString = null;
+  try{
+    decompressedString = function (compressedString) {
+      let getBase64 = function (compressedString) {
+        let lessCluttered = compressedString.replace(/-/g, "+").replace(/_/g, "/");
+        while (lessCluttered.length % 4 != 0) {
+          lessCluttered += "=";
+        }
+        return lessCluttered;
+      }(compressedString.trim());
+      let decryptedString = atob(getBase64);
+      let rawBytes = new Uint8Array(decryptedString.length);
+      for (let byteStr = 0; byteStr < decryptedString.length; byteStr++) {
+        rawBytes[byteStr] = decryptedString.charCodeAt(byteStr);
       }
-      return lessCluttered;
-    }(compressedString.trim());
-    let decryptedString = atob(getBase64);
-    let rawBytes = new Uint8Array(decryptedString.length);
-    for (let byteStr = 0; byteStr < decryptedString.length; byteStr++) {
-      rawBytes[byteStr] = decryptedString.charCodeAt(byteStr);
-    }
-    let inflatedBytes = pako.inflate(rawBytes);
-    return new TextDecoder().decode(inflatedBytes);
-  }(levelString);
+      let inflatedBytes = pako.inflate(rawBytes);
+      return new TextDecoder().decode(inflatedBytes);
+    }(levelString);
+  } catch(InvalidCharacterError) {
+    decompressedString = levelString;
+  }
   let stringParts = decompressedString.split(";");
   let settings = stringParts.length > 0 ? stringParts[0] : "";
   let objects = [];
@@ -138,26 +171,26 @@ function parseLevel(levelString) {
     settings: settings,
     objects: objects
   };
-
+ 
 }
 function getBackgroundTextureIndex(backgroundSetting) {
   const parsedBackgroundId = parseInt(String(backgroundSetting ?? "1"), 10);
   const gdBackgroundId = isNaN(parsedBackgroundId) || parsedBackgroundId <= 1 ? 1 : parsedBackgroundId;
   return gdBackgroundId - 1;
 }
-
+ 
 function getBackgroundDisplayId(backgroundSetting) {
   const parsedBackgroundId = parseInt(String(backgroundSetting ?? "1"), 10);
   const gdBackgroundId = isNaN(parsedBackgroundId) || parsedBackgroundId <= 1 ? 1 : parsedBackgroundId;
   return String(gdBackgroundId).padStart(2, "0");
 }
-
+ 
 function getGroundTextureId(groundSetting) {
   const parsedGroundId = parseInt(String(groundSetting ?? "1"), 10);
   const textureIndex = isNaN(parsedGroundId) || parsedGroundId <= 1 ? 0 : parsedGroundId - 1;
   return String(textureIndex).padStart(2, "0");
 }
-
+ 
 const solidType = "solid";
 const hazardType = "hazard";
 const decoType = "deco";
@@ -168,9 +201,8 @@ const ringType = "ring";
 const triggerType = "trigger";
 const speedType = "speed";
 const slopeType = "slope";
-// ── Slope ID registry ──
 const _SLOPE_DATA = {
-  289:{gw:1,gh:1,angle:45,sq:false},291:{gw:2,gh:1,angle:22.5,sq:false},
+  289:{gw:1,gh:1,angle:45,sq:false,dir:1}, 291:{gw:2,gh:1,angle:22.5,sq:false,dir:-1},
   294:{gw:1,gh:1,angle:45,sq:false},295:{gw:2,gh:1,angle:22.5,sq:false},
   296:{gw:0.367,gh:0.433,angle:45,sq:true},297:{gw:0.967,gh:0.45,angle:45,sq:true},
   299:{gw:1,gh:1,angle:45,sq:false},301:{gw:2,gh:1,angle:22.5,sq:false},
@@ -277,6 +309,66 @@ const _SLOPE_DATA = {
   1901:{gw:0.367,gh:0.433,angle:45,sq:true},1902:{gw:0.967,gh:0.45,angle:45,sq:true},
   1906:{gw:1,gh:1,angle:45,sq:false},1907:{gw:2,gh:1,angle:22.5,sq:false},
 };
+ 
+function _resolveSlopeDir(objectDef, flipX, objId) {
+  const frames = [];
+  if (objectDef) {
+    if (objectDef.frame) frames.push(objectDef.frame);
+    if (objectDef.children) {
+      for (const child of objectDef.children) {
+        if (child.frame) frames.push(child.frame);
+      }
+    }
+  }
+  const text = frames.join(" ");
+  let dir = 1;
+
+  /*
+  if (/slope_02[^0-9]|slope_04|slope_06|slope_02[bcd]_|pit_0[14]_slope_02|plank_01_slope_02|slope_square_02|slope_square_04|slope_square_05/.test(text)) {
+    dir = -1;
+  }
+  */
+  
+  if (flipX) dir = -dir;
+  return dir;
+}
+ 
+function _resolveSlopeOrientation(objectDef, levelObj) {
+  let dir = _resolveSlopeDir(objectDef, levelObj.flipX, levelObj.id);
+  let flipY = !!levelObj.flipY;
+  const rot90 = Math.round((((levelObj.rot || 0) % 360) + 360) % 360 / 90) % 4;
+  if (rot90 === 1) {
+    const nextDir = flipY ? 1 : -1;
+    flipY = dir < 0;
+    dir = nextDir;
+  } else if (rot90 === 2) {
+    dir = -dir;
+    flipY = !flipY;
+  } else if (rot90 === 3) {
+    const nextDir = flipY ? -1 : 1;
+    flipY = !(dir < 0);
+    dir = nextDir;
+  }
+  return { dir, flipY };
+}
+ 
+function _createSlopeCollider(levelObj, objectDef, worldX, worldY) {
+  const slopeData = _SLOPE_DATA[levelObj.id];
+  if (!slopeData) return null;
+  const rot90 = Math.round((((levelObj.rot || 0) % 360) + 360) % 360 / 90) % 4;
+  const steep = rot90 === 1 || rot90 === 3;
+  const w = (steep ? slopeData.gh : slopeData.gw) * a;
+  const h = (steep ? slopeData.gw : slopeData.gh) * a;
+  const collider = new Collider(slopeType, worldX, worldY, w, h, 0);
+  collider.objid = levelObj.id;
+  collider.slopeAngleDeg = steep ? (90 - slopeData.angle) : slopeData.angle;
+  const { dir, flipY } = _resolveSlopeOrientation(objectDef, levelObj);
+  collider.slopeDir = dir;
+  collider.slopeFlipY = flipY;
+  collider.slopeIsFilled = slopeData.sq;
+  return collider;
+}
+
 const flyPortal = "fly";
 const cubePortal = "cube";
 const portalWaveType = "portal_wave";
@@ -477,6 +569,8 @@ window.LevelObject = class LevelObject {
     this._colorChannelSprites = {};
     this._ground2Tint = 0xffffff;
     this._groupSprites = {};
+    this._resetobject = {};
+    this._resetremovedobject = {};
     this._groupOffsets = {};
     this._groupOpacity = {};
     this._groupColliders = {};
@@ -495,6 +589,73 @@ window.LevelObject = class LevelObject {
   }
   getStartPositions() {
       return this._startPositions.slice().sort((a, b) => a.x - b.x);
+  }
+
+  _breakblock(linkedObjectId) {
+    if (!Number.isInteger(linkedObjectId)) return false;
+
+    const spriteList = this.objectSprites?.[linkedObjectId];
+    if (Array.isArray(spriteList)) {
+      for (const sprite of [...spriteList]) {
+        if (!sprite) continue;
+        if (typeof sprite.destroy === "function") {
+          sprite.destroy();
+        }
+      }
+      delete this.objectSprites[linkedObjectId];
+    }
+
+    const collidersToRemove = [];
+    for (const collider of this.objects || []) {
+      if (collider && collider._eeObjectId === linkedObjectId) {
+        collidersToRemove.push(collider);
+      }
+    }
+
+    for (const collider of collidersToRemove) {
+      if (!collider) continue;
+      const sectionIndex = Number.isInteger(collider._eeCollisionSectionIndex) ? collider._eeCollisionSectionIndex : null;
+      if (sectionIndex !== null && Array.isArray(this._collisionSections?.[sectionIndex])) {
+        const section = this._collisionSections[sectionIndex];
+        const idx = section.indexOf(collider);
+        if (idx !== -1) section.splice(idx, 1);
+      }
+
+      const objectsIdx = this.objects.indexOf(collider);
+      if (objectsIdx !== -1) this.objects.splice(objectsIdx, 1);
+
+      const groupIds = Array.isArray(collider._eeGroups) ? collider._eeGroups : [];
+      for (const groupId of groupIds) {
+        const groupColliders = this._groupColliders?.[groupId];
+        if (Array.isArray(groupColliders)) {
+          const groupIdx = groupColliders.indexOf(collider);
+          if (groupIdx !== -1) groupColliders.splice(groupIdx, 1);
+          if (!groupColliders.length) delete this._groupColliders[groupId];
+        }
+      }
+    }
+
+    const restoreLevelObj = this._resetobject?.[linkedObjectId];
+    if (restoreLevelObj) {
+      this._resetremovedobject[linkedObjectId] = restoreLevelObj;
+      delete this._resetobject[linkedObjectId];
+    }
+
+    return true;
+  }
+
+  _resetremovedobjects() {
+    if (!this._resetremovedobject || !Object.keys(this._resetremovedobject).length) {
+      return;
+    }
+
+    const entries = Object.entries(this._resetremovedobject);
+    this._resetremovedobject = {};
+    for (const [, levelObj] of entries) {
+      if (!levelObj) continue;
+      if (parseInt(levelObj.id ?? 0, 10) !== 143) continue;
+      this._spawnObject(levelObj);
+    }
   }
 
   getSongOffsetForX(targetX, options = {}) {
@@ -1131,6 +1292,7 @@ window.LevelObject = class LevelObject {
         sprite.setTint(colorData.tint);
       } else if (colorData.black) {
         sprite.setTint(0);
+        sprite._isBlack = true;
       }
     }
   }
@@ -1190,6 +1352,7 @@ window.LevelObject = class LevelObject {
         glowSprite.setTint(colorData.tint);
       } else if (colorData?.black) {
         glowSprite.setTint(0);
+        glowSprite._isBlack = true;
       }
       glowSprite.setBlendMode(Phaser.BlendModes.ADD);
       glowSprite.setAlpha(this._getGlowAlphaMultiplier());
@@ -1747,6 +1910,7 @@ window.LevelObject = class LevelObject {
   const linkedObjectId = this._nextObjectId++;
   levelObj._eeObjectId = linkedObjectId;
   if (levelObj._raw) delete levelObj._raw._eeObjectId;
+  this._resetobject[linkedObjectId] = levelObj;
   let hasCollisionEntry = false;
 
   const worldX = levelObj.x * 2;
@@ -1760,6 +1924,12 @@ window.LevelObject = class LevelObject {
   if (objectDef && objectDef.randomFrames) {
     frameName = objectDef.randomFrames[Math.floor(Math.random() * objectDef.randomFrames.length)];
   }
+
+  const objectId = parseInt(levelObj.id ?? 0, 10);
+  const sawObjectIds = new Set([183, 184, 185, 186, 187, 188, 397, 398, 399, 678, 679, 680, 740, 741, 742, 1619, 1620, 1708, 1709, 1710, 1734, 1735, 1736, 85, 86, 87, 97, 137, 138, 139, 154, 155, 156, 180, 181, 182, 1019, 1020, 1021, 1058, 1059, 1060, 1061, 1752, 396, 395, 222, 223, 224, 997, 998, 999, 1000, 1055, 1056, 1057, 394, 375, 376, 377, 378]);
+  const fastSawObjectIds = new Set([186, 187, 188, 89, 88, 98, 183, 185, 184, 397, 398, 399, 678, 679, 680, 740, 741, 742, 1619, 1620, 1705, 1706, 1707, 1708, 1709, 1710, 1734, 1735, 1736]);
+  const isSawObjectId = sawObjectIds.has(objectId);
+  const isFastSawObjectId = fastSawObjectIds.has(objectId);
 
   const registerObjectSprite = (spr) => {
     if (!spr) return;
@@ -1790,11 +1960,15 @@ window.LevelObject = class LevelObject {
     const col2 = levelObj.color2 || (objectDef.default_detail_color_channel !== undefined ? objectDef.default_detail_color_channel : -1);
     const canColor = objectDef.can_color !== false;
 
-    const registerColor = (spr, ch) => {
-      if (ch > 0 && canColor && spr && !spr._isSaw) {
+    const registerColor = (spr, ch, forceParentColor = false) => {
+      if (!spr || spr._isBlack) return;
+      if (ch > 0 && canColor && spr) {
         spr._eeColorChannel = ch;
         if (!this._colorChannelSprites[ch]) this._colorChannelSprites[ch] = [];
         this._colorChannelSprites[ch].push(spr);
+        if (forceParentColor && spr._SawColor === undefined) {
+          spr._SawColor = ch;
+        }
       }
     };
 
@@ -1863,7 +2037,20 @@ window.LevelObject = class LevelObject {
       sprite._eeBaseY = baseY;
       sprite._eeZDepth = objZDepth;
       sprite._eeOrigAlpha = 1;
-      registerColor(sprite, col1);
+      if (isSawObjectId) {
+        sprite._isSaw = true;
+        const isDecorativeSaw = objectDef?.type === decoType && frameName?.includes("sawblade");
+        if (sprite._Sawrotationspeed === undefined) {
+          const base = isFastSawObjectId ? 0.0063 : 0.0032;
+          const boostedBase = isDecorativeSaw ? base * 1.15 : base;
+          sprite._Sawrotationspeed = (Math.random() < 0.5 ? -1 : 1) * (boostedBase + (Math.random() * boostedBase * 0.2 - boostedBase * 0.1));
+        }
+        sprite._SawRandom1 = Math.random() * Math.PI * 2;
+        sprite._SawRandom2 = isDecorativeSaw ? (isFastSawObjectId ? 0.00075 : 0.00045) : (isFastSawObjectId ? 0.00065 : 0.0004);
+        sprite._Sawoffset = 0;
+        this._sawSprites.push(sprite);
+      }
+      registerColor(sprite, col1, !!isSawObjectId);
       this._addToSection(sprite);
       registerObjectSprite(sprite);
 
@@ -1887,6 +2074,7 @@ window.LevelObject = class LevelObject {
         this._orbSprites.push(sprite);
         if (frameName.indexOf("dropRing") >= 0 || frameName.indexOf("gravJumpRing") >= 0) {
           sprite._isSaw = true;
+          if (isFastSawObjectId) sprite._Sawrotationspeed = 0.0065;
           this._sawSprites.push(sprite);
         }
 
@@ -1907,15 +2095,38 @@ window.LevelObject = class LevelObject {
 
       if (frameName.indexOf("sawblade") >= 0) {
         sprite.setTint(0x000000);
+        sprite._isBlack = true;
         sprite._isSaw = true;
+        const isDecorativeSaw = objectDef?.type === decoType && frameName?.includes("sawblade");
+        if (isFastSawObjectId || isDecorativeSaw) {
+          const targetSpeed = (isFastSawObjectId ? 0.0065 : 0.0034) * (isDecorativeSaw ? 1.15 : 1);
+          sprite._Sawrotationspeed = targetSpeed;
+        }
         this._sawSprites.push(sprite);
 
         const sawMirror = addImageToScene(scene, spriteWorldX, baseY, frameName);
-        if (sawMirror) {
+          if (sawMirror) {
           this._applyVisualProps(scene, sawMirror, frameName, levelObj, objectDef);
           sawMirror.setTint(0x000000);
+          sawMirror._isBlack = true;
           sawMirror.rotation = sprite.rotation + Math.PI;
           sawMirror._isSaw = true;
+          sawMirror._eeZDepth = sprite._eeZDepth;
+          sawMirror._eeLayer = sprite._eeLayer ?? 1;
+          sawMirror._eeBehindParent = true;
+          if (sprite._Sawrotationspeed !== undefined) {
+            sawMirror._Sawrotationspeed = sprite._Sawrotationspeed;
+            sawMirror._SawRandom1 = sprite._SawRandom1;
+            sawMirror._SawRandom2 = sprite._SawRandom2;
+            sawMirror._Sawoffset = sawMirror.rotation - sprite.rotation;
+          } else {
+            const base = isFastSawObjectId ? 0.0065 : 0.0034;
+            const boostedBase = isDecorativeSaw ? base * 1.15 : base;
+            sawMirror._Sawrotationspeed = (Math.random() < 0.5 ? -1 : 1) * (boostedBase + (Math.random() * boostedBase * 0.2 - boostedBase * 0.1));
+            sawMirror._SawRandom1 = Math.random() * Math.PI * 2;
+            sawMirror._SawRandom2 = isDecorativeSaw ? (isFastSawObjectId ? 0.00075 : 0.00045) : (isFastSawObjectId ? 0.0007 : 0.0004);
+          }
+          registerColor(sawMirror, col1, true);
           sawMirror._eeWorldX = worldX;
           sawMirror._eeBaseY = baseY;
           this._addToSection(sawMirror);
@@ -1951,6 +2162,11 @@ window.LevelObject = class LevelObject {
 
     if (objectDef.children) {
       for (const childDef of objectDef.children) {
+        const isEditorGuideChild = !!(window.isEditor && (childDef.portalGuide || childDef.orbGuide));
+        if (isEditorGuideChild) {
+          continue;
+        }
+
         let childDx = childDef.dx || 0;
         let childDy = childDef.dy || 0;
 
@@ -1975,12 +2191,31 @@ window.LevelObject = class LevelObject {
         const childSprite = addImageToScene(scene, spriteWorldX + childDx, baseY + childDy, childDef.frame);
 
         if (childSprite) {
-          const childObjectData = (childDef.frame === "portal_01_extra_2_001.png" || childDef.frame === "portal_02_extra_2_001.png")
-            ? { ...levelObj, rot: 0 }
-            : levelObj;
+          const flipX = !!levelObj.flipX;
+          const flipY = !!levelObj.flipY;
+          let childrotated = (levelObj.rot || 0) + (childDef.rot || 0);
+
+          if (flipX !== flipY) {
+            childrotated = (levelObj.rot || 0) - (childDef.rot || 0);
+          }
+
+          if (childDef.frame === "portal_01_extra_2_001.png" || childDef.frame === "portal_02_extra_2_001.png") {
+            childrotated = 0;
+          } 
+          else if (childDef.frame === "blockOutline_14new_001.png" || childDef.frame === "blockOutline_15new_001.png") {
+            let childRotOffset = 0;
+            if (childDef.frame === "blockOutline_14new_001.png") childRotOffset = -45;
+            else if (childDef.frame === "blockOutline_15new_001.png") childRotOffset = -26.565;
+            if (flipX) childRotOffset = -childRotOffset;
+            if (flipY) childRotOffset = -childRotOffset;
+            childrotated += childRotOffset;
+          }
+
+          const childObjectData = { ...levelObj, rot: childrotated };
           this._applyVisualProps(scene, childSprite, childDef.frame, childObjectData, childDef);
-          const showguide = childDef.portalGuide ? (window.enablePortalGuide !== false) : true;
-          const showguide2 = childDef.orbGuide ? (window.enableOrbGuide !== false) : true;
+          
+          const showguide = childDef.portalGuide ? (!window.isEditor && window.enablePortalGuide !== false) : true;
+          const showguide2 = childDef.orbGuide ? (!window.isEditor && window.enableOrbGuide !== false) : true;
           childSprite.setVisible(showguide && showguide2);
           if (childDef.portalGuide) childSprite._eePortalGuide = true;
           if (childDef.orbGuide) childSprite._eeOrbGuide = true;
@@ -1992,7 +2227,11 @@ window.LevelObject = class LevelObject {
             this._audioScaleSprites.push(childSprite);
           }
 
-           const bortalstuff = childDef.portalGuide ? { ...childDef, _portalFront: true } : childDef;
+          const bortalstuff = childDef.portalGuide ? { ...childDef, _portalFront: true } : childDef;
+          if (objectId === 15 || objectId === 16 || objectId === 17) {
+            childSprite._rodballchild = true;
+            childSprite._Rodobjectid = objectId;
+          }
           if ((childDef.z !== undefined ? childDef.z : -1) < 0) {
             childSprite._eeLayer = 1;
             childSprite._eeBehindParent = true;
@@ -2005,7 +2244,17 @@ window.LevelObject = class LevelObject {
           const guidelayer = childDef.portalGuide ? 0 : ((childDef.z !== undefined ? childDef.z : -1));
           childSprite._eeZDepth = objZDepth + guidelayer;
           childSprite._eeOrigAlpha = 1;
-          registerColor(childSprite, col1);
+          if (isSawObjectId) {
+            childSprite._isSaw = true;
+              if (sprite._Sawrotationspeed !== undefined) {
+                childSprite._Sawrotationspeed = sprite._Sawrotationspeed;
+                childSprite._SawRandom1 = sprite._SawRandom1;
+                childSprite._SawRandom2 = sprite._SawRandom2;
+              }
+            childSprite._Sawoffset = childSprite.rotation - (sprite.rotation || 0);
+            this._sawSprites.push(childSprite);
+          }
+          registerColor(childSprite, col1, !!isSawObjectId);
           this._addToSection(childSprite);
           registerToGroups(childSprite, childWorldX, childBaseY);
           registerObjectSprite(childSprite);
@@ -2013,20 +2262,41 @@ window.LevelObject = class LevelObject {
           if (objectDef && objectDef.type === ringType && childDef.orbGuide) {
             childSprite.setScale(0.75);
             childSprite._orbId = levelObj.id;
+            childSprite._eeOrbGuide = true;
+            childSprite._OrbGuideGrav = !!(childDef.frame && /grav(?:ring|JumpRing)/.test(childDef.frame));
+            childSprite._OrbGuideRotation = childSprite.rotation || 0;
             this._orbSprites.push(childSprite);
           }
 
           if (frameName.indexOf("sawblade") >= 0) {
             childSprite.setTint(0x000000);
+            childSprite._isBlack = true;
             childSprite._isSaw = true;
+            if (sprite._Sawrotationspeed !== undefined) {
+              childSprite._Sawrotationspeed = sprite._Sawrotationspeed;
+              childSprite._SawRandom1 = sprite._SawRandom1;
+              childSprite._SawRandom2 = sprite._SawRandom2;
+            }
             this._sawSprites.push(childSprite);
 
             const childMirror = addImageToScene(scene, spriteWorldX + childDx, baseY + childDy, childDef.frame);
-            if (childMirror) {
-              this._applyVisualProps(scene, childMirror, childDef.frame, levelObj, childDef);
+              if (childMirror) {
+              this._applyVisualProps(scene, childMirror, childDef.frame, childObjectData, childDef);
               childMirror.setTint(0x000000);
+              childMirror._isBlack = true;
               childMirror.rotation = childSprite.rotation + Math.PI;
               childMirror._isSaw = true;
+              childMirror._eeZDepth = childSprite._eeZDepth;
+              childMirror._eeLayer = childSprite._eeLayer ?? 1;
+              childMirror._eeBehindParent = true;
+              if (childSprite._Sawrotationspeed !== undefined) {
+                childMirror._Sawrotationspeed = childSprite._Sawrotationspeed;
+                childMirror._SawRandom1 = childSprite._SawRandom1;
+                childMirror._SawRandom2 = childSprite._SawRandom2;
+              }
+              childMirror._Sawoffset = childMirror.rotation - childSprite.rotation;
+              
+              registerColor(childMirror, col1, true);
               childMirror._eeWorldX = childWorldX;
               childMirror._eeBaseY = childBaseY;
               this._addToSection(childMirror);
@@ -2137,7 +2407,13 @@ window.LevelObject = class LevelObject {
       }
     };
 
-    if (objectDef.type === solidType && objectDef.gridW > 0 && objectDef.gridH > 0) {
+    const slopeCollider = _createSlopeCollider(levelObj, objectDef, worldX, worldY);
+    if (slopeCollider) {
+      registerCollider(slopeCollider);
+      this.objects.push(slopeCollider);
+      hasCollisionEntry = true;
+      this._addCollisionToSection(slopeCollider);
+    } else if (objectDef.type === solidType && objectDef.gridW > 0 && objectDef.gridH > 0) {
       const w = objectDef.gridW * a;
       const h = objectDef.gridH * a;
       const collider = new Collider(solidType, worldX, worldY, w, h, levelObj.rot || 0);
@@ -3381,8 +3657,15 @@ window.LevelObject = class LevelObject {
       for (const spr of sprites) {
         if (!spr || !spr.active) continue;
         if (spr._eePulsed) continue;
-        if (spr._isSaw) continue;
         if (spr._eeAudioScale) continue;
+        if (spr._isSaw && spr._SawColor !== undefined) {
+          const sawHex = colorManager.getHex(spr._SawColor);
+          spr.setTint(sawHex);
+          continue;
+        }
+        if (spr._isSaw) continue;
+        // Respect explicit black tint requests
+        if (spr._isBlack) continue;
         spr.setTint(hex);
       }
     }
@@ -3398,8 +3681,8 @@ window.LevelObject = class LevelObject {
         for (let _0x13e116 = 0; _0x13e116 < _0x14a035.length; _0x13e116++) {
           const visMinSection = _0x14a035[_0x13e116];
           visMinSection._eeActive = false;
-          const showtheportalthing = !visMinSection._eePortalGuide || (window.enablePortalGuide !== false);
-          const showtheorbthing = !visMinSection._eeOrbGuide || (window.enableOrbGuide !== false);
+          const showtheportalthing = !visMinSection._eePortalGuide || (!window.isEditor && window.enablePortalGuide !== false);
+          const showtheorbthing = !visMinSection._eeOrbGuide || (!window.isEditor && window.enableOrbGuide !== false);
           visMinSection.visible = showtheportalthing && showtheorbthing;
           visMinSection.x = visMinSection._eeWorldX;
           visMinSection.y = visMinSection._eeBaseY;
@@ -3540,14 +3823,17 @@ window.LevelObject = class LevelObject {
     }
   }
   updateAudioScale(_0x337bf7) {
+    const _meterValue = Number.isFinite(Number(_0x337bf7)) ? Number(_0x337bf7) : 0;
+    const _maxaudioScale = 1.5; //added this cuz god DAMN whe the game lags they get big.
     for (let _0x24afdb of this._audioScaleSprites) {
-      _0x24afdb.setScale(_0x337bf7);
+      const _targetScale = Math.min(_maxaudioScale, Math.max(0, _meterValue));
+      _0x24afdb.setScale(_targetScale);
     }
     const _now = Date.now();
     const _clickMult = window.orbClickScale || 2.0;
     const _shrinkMs = window.orbClickShrinkTime || 250;
     for (let _0xOrbSpr of this._orbSprites) {
-      const _baseScale = 0.75 + _0x337bf7 * 0.15;
+      const _baseScale = Math.min(_maxaudioScale, 0.75 + _meterValue * 0.15);
       if (_0xOrbSpr._hitTime) {
         const _elapsed = _now - _0xOrbSpr._hitTime;
         if (_elapsed < 80) {
@@ -3570,7 +3856,35 @@ window.LevelObject = class LevelObject {
     this._visMinSec = -1;
     this._visMaxSec = -1;
   }
+  _setRodframe(attemptNumber = 1) {
+    const frames = ["rod_ball_01_001.png", "rod_ball_02_001.png", "rod_ball_03_001.png"];
+    const step = Math.max(0, ((Number(attemptNumber) || 1) - 1) % frames.length);
+    const objectFrameMap = {
+      15: frames[step],
+      16: frames[(step + 1) % frames.length],
+      17: frames[(step + 2) % frames.length]
+    };
+
+    for (const spriteList of this.objectSprites || []) {
+      if (!Array.isArray(spriteList)) continue;
+      for (const sprite of spriteList) {
+        if (!sprite || !sprite._rodballchild || sprite._Rodobjectid === undefined) continue;
+        const frameName = objectFrameMap[sprite._Rodobjectid];
+        if (!frameName) continue;
+        const frameInfo = typeof getAtlasFrame === "function" ? getAtlasFrame(this._scene, frameName) : null;
+        if (frameInfo) {
+          sprite.setTexture(frameInfo.atlas, frameInfo.frame);
+        } else if (this._scene?.textures?.exists?.(frameName)) {
+          sprite.setTexture(frameName);
+        } else {
+          continue;
+        }
+        sprite._rodcurrentframe = frameName;
+      }
+    }
+  }
   resetObjects() {
+    this._resetremovedobjects();
     for (let _0x3d473e of this.objects) {
       if (!_0x3d473e) {
         continue;
