@@ -283,7 +283,7 @@ class BootScene extends Phaser.Scene {
       this.load.atlas("GJ_GameSheet04", "assets/sheets/GJ_GameSheet04.png", "assets/sheets/GJ_GameSheet04.json");
       this.load.image("GJ_GameSheet04_uhd_src", "assets/sheets/GJ_GameSheet04-uhd-packed.png");
       this.load.json("GJ_GameSheet04_uhd_frames", "assets/sheets/GJ_GameSheet04-uhd-converted.json");
-      this.load.json("_uhdUpgradedManifest", "assets/sheets/_uhd_upgraded_manifest.json");
+      this.load.json("_uhdUpgradedManifest", "assets/sheets/uhd_upgraded_manifest.json");
       this.load.atlas("GJ_GameSheetEditor", "assets/sheets/GJ_GameSheetEditor.png", "assets/sheets/GJ_GameSheetEditor.json");
       this.load.atlas("GJ_GameSheetGlow", "assets/sheets/GJ_GameSheetGlow.png", "assets/sheets/GJ_GameSheetGlow.json");
       this.load.atlas("GJ_GameSheetIcons", "assets/sheets/GJ_GameSheetIcons.png", "assets/sheets/GJ_GameSheetIcons.json");
