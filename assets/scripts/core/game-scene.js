@@ -699,7 +699,8 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
             this._openSavedLevelsScene();
           }, () => true);
         } else {
-          btn.setTint(0x666666);
+          btn.postFX.addColorMatrix().grayscale(1);
+          btn.setTint(0xafafaf);
         }
         this._creatorOverlayObjects.push(btn);
       });
