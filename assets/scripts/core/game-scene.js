@@ -583,7 +583,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       this._openLevelSelect();
     }, () => this._menuActive && !this._playBtnPressed && !this._levelSelectOverlay);
     // creator stuff
-    this._creatorBtn = this.add.image(0, 0, "GJ_GameSheet04", "GJ_creatorBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive().setScale(0.75);
+    this._creatorBtn = this.add.image(0, 0, "GJ_GameSheet04", "GJ_creatorBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive().setScale(1);
     this._creatorOverlay = null;
     this._creatorOverlayObjects = null;
 
@@ -1325,7 +1325,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
             const songTxt = this.add.bitmapText(songIcon.x + 22, infoY, "bigFont", level.song, 18).setOrigin(0, 0.5);
             const statusIcon = this.add.image(tableX + 380, infoY, "GJ_GameSheet03", "GJ_infoIcon_001.png").setScale(0.65);
             const songTxtMaxW = Math.max(20, (statusIcon.x - 25) - songTxt.x);
-            songTxt.setScale(0.75);
+            songTxt.setScale(1);
             if (songTxt.width > songTxtMaxW) {
                 songTxt.setScale(songTxtMaxW / songTxt.width);
             }
@@ -1820,7 +1820,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         const songLabel = this.add.bitmapText(centerX - 115, footerY, "bigFont", level.song, 29).setOrigin(0, 0.5).setDepth(152);
         const statusIcon = this.add.image(centerX + 200, footerY, "GJ_GameSheet03", "GJ_infoIcon_001.png").setScale(1).setDepth(152);
         const songLabelMaxW = Math.max(40, (statusIcon.x - 30) - songLabel.x);
-        songLabel.setScale(0.75);
+        songLabel.setScale(1);
         if (songLabel.width > songLabelMaxW) {
             songLabel.setScale(songLabelMaxW / songLabel.width);
         }
@@ -2527,7 +2527,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       this._openCreatorMenu();
     }, () => this._menuActive && !this._levelSelectOverlay);
       //icon stufff
-    this._iconBtn = this.add.image(0, 0, "GJ_GameSheet03", "GJ_garageBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive().setScale(0.75);
+    this._iconBtn = this.add.image(0, 0, "GJ_GameSheet03", "GJ_garageBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive().setScale(1);
     this._iconBtnSelected = false;
     this._makeBouncyButton(this._iconBtn, 1, () => {
       this._openIconSelector();
@@ -4099,7 +4099,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
             
             this.input.enabled = false;
             this.tweens.killTweensOf(cardBounceContainer, "scale");
-            cardBounceContainer.setScale(0.75);
+            cardBounceContainer.setScale(1);
 
             const lvl = window.currentlevel; 
             const songID = lvl[0];
@@ -4144,7 +4144,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       cardContentObjs.length = 0;
       if (isComingSoonPage()) {
         this.tweens.killTweensOf(cardBounceContainer, "scale");
-        cardBounceContainer.setScale(0.75);
+        cardBounceContainer.setScale(1);
         const comingSoonLabel = this.add.bitmapText(0, 0, "bigFont", "Coming Soon!", 56)
           .setScrollFactor(0).setDepth(155).setOrigin(0.5, 0.5);
         comingSoonLabel.setScale(Math.min(1, (cardW - 40) / comingSoonLabel.width));
@@ -6404,7 +6404,7 @@ _closeSettingsPopup() {
     if (!nextGroup._pressed) return;
     nextGroup._pressed = false;
     this.tweens.killTweensOf(nextGroup);
-    nextGroup.setScale(0.75);
+    nextGroup.setScale(1);
 
     if (currentPage >= TOTAL_PAGES - 1) {
       this._closeHowToPlayPopup();
@@ -9860,7 +9860,7 @@ _applyMirrorEffect() {
     panelContainer.add(cornerBL);
     panelContainer.add(cornerBR);
 
-    const titleImg = this.add.image(0, -halfH + 76, "GJ_GameSheet03", "rewardsLabel_001.png").setOrigin(0.5, 0.4).setScale(0.75);
+    const titleImg = this.add.image(0, -halfH + 76, "GJ_GameSheet03", "rewardsLabel_001.png").setOrigin(0.5, 0.4).setScale(1);
     panelContainer.add(titleImg);
 
     const chestY = 0;
@@ -10468,7 +10468,7 @@ _applyMirrorEffect() {
   }
 
   _fitBitmapText(textObj, maxWidth, minScale = 0.3) {
-    textObj.setScale(0.75);
+    textObj.setScale(1);
     if (textObj.width > maxWidth) {
       textObj.setScale(Math.max(minScale, maxWidth / textObj.width));
     }
@@ -10787,11 +10787,11 @@ _applyMirrorEffect() {
       refreshBtn.setVisible(false);
       pageLbl.setVisible(false);
       this.tweens.killTweensOf(prevBtn, "scale");
-      prevBtn.setScale(0.75);
+      prevBtn.setScale(1);
       prevBtn._pressed = false;
       prevBtn.setVisible(false);
       this.tweens.killTweensOf(nextBtn, "scale");
-      nextBtn.setScale(0.75);
+      nextBtn.setScale(1);
       nextBtn._pressed = false;
       nextBtn.setVisible(false);
 
