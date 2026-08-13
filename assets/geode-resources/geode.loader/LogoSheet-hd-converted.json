@@ -1,0 +1,215 @@
+{
+  "frames": {
+    "logo-glow.png": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 187,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 2,
+        "y": 1,
+        "w": 187,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 190,
+        "h": 190
+      }
+    },
+    "geode-logo-alternate.png": {
+      "frame": {
+        "x": 191,
+        "y": 2,
+        "w": 168,
+        "h": 168
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 168,
+        "h": 168
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 168
+      }
+    },
+    "sapphire-logo.png": {
+      "frame": {
+        "x": 361,
+        "y": 2,
+        "w": 168,
+        "h": 168
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 168,
+        "h": 168
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 168
+      }
+    },
+    "geode-logo.png": {
+      "frame": {
+        "x": 531,
+        "y": 2,
+        "w": 166,
+        "h": 166
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 1,
+        "y": 1,
+        "w": 166,
+        "h": 166
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 168
+      }
+    },
+    "logo-base.png": {
+      "frame": {
+        "x": 699,
+        "y": 2,
+        "w": 166,
+        "h": 166
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 1,
+        "y": 1,
+        "w": 166,
+        "h": 166
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 168
+      }
+    },
+    "geode-logo-color.png": {
+      "frame": {
+        "x": 867,
+        "y": 2,
+        "w": 118,
+        "h": 118
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 118,
+        "h": 118
+      },
+      "sourceSize": {
+        "w": 118,
+        "h": 118
+      }
+    },
+    "sapphire-logo-outline-gold.png": {
+      "frame": {
+        "x": 987,
+        "y": 2,
+        "w": 57,
+        "h": 66
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 57,
+        "h": 66
+      },
+      "sourceSize": {
+        "w": 57,
+        "h": 66
+      }
+    },
+    "geode-logo-outline.png": {
+      "frame": {
+        "x": 1046,
+        "y": 2,
+        "w": 64,
+        "h": 65
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 65
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 65
+      }
+    },
+    "geode-circle.png": {
+      "frame": {
+        "x": 1112,
+        "y": 2,
+        "w": 64,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 64
+      }
+    },
+    "geode-logo-outline-gold.png": {
+      "frame": {
+        "x": 1178,
+        "y": 2,
+        "w": 64,
+        "h": 63
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 64,
+        "h": 63
+      },
+      "sourceSize": {
+        "w": 64,
+        "h": 63
+      }
+    }
+  },
+  "meta": {
+    "app": "plist2json-converter",
+    "version": "1.0",
+    "image": "LogoSheet-hd-packed.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 2048,
+      "h": 193
+    },
+    "scale": 1
+  }
+}

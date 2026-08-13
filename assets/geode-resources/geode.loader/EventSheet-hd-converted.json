@@ -1,0 +1,135 @@
+{
+  "frames": {
+    "modtober24-popup.png": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 863,
+        "h": 570
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 863,
+        "h": 570
+      },
+      "sourceSize": {
+        "w": 863,
+        "h": 570
+      }
+    },
+    "modtober25-popup.png": {
+      "frame": {
+        "x": 867,
+        "y": 2,
+        "w": 863,
+        "h": 570
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 863,
+        "h": 570
+      },
+      "sourceSize": {
+        "w": 863,
+        "h": 570
+      }
+    },
+    "modtober24-banner-2.png": {
+      "frame": {
+        "x": 2,
+        "y": 574,
+        "w": 795,
+        "h": 74
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 795,
+        "h": 74
+      },
+      "sourceSize": {
+        "w": 795,
+        "h": 74
+      }
+    },
+    "modtober25-banner-2.png": {
+      "frame": {
+        "x": 799,
+        "y": 574,
+        "w": 795,
+        "h": 74
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 795,
+        "h": 74
+      },
+      "sourceSize": {
+        "w": 795,
+        "h": 74
+      }
+    },
+    "modtober25-banner.png": {
+      "frame": {
+        "x": 2,
+        "y": 650,
+        "w": 795,
+        "h": 74
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 795,
+        "h": 74
+      },
+      "sourceSize": {
+        "w": 795,
+        "h": 74
+      }
+    },
+    "modtober24-banner.png": {
+      "frame": {
+        "x": 799,
+        "y": 650,
+        "w": 788,
+        "h": 67
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 788,
+        "h": 67
+      },
+      "sourceSize": {
+        "w": 788,
+        "h": 67
+      }
+    }
+  },
+  "meta": {
+    "app": "plist2json-converter",
+    "version": "1.0",
+    "image": "EventSheet-hd-packed.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 2048,
+      "h": 726
+    },
+    "scale": 1
+  }
+}
