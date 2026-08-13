@@ -446,7 +446,7 @@ class GameScene extends Phaser.Scene {
     this._player.setCubeVisible(false);
     this._player.setShipVisible(false);
     this._player.setBallVisible(false);
-    this._logo = this.add.image(0, 104, "GJ_LaunchSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30).setScale(0.5);
+    this._logo = this.add.image(0, 104, "GJ_LaunchSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30).setScale(0.65);
     this._robLogo = this.add.image(110, 595, "GJ_WebSheet", "RobTopLogoBig_001.png").setScrollFactor(0).setDepth(30).setScale(0.525).setInteractive();
     this._makeBouncyButton(this._robLogo, 0.525, () => {
       window.open("https://geometrydash.com", "_blank");
