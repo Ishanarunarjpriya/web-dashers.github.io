@@ -1,0 +1,16 @@
+{
+  "frames": {
+    "GJ_logo_001.png": {
+      "frame": { "x": 15, "y": 15, "w": 1701, "h": 193 },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": { "x": 0, "y": 0, "w": 1701, "h": 193 },
+      "sourceSize": { "w": 1701, "h": 193 }
+    }
+  },
+  "meta": {
+    "image": "GJ_LaunchSheet-uhd-packed.png",
+    "size": { "w": 1716, "h": 208 },
+    "scale": 1
+  }
+}

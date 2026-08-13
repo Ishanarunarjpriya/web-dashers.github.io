@@ -446,7 +446,7 @@ class GameScene extends Phaser.Scene {
     this._player.setCubeVisible(false);
     this._player.setShipVisible(false);
     this._player.setBallVisible(false);
-    this._logo = this.add.image(0, 100, "GJ_WebSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30).setScale(1.2);
+    this._logo = this.add.image(0, 104, "GJ_LaunchSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30).setScale(0.5);
     this._robLogo = this.add.image(110, 595, "GJ_WebSheet", "RobTopLogoBig_001.png").setScrollFactor(0).setDepth(30).setScale(0.525).setInteractive();
     this._makeBouncyButton(this._robLogo, 0.525, () => {
       window.open("https://geometrydash.com", "_blank");
@@ -496,28 +496,12 @@ class GameScene extends Phaser.Scene {
     return icon;
   });
 
-    this._copyrightText = this.add.text(0, 625, "© 2026 RobTop Games · geometrydash.com", {
-      fontSize: "14px",
-      color: "#ffffff",
-      fontFamily: "Arial"
-    }).setOrigin(1, 1).setScrollFactor(0).setDepth(30).setAlpha(0.3);
     this._tryMeImg = this.add.image(0, 150, "GJ_MenuBeta").setScrollFactor(0).setDepth(30).setScale(0.75);
-    this._downloadBtns = [];
-    const _0x4fc67f = [{
-      key: "downloadSteam_001",
-      url: "https://github.com/web-dashers/web-dashers.github.io"
-    },
-    {
-      key: "downloadApple_001",
-      url: "https://discord.gg/TfEzAVWPSJ"
-    }];
-    for (let _0xfeaf5c = 0; _0xfeaf5c < _0x4fc67f.length; _0xfeaf5c++) {
-      const _0x1ce2a6 = _0x4fc67f[_0xfeaf5c];
-      const _0x6bf69f = 1 / 1.5;
-      const _0x1d293f = this.add.image(0, 0, "GJ_WebSheet", _0x1ce2a6.key + ".png").setScrollFactor(0).setDepth(30).setScale(_0x6bf69f).setInteractive();
-      this._makeBouncyButton(_0x1d293f, _0x6bf69f, () => window.open(_0x1ce2a6.url, "_blank"), () => this._menuActive);
-      this._downloadBtns.push(_0x1d293f);
-    }
+    this._menuMoreGamesBtn = this.add.image(screenWidth - 90, 550, "GJ_GameSheet04", "GJ_moreGamesBtn_001.png").setScrollFactor(0).setDepth(30).setScale(1.0).setInteractive();
+    this._expandHitArea(this._menuMoreGamesBtn, 1);
+    this._makeBouncyButton(this._menuMoreGamesBtn, 1.0, () => {
+      this._showRobTopGamesScreen();
+    }, () => this._menuActive && !this._robTopGamesLayerInternal);
     const _0x28fa5b = this.scale.isFullscreen;
 this._menuFsBtn = this.add.image(33, 33, "GJ_WebSheet", _0x28fa5b ? "toggleFullscreenOff_001.png" : "toggleFullscreenOn_001.png").setScrollFactor(0).setDepth(30).setScale(0.64).setAlpha(0.8).setTint(Phaser.Display.Color.GetColor(255, 255, 255)).setInteractive();
     this._expandHitArea(this._menuFsBtn, 1.5);
@@ -537,25 +521,35 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     this._makeBouncyButton(this._menuUpdateLogBtn, 0.64, () => {
       this._buildUpdateLogPopup();
     }, () => this._menuActive && !this._updateLogPopup);
-    this._menuSettingsBtn = this.add.image(centerX + 92, screenHeight - 90, "GJ_GameSheet03", "GJ_optionsBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
+    this._menuSettingsBtn = this.add.image(centerX + 37, screenHeight - 90, "GJ_GameSheet03", "GJ_optionsBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
     this._expandHitArea(this._menuSettingsBtn, 1);
     this._makeBouncyButton(this._menuSettingsBtn, 1, () => {
       this._showSettingsScreen();
     }, () => this._menuActive && !this._settingsPopup);
-    this._menuStatsBtn = this.add.image(centerX + 202, screenHeight - 90, "GJ_GameSheet03", "GJ_statsBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
+    this._menuStatsBtn = this.add.image(centerX + 148, screenHeight - 90, "GJ_GameSheet03", "GJ_statsBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
     this._expandHitArea(this._menuStatsBtn, 1);
     this._makeBouncyButton(this._menuStatsBtn, 1, () => {
       this._showStatsScreen();
     }, () => this._menuActive);
-    this._menuAchievementsBtn = this.add.image(centerX - 12, screenHeight - 90, "GJ_GameSheet03", "GJ_achBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive().setTint(0x666666);
+    this._menuAchievementsBtn = this.add.image(centerX - 75, screenHeight - 90, "GJ_GameSheet03", "GJ_achBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
     this._expandHitArea(this._menuAchievementsBtn, 1);
     this._makeBouncyButton(this._menuAchievementsBtn, 1, () => {
-    }, () => this._menuActive);
-    this._menuNewgroundsBtn = this.add.image(centerX + 312, screenHeight - 90, "GJ_GameSheet03", "GJ_ngBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
+      if (!this._achievementsPopup) this._showAchievementsScreen();
+    }, () => this._menuActive && !this._achievementsPopup);
+    this._menuNewgroundsBtn = this.add.image(centerX + 259, screenHeight - 90, "GJ_GameSheet03", "GJ_ngBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
     this._expandHitArea(this._menuNewgroundsBtn, 1);
     this._makeBouncyButton(this._menuNewgroundsBtn, 1, () => {
       this._buildNewgroundsPopup();
     }, () => this._menuActive && !this._newgroundsPopup);
+    this._menuGeodeBtn = this.add.image(centerX + 374, screenHeight - 90, "geodeBlankSheet_uhd", "baseCircle_Big_Green.png").setScrollFactor(0).setDepth(30).setScale(100 / 213).setInteractive();
+    this._expandHitArea(this._menuGeodeBtn, 1);
+    this._makeBouncyButton(this._menuGeodeBtn, 100 / 213, () => {
+    }, () => this._menuActive);
+    this._menuDailyChestBtn = this.add.image(screenWidth - 80, screenHeight / 2 - 40, "GJ_GameSheet03", "GJ_dailyRewardBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
+    this._expandHitArea(this._menuDailyChestBtn, 1);
+    this._makeBouncyButton(this._menuDailyChestBtn, 1, () => {
+      this._showDailyRewardScreen();
+    }, () => this._menuActive && !this._dailyRewardLayerInternal);
     this._menuGlitter = this.add.particles(0, 0, "GJ_WebSheet", {
       frame: "square.png",
       speed: 0,
@@ -699,8 +693,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
             this._openSavedLevelsScene();
           }, () => true);
         } else {
-          btn.postFX.addColorMatrix().grayscale(1);
-          btn.setTint(0xafafaf);
+          btn.setTexture(this._getGrayscaleFrameKey("GJ_GameSheet04", frame));
         }
         this._creatorOverlayObjects.push(btn);
       });
@@ -3451,16 +3444,16 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     this._positionMenuItems();
     //icon stuff sequel
     if (this._iconBtn) {
-  this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 85 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
+  this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 75 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
   this.tweens.killTweensOf(this._iconBtn, "y");
-  this._iconBtn.y = 320;
+  this._iconBtn.y = 300;
   if (this._chrSelDecor) this._chrSelDecor.destroy();
   this._chrSelDecor = this.add.image(this._iconBtn.x - 110, this._iconBtn.y - (this._iconBtn.height * this._iconBtn.scaleY) / 2 + 125, "GJ_GameSheet03", "GJ_chrSel_001.png").setScrollFactor(0).setDepth(31);
 }
     if (this._creatorBtn) {
-  this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 85 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
+  this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 75 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
   this.tweens.killTweensOf(this._creatorBtn, "y");
-  this._creatorBtn.y = 320;
+  this._creatorBtn.y = 300;
   if (this._lvlEditDecor) this._lvlEditDecor.destroy();
   this._lvlEditDecor = this.add.image(this._creatorBtn.x + 110, this._creatorBtn.y - (this._creatorBtn.height * this._creatorBtn.scaleY) / 2 + 125, "GJ_GameSheet03", "GJ_lvlEdit_001.png").setScrollFactor(0).setDepth(31);
 }
@@ -3600,6 +3593,16 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         }
         return;
       }
+      if (this._robTopGamesLayerOverlay) {
+        if (!this._robTopGamesScreenClosing) {
+          this._hideRobTopGamesScreen();
+        }
+        return;
+      }
+      if (this._dailyRewardLayerInternal) {
+        this._hideDailyRewardScreen();
+        return;
+      }
       if (this._infoPopup) {
         this._infoPopup.destroy();
         this._infoPopup = null;
@@ -3636,6 +3639,10 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       }
       if (this._statsLayerOverlay) {
         this._hideStatsScreen();
+        return;
+      }
+      if (this._achievementsPopup) {
+        this._hideAchievementsScreen();
         return;
       }
       if (this._paused) {
@@ -6084,26 +6091,14 @@ _closeSettingsPopup() {
     const totalContentH = yPos;
     const maxScrollDown = Math.max(0, totalContentH - scrollAreaH + 16);
     const maskGraphics = this.add.graphics();
-    const maskShape = this.add.graphics();
-    maskShape.fillStyle(0xffffff, 1);
-    const updateMask = () => {
-      if (!bounceContainer || !bounceContainer.active) return;
-      const wx = xPos + bounceContainer.x - xPos;
-      const s = bounceContainer.scaleX;
-      const bwx = xPos;
-      const bwy = popupHeight;
-      maskShape.clear();
-      maskShape.fillStyle(0xffffff, 1);
-      maskShape.fillRect(
-        bwx + (scrollAreaX - scrollAreaW / 2) * s,
-        bwy + (scrollAreaY - scrollAreaH / 2) * s,
-        scrollAreaW * s,
-        scrollAreaH * s
-      );
-    };
+    const maskShape = this.add.graphics().fillStyle(0xffffff).fillRect(
+      RES_SCALE * (xPos + scrollAreaX - scrollAreaW / 2),
+      RES_SCALE * (popupHeight + scrollAreaY - scrollAreaH / 2),
+      RES_SCALE * scrollAreaW,
+      RES_SCALE * scrollAreaH
+    ).setVisible(false);
     const geomMask = maskShape.createGeometryMask();
     contentContainer.setMask(geomMask);
-    const maskUpdateEvent = this.events.on('postupdate', updateMask);
     let scrollY = 0;
     const baseContentY = scrollAreaY - scrollAreaH / 2 + 8;
     const applyScroll = () => {
@@ -6509,26 +6504,14 @@ _closeSettingsPopup() {
     const totalContentH = yPos;
     const maxScrollDown = Math.max(0, totalContentH - scrollAreaH + 16);
     const maskGraphics = this.add.graphics();
-    const maskShape = this.add.graphics();
-    maskShape.fillStyle(0xffffff, 1);
-    const updateMask = () => {
-      if (!bounceContainer || !bounceContainer.active) return;
-      const wx = xPos + bounceContainer.x - xPos;
-      const s = bounceContainer.scaleX;
-      const bwx = xPos;
-      const bwy = popupHeight;
-      maskShape.clear();
-      maskShape.fillStyle(0xffffff, 1);
-      maskShape.fillRect(
-        bwx + (scrollAreaX - scrollAreaW / 2) * s,
-        bwy + (scrollAreaY - scrollAreaH / 2) * s,
-        scrollAreaW * s,
-        scrollAreaH * s
-      );
-    };
+    const maskShape = this.add.graphics().fillStyle(0xffffff).fillRect(
+      RES_SCALE * (xPos + scrollAreaX - scrollAreaW / 2),
+      RES_SCALE * (popupHeight + scrollAreaY - scrollAreaH / 2),
+      RES_SCALE * scrollAreaW,
+      RES_SCALE * scrollAreaH
+    ).setVisible(false);
     const geomMask = maskShape.createGeometryMask();
     contentContainer.setMask(geomMask);
-    const maskUpdateEvent = this.events.on('postupdate', updateMask);
     let scrollY = 0;
     const baseContentY = scrollAreaY - scrollAreaH / 2 + 8;
     const applyScroll = () => {
@@ -6556,8 +6539,6 @@ _closeSettingsPopup() {
       }
     });
     this._updateLogPopupCleanup = () => {
-      this.events.off('postupdate', updateMask);
-      maskShape.destroy();
       geomMask.destroy();
     };
     this.tweens.add({
@@ -6792,6 +6773,28 @@ _closeSettingsPopup() {
     rawGraphics.fillRect(x, y, w, h);
     return { shape: rawGraphics, mask: rawGraphics.createGeometryMask() };
   }
+  _getGrayscaleFrameKey(atlasKey, frameName) {
+    const cacheKey = `${atlasKey}__${frameName}__gray`;
+    if (this.textures.exists(cacheKey)) return cacheKey;
+    const frame = this.textures.getFrame(atlasKey, frameName);
+    const w = frame.cutWidth;
+    const h = frame.cutHeight;
+    const canvasTex = this.textures.createCanvas(cacheKey, w, h);
+    const ctx = canvasTex.getContext();
+    ctx.drawImage(frame.source.image, frame.cutX, frame.cutY, w, h, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const average = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      const gray = (average / 255) * 175;
+      d[i] = gray;
+      d[i + 1] = gray;
+      d[i + 2] = gray;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    canvasTex.refresh();
+    return cacheKey;
+  }
   _expandHitArea(_0x122213, _0x37180a) {
     // Derive the object's natural (raw, unscaled) frame size from displayOrigin rather than
     // .width/.height -- those can be overridden post-creation for layout purposes (see the
@@ -7005,6 +7008,9 @@ _closeSettingsPopup() {
     if (this._menuNewgroundsBtn) {
       this._menuNewgroundsBtn.setVisible(false);
     }
+    if (this._menuGeodeBtn) {
+      this._menuGeodeBtn.setVisible(false);
+    }
     if (this._menuSettingsBtn) {
       this._menuSettingsBtn.setVisible(false);
     }
@@ -7013,6 +7019,9 @@ _closeSettingsPopup() {
     }
     if (this._menuStatsBtn) {
       this._menuStatsBtn.setVisible(false);
+    }
+    if (this._menuDailyChestBtn) {
+      this._menuDailyChestBtn.setVisible(false);
     }
     _dismiss(this._playBtn, { scale: 0.01, duration: 200, ease: "Quad.In" }, () => {
       this._playBtn.destroy();
@@ -7045,10 +7054,6 @@ _closeSettingsPopup() {
       this._robLogo.destroy();
       this._robLogo = null;
     });
-    _dismiss(this._copyrightText, { y: 680, duration: 300, ease: "Quad.In" }, () => {
-      this._copyrightText.destroy();
-      this._copyrightText = null;
-    });
     _dismiss(this._menuFsBtn, { y: this._menuFsBtn ? -this._menuFsBtn.height : 0, duration: 300, ease: "Quad.In" }, () => {
       this._menuFsBtn.destroy();
       this._menuFsBtn = null;
@@ -7063,12 +7068,10 @@ _closeSettingsPopup() {
       this._tryMeImg.destroy();
       this._tryMeImg = null;
     });
-    if (this._downloadBtns) {
-      for (const _0xaa3a95 of this._downloadBtns) {
-        _dismiss(_0xaa3a95, { y: screenHeight + _0xaa3a95.height, duration: 300, ease: "Quad.In" }, () => _0xaa3a95.destroy());
-      }
-      this._downloadBtns = null;
-    }
+    _dismiss(this._menuMoreGamesBtn, { y: this._menuMoreGamesBtn ? screenHeight + this._menuMoreGamesBtn.height : 0, duration: 300, ease: "Quad.In" }, () => {
+      this._menuMoreGamesBtn.destroy();
+      this._menuMoreGamesBtn = null;
+    });
     if (this._socialIcons && this._socialIcons.length > 0) {
       for (const _icon of this._socialIcons) {
         _dismiss(_icon, { y: screenHeight + 64, duration: 300, ease: "Quad.In" }, () => _icon.destroy());
@@ -7347,42 +7350,30 @@ _closeSettingsPopup() {
   _positionMenuItems() {
     const _0x1e5db8 = screenWidth / 2;
     if (this._logo) {
-      this._logo.x = _0x1e5db8;
+      this._logo.x = _0x1e5db8 + 3;
     }
     if (this._menuInfoBtn) {
       this._menuInfoBtn.x = screenWidth - 30 - 3;
-    }
-    if (this._copyrightText) {
-      this._copyrightText.x = screenWidth - 20;
     }
     if (this._tryMeImg) {
       this._tryMeImg.x = _0x1e5db8 + 260;
     }
     if (this._menuGlitter) {
       this._menuGlitter.x = _0x1e5db8;
-      this._menuGlitter.y = 320;
+      this._menuGlitter.y = 300;
     }
     if (this._playBtn) {
       this._playBtn.x = _0x1e5db8;
       this.tweens.killTweensOf(this._playBtn, "y");
-      this._playBtn.y = 320;
-    }
-    if (this._downloadBtns) {
-      const _0x285ef7 = screenWidth - 130;
-      const _0x4a8263 = 570;
-      const _0x23d03e = 60;
-      for (let _0x1bdfae = 0; _0x1bdfae < this._downloadBtns.length; _0x1bdfae++) {
-        const yOffset = _0x1bdfae === 1 ? -_0x23d03e : 0;
-        this._downloadBtns[_0x1bdfae].setPosition(_0x285ef7, _0x4a8263 + yOffset);
-      }
+      this._playBtn.y = 300;
     }
     if (this._iconBtn) {
-      this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 85 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
+      this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 75 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
       this.tweens.killTweensOf(this._iconBtn, "y");
-      this._iconBtn.y = 320;
+      this._iconBtn.y = 300;
       this.tweens.add({
         targets: this._iconBtn,
-        y: 324,
+        y: 304,
         duration: 750,
         ease: "Quad.InOut",
         yoyo: true,
@@ -7390,12 +7381,12 @@ _closeSettingsPopup() {
       });
     }
     if (this._creatorBtn) {
-      this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 85 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
+      this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 75 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
       this.tweens.killTweensOf(this._creatorBtn, "y");
-      this._creatorBtn.y = 320;
+      this._creatorBtn.y = 300;
       this.tweens.add({
         targets: this._creatorBtn,
-        y: 324,
+        y: 304,
         duration: 750,
         ease: "Quad.InOut",
         yoyo: true,
@@ -8179,7 +8170,7 @@ _closeSettingsPopup() {
     if (this._menuActive) {
       const _anyOverlayOpen = this._iconOverlay || this._creatorOverlay || this._searchOverlay ||
         this._onlineLevelsOverlay || this._settingsLayerOverlay || this._settingsPopup || this._megaHackMenu ||
-        this._infoPopup || this._newgroundsPopup || this._statsLayerOverlay || this._updateLogPopup;
+        this._infoPopup || this._newgroundsPopup || this._statsLayerOverlay || this._updateLogPopup || this._achievementsPopup;
       if (!_anyOverlayOpen && (this._spaceKey.isDown || this._upKey.isDown || this._wKey.isDown) && !this._spaceWasDown) {
         if (this._creatorMenuOpen) return;
         this._spaceWasDown = true;
@@ -9718,6 +9709,204 @@ _applyMirrorEffect() {
       onComplete: _0x272eb1
     });
   }
+  _showRobTopGamesScreen() {
+    if (this._robTopGamesLayerInternal) {
+      return;
+    }
+    this._robTopGamesScreenClosing = false;
+    if (this._pauseBtn) {
+      this.tweens.add({
+        targets: this._pauseBtn,
+        alpha: 0,
+        duration: 300
+      });
+    }
+    const containerX = screenWidth / 2;
+    const _0x1aa656 = 320;
+    this._robTopGamesLayerOverlay = this.add.rectangle(containerX, _0x1aa656, screenWidth, screenHeight, 0, 0).setScrollFactor(0).setDepth(200).setInteractive();
+    this._robTopGamesLayerInternal = this.add.container(0, -640).setScrollFactor(0).setDepth(201);
+    this.tweens.add({
+      targets: this._robTopGamesLayerOverlay,
+      alpha: 180 / 255,
+      duration: 400,
+      ease: "Linear"
+    });
+
+    const _0x59b9ab = {
+      p: 0
+    };
+    this.tweens.add({
+      targets: _0x59b9ab,
+      p: 1,
+      duration: 500,
+      ease: "Quad.Out",
+      onUpdate: () => {
+        this._robTopGamesLayerInternal.y = _0x59b9ab.p * 650 - 640;
+      }
+    });
+    const _0x595215 = 712;
+    const _0x950c8d = 460;
+    const _0x2a115c = (screenWidth - _0x595215) / 2;
+    this._robTopGamesLayerInternal.add(this.add.rectangle(_0x2a115c + 356, 310, _0x595215, _0x950c8d, 0, 180 / 255));
+    const _0x43f2e3 = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
+    const _0x3feccc = _0x43f2e3 ? _0x950c8d / _0x43f2e3.height : 1;
+    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
+    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
+    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_WebSheet", "GJ_table_top_001.png");
+    this._robTopGamesLayerInternal.add(_0x33b564);
+    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_WebSheet", "GJ_table_bottom_001.png"));
+    const _0x3e9c79 = _0x33b564.y - 35;
+    this._robTopGamesLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._robTopGamesLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._robTopGamesLayerInternal.add(this.add.bitmapText(containerX, 65, "bigFont", "RobTop Games", 55).setOrigin(0.5, 0.5));
+    this._robTopGamesLayerInternal.add(this.add.bitmapText(containerX, 310, "bigFont", "Nothing here yet... sorry :(", 40).setOrigin(0.5, 0.5));
+
+    const _0x45fc2b = [{
+      frame: "GJ_arrow_03_001.png",
+      dx: -535,
+      action: () => this._hideRobTopGamesScreen()
+    }];
+    for (const _0x2d4335 of _0x45fc2b) {
+      const _0xdde774 = this.add.image(containerX + _0x2d4335.dx, 30, "GJ_GameSheet03", _0x2d4335.frame).setInteractive();
+      this._robTopGamesLayerInternal.add(_0xdde774);
+      this._makeBouncyButton(_0xdde774, 1, _0x2d4335.action);
+    }
+  }
+  _hideRobTopGamesScreen() {
+    if (!this._robTopGamesLayerInternal || this._robTopGamesScreenClosing) {
+      return;
+    }
+    this._robTopGamesScreenClosing = true;
+    const _0x272eb1 = () => {
+      this._robTopGamesScreenClosing = false;
+      if (this._robTopGamesLayerOverlay) {
+        this._robTopGamesLayerOverlay.destroy();
+        this._robTopGamesLayerOverlay = null;
+      }
+      if (this._robTopGamesLayerInternal) {
+        this._robTopGamesLayerInternal.destroy();
+        this._robTopGamesLayerInternal = null;
+      }
+
+      if (this._pauseBtn) {
+        this.tweens.add({
+          targets: this._pauseBtn,
+          alpha: 1,
+          duration: 300
+        });
+      }
+    };
+    this.tweens.add({
+      targets: this._robTopGamesLayerOverlay,
+      alpha: 0,
+      duration: 500,
+      ease: "Linear"
+    });
+
+    const _0x59b9ab = {
+      p: 1
+    };
+    this.tweens.add({
+      targets: _0x59b9ab,
+      p: 0,
+      duration: 500,
+      ease: "Quad.In",
+      onUpdate: () => {
+        this._robTopGamesLayerInternal.y = _0x59b9ab.p * 650 - 640;
+      },
+      onComplete: _0x272eb1
+    });
+  }
+  _showDailyRewardScreen() {
+    if (this._dailyRewardLayerInternal) {
+      return;
+    }
+    if (this._pauseBtn) {
+      this.tweens.add({
+        targets: this._pauseBtn,
+        alpha: 0,
+        duration: 300
+      });
+    }
+    const xPos = screenWidth / 2;
+    const yPos = 320;
+    this._dailyRewardLayerInternal = this.add.container(0, 0).setScrollFactor(0).setDepth(300);
+
+    const overlay = this.add.rectangle(xPos, yPos, screenWidth, screenHeight, 0, 100 / 255).setInteractive();
+    this._dailyRewardLayerInternal.add(overlay);
+
+    const panelContainer = this.add.container(xPos, yPos + 25);
+    this._dailyRewardLayerInternal.add(panelContainer);
+
+    const cornerRadius = this.textures.get("GJ_square02").source[0].width * 0.325;
+    const panelBg = this._drawScale9(2, -25, 680, 440, "GJ_square02", cornerRadius, 0xffffff, 1);
+    panelContainer.add(panelBg);
+
+    const panelW = 830;
+    const panelH = 530;
+    const halfW = panelW / 2;
+    const halfH = panelH / 2;
+    const cornerInset = 14;
+    const boxLeft = 2 - 680 / 2;
+    const boxRight = 2 + 680 / 2;
+    const boxTop = -25 - 440 / 2;
+    const boxBottom = -25 + 440 / 2;
+    const cornerTL = this.add.image(boxLeft + cornerInset, boxTop + cornerInset, "GJ_GameSheet03", "rewardCorner_001.png").setOrigin(0.12, 0.12).setFlipY(true);
+    const cornerTR = this.add.image(boxRight - cornerInset, boxTop + cornerInset, "GJ_GameSheet03", "rewardCorner_001.png").setOrigin(0.88, 0.12).setFlipX(true).setFlipY(true);
+    const cornerBL = this.add.image(boxLeft + cornerInset, boxBottom - cornerInset, "GJ_GameSheet03", "rewardCorner_001.png").setOrigin(0.12, 0.88);
+    const cornerBR = this.add.image(boxRight - cornerInset, boxBottom - cornerInset, "GJ_GameSheet03", "rewardCorner_001.png").setOrigin(0.88, 0.88).setFlipX(true);
+    panelContainer.add(cornerTL);
+    panelContainer.add(cornerTR);
+    panelContainer.add(cornerBL);
+    panelContainer.add(cornerBR);
+
+    const titleImg = this.add.image(0, -halfH + 76, "GJ_GameSheet03", "rewardsLabel_001.png").setOrigin(0.5, 0.4).setScale(1);
+    panelContainer.add(titleImg);
+
+    const chestY = 0;
+    const chestLeftX = -135;
+    const chestRightX = 135;
+    const chestScale = 0.48;
+    const chestLeft = this.add.image(chestLeftX, chestY, "chest_free_closed").setInteractive().setScale(chestScale).setOrigin(0.5, 0.385);
+    const chestRight = this.add.image(chestRightX, chestY, "chest_ad_closed").setInteractive().setScale(chestScale).setOrigin(0.5, 0.5);
+    panelContainer.add(chestLeft);
+    panelContainer.add(chestRight);
+
+    const labelGap = 77;
+    const labelY = chestY + labelGap;
+    panelContainer.add(this.add.bitmapText(chestLeftX, labelY, "bigFont", "Open", 36).setOrigin(0.5, -0.8));
+    panelContainer.add(this.add.bitmapText(chestRightX, labelY, "bigFont", "Open", 36).setOrigin(0.5, -0.8));
+
+    this._makeBouncyButton(chestLeft, chestScale, () => { /* open chest */ }, () => !!this._dailyRewardLayerInternal);
+    this._makeBouncyButton(chestRight, chestScale, () => { /* open chest */ }, () => !!this._dailyRewardLayerInternal);
+
+    const closeBtn = this.add.image(boxLeft + 5, boxTop + 15, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    panelContainer.add(closeBtn);
+    this._expandHitArea(closeBtn, 2);
+    this._makeBouncyButton(closeBtn, 0.8, () => this._hideDailyRewardScreen());
+
+    panelContainer.setScale(0);
+    this.tweens.add({
+      targets: panelContainer,
+      scale: 1,
+      duration: 660,
+      ease: "Elastic.Out",
+      easeParams: [1, 0.6]
+    });
+  }
+  _hideDailyRewardScreen() {
+    if (this._dailyRewardLayerInternal) {
+      this._dailyRewardLayerInternal.destroy();
+      this._dailyRewardLayerInternal = null;
+    }
+    if (this._pauseBtn) {
+      this.tweens.add({
+        targets: this._pauseBtn,
+        alpha: 1,
+        duration: 300
+      });
+    }
+  }
   _showStatsScreen() {
     if (this._pauseBtn) {
       this.tweens.add({
@@ -9847,6 +10036,242 @@ _applyMirrorEffect() {
         this._statsLayerInternal.y = _0x59b9ab.p * 650 - 640;
       },
       onComplete: _0x272eb1
+    });
+  }
+  _showAchievementsScreen() {
+    if (this._achievementsPopup) return;
+    this._achievementsPopup = true;
+
+    const containerX = screenWidth / 2;
+
+    this._achieveOverlay = this.add.rectangle(containerX, 320, screenWidth, screenHeight, 0, 0)
+      .setScrollFactor(0).setDepth(200).setInteractive();
+    this.tweens.add({ targets: this._achieveOverlay, alpha: 100/255, duration: 1000 });
+
+    this._achieveLayerInternal = this.add.container(0, -640).setScrollFactor(0).setDepth(201);
+    const _ap = { p: 0 };
+
+    // Built via the raw, unpatched graphics factory (bypassing wrapSceneForResScale's
+    // _resContainer auto-reparent) with manual RES_SCALE compensation, same as
+    // _createScreenSpaceMask -- an unscaled/reparented mask shape only covers a tiny
+    // sliver near the panel's top-left (see _createScreenSpaceMask's comment).
+    const maskGfx = Phaser.GameObjects.GameObjectFactory.prototype.graphics.call(this.add, 0, 0);
+    maskGfx.setScale(RES_SCALE).setVisible(false);
+    this._achieveMaskGfx = maskGfx;
+    const rowCont = this.add.container(0, 0);
+
+    const applyMask = () => {
+      const contY = this._achieveLayerInternal ? this._achieveLayerInternal.y : 10;
+      maskGfx.clear();
+      maskGfx.fillStyle(0xffffff);
+      maskGfx.fillRect(rowLeft, listTop + contY, rowW, listH);
+      rowCont.setMask(maskGfx.createGeometryMask());
+    };
+
+    this.tweens.add({
+      targets: _ap, p: 1, duration: 500, ease: 'Quad.Out',
+      onUpdate: () => {
+        this._achieveLayerInternal.y = _ap.p * 650 - 640;
+        applyMask();
+        rowCont.setVisible(true);
+      },
+      onComplete: () => applyMask()
+    });
+
+    const tableW  = 712;
+    const tableH  = 460;
+    const tableX  = (screenWidth - tableW) / 2;
+
+    this._achieveLayerInternal.add(
+      this.add.rectangle(tableX + 356, 310, tableW, tableH, 0xac531e)
+    );
+
+    const sideFrame = this.textures.getFrame('GJ_WebSheet', 'GJ_table_side_001.png');
+    const sideScaleY = sideFrame ? tableH / sideFrame.height : 1;
+    this._achieveLayerInternal.add(
+      this.add.image(tableX - 40, 80, 'GJ_WebSheet', 'GJ_table_side_001.png')
+        .setOrigin(0, 0).setScale(1, sideScaleY)
+    );
+    this._achieveLayerInternal.add(
+      this.add.image(tableX + tableW + 40, 80, 'GJ_WebSheet', 'GJ_table_side_001.png')
+        .setOrigin(1, 0).setFlipX(true).setScale(1, sideScaleY)
+    );
+
+    const topImg = this.add.image(tableX + 356, 70, 'GJ_WebSheet', 'GJ_table_top_001.png');
+    this._achieveLayerInternal.add(topImg);
+    this._achieveLayerInternal.add(
+      this.add.image(tableX + 356, 560, 'GJ_WebSheet', 'GJ_table_bottom_001.png')
+    );
+
+    this._achieveLayerInternal.add(
+      this.add.image(containerX - 312, topImg.y - 35, 'GJ_WebSheet', 'chain_01_001.png').setOrigin(0.5, 1)
+    );
+    this._achieveLayerInternal.add(
+      this.add.image(containerX + 312, topImg.y - 35, 'GJ_WebSheet', 'chain_01_001.png').setOrigin(0.5, 1)
+    );
+
+    this._achieveLayerInternal.add(
+      this.add.bitmapText(containerX, 65, 'bigFont', 'Achievements', 48).setOrigin(0.5, 0.5)
+    );
+
+    const pageLbl = this.add.bitmapText(tableX + tableW + 200, 5, 'goldFont', '', 20)
+      .setOrigin(1, 0.5).setTint(0xffdd00).setScale(1.4);
+    this._achieveLayerInternal.add(pageLbl);
+
+    const achievements = [
+      { title: 'Stereo Madness!',        desc: 'Complete "Stereo Madness" in Normal mode',         done: (window._completedLevels||0) >= 1  },
+      { title: 'Back on Track!',         desc: 'Complete "Back on Track" in Normal mode',          done: (window._completedLevels||0) >= 2  },
+      { title: 'Polargeist!',            desc: 'Complete "Polargeist" in Normal mode',             done: (window._completedLevels||0) >= 3  },
+      { title: 'Dry Out!',               desc: 'Complete "Dry Out" in Normal mode',                done: (window._completedLevels||0) >= 4  },
+      { title: 'Base After Base!',       desc: 'Complete "Base After Base" in Normal mode',        done: (window._completedLevels||0) >= 5  },
+      { title: 'Cant Let Go!',           desc: 'Complete "Cant Let Go" in Normal mode',            done: (window._completedLevels||0) >= 6  },
+      { title: 'Jumper!',                desc: 'Complete "Jumper" in Normal mode',                 done: (window._completedLevels||0) >= 7  },
+      { title: 'Time Machine!',          desc: 'Complete "Time Machine" in Normal mode',           done: (window._completedLevels||0) >= 8  },
+      { title: 'Cycles!',                desc: 'Complete "Cycles" in Normal mode',                 done: (window._completedLevels||0) >= 9  },
+      { title: 'xStep!',                 desc: 'Complete "xStep" in Normal mode',                  done: (window._completedLevels||0) >= 10 },
+      { title: 'Clutterfunk!',           desc: 'Complete "Clutterfunk" in Normal mode',            done: (window._completedLevels||0) >= 11 },
+      { title: 'Theory of Everything!',  desc: 'Complete "Theory of Everything" in Normal mode',   done: (window._completedLevels||0) >= 12 },
+      { title: 'Electroman Adventures!', desc: 'Complete "Electroman Adventures" in Normal mode',  done: (window._completedLevels||0) >= 13 },
+      { title: 'Clubstep!',              desc: 'Complete "Clubstep" in Normal mode',               done: (window._completedLevels||0) >= 14 },
+      { title: 'Electrodynamix!',        desc: 'Complete "Electrodynamix" in Normal mode',         done: (window._completedLevels||0) >= 15 },
+      { title: 'Blast Processing!',      desc: 'Complete "Blast Processing" in Normal mode',       done: (window._completedLevels||0) >= 17 },
+      { title: 'Fingerdash!',            desc: 'Complete "Fingerdash" in Normal mode',             done: (window._completedLevels||0) >= 21 },
+      { title: 'Thats why we Dash!',     desc: 'Play Web Dashers for the first time',              done: true                                },
+      { title: 'First Jump!',            desc: 'Jump for the first time',                          done: (this._totalJumps||0) >= 1          },
+      { title: '100 Jumps!',             desc: 'Jump 100 times total',                             done: (this._totalJumps||0) >= 100        },
+      { title: '1000 Jumps!',            desc: 'Jump 1000 times total',                            done: (this._totalJumps||0) >= 1000       },
+      { title: '100 Attempts!',          desc: 'Dont give up 100 times',                           done: (this._attempts||0) >= 100          },
+      { title: '1000 Attempts!',         desc: 'Dont give up 1000 times',                          done: (this._attempts||0) >= 1000         },
+      { title: '10000 Attempts!',        desc: 'Dont give up 10000 times',                         done: (this._attempts||0) >= 10000        },
+    ];
+
+    const rowH     = 156;
+    const listTop  = 102;
+    const listH    = 428;
+    const rowW     = tableW - 15.6;
+    const rowLeft  = tableX + 7.8;
+    let scrollY    = 0;
+    const perPage  = 6;
+    const totalPages = Math.ceil(achievements.length / perPage);
+    let currentPage = 0;
+    const maxScroll = Math.max(0, perPage * rowH - listH);
+
+    const updatePageLbl = () => {
+      const first = currentPage === 0 ? 1 : currentPage * perPage;
+      const last = Math.min(achievements.length, (currentPage + 1) * perPage);
+      pageLbl.setText(`${first} to ${last} of ${achievements.length}`);
+    };
+
+    this._achieveLayerInternal.add(rowCont);
+    rowCont.setVisible(false);
+
+    const renderPage = (page) => {
+      rowCont.removeAll(true);
+      scrollY = 0;
+      rowCont.y = 0;
+
+      const startIdx = page * perPage;
+      const pageItems = achievements.slice(startIdx, startIdx + perPage);
+
+      pageItems.forEach((ach, i) => {
+        const ry = listTop + i * rowH + rowH / 2;
+        rowCont.add(
+          this.add.rectangle(containerX, ry, rowW, rowH, i % 2 === 0 ? 0xac531e : 0xcf6d30)
+        );
+        if (i > 0) {
+          rowCont.add(
+            this.add.rectangle(containerX, listTop + i * rowH, rowW, 0.5, 0x000000)
+          );
+        }
+        rowCont.add(
+          this.add.image(rowLeft + 70, ry, "GJ_GameSheet03", ach.done ? "GJ_lock_open_001.png" : "GJ_lock_001.png")
+            .setScale(0.65)
+        );
+        rowCont.add(
+          this.add.bitmapText(rowLeft + 128, ry - 45, 'goldFont', ach.title, 22)
+            .setOrigin(0, 0.5).setScale(1.8)
+        );
+        rowCont.add(
+          this.add.text(rowLeft + 130, ry + 13, ach.desc, {
+            fontFamily: 'Arial',
+            fontSize: '27px',
+            color: '#ffffff',
+            wordWrap: {
+              width: rowW - 220,
+              useAdvancedWrap: true
+            }
+          }).setOrigin(0, 0.5)
+        );
+        if (ach.done) {
+          rowCont.add(
+            this.add.image(rowLeft + rowW - 60, ry, "GJ_GameSheet03", "GJ_completesIcon_001.png").setScale(0.6)
+          );
+        }
+      });
+
+      applyMask();
+      updatePageLbl();
+      rowCont.setVisible(true);
+    };
+
+    renderPage(0);
+
+    const onWheel = (e) => {
+      if (!this._achieveLayerInternal) return;
+      scrollY = Phaser.Math.Clamp(scrollY + e.deltaY * 0.4, 0, maxScroll);
+      rowCont.y = -scrollY;
+      applyMask();
+    };
+    this.input.on('wheel', onWheel);
+    this._achieveWheelCleanup = () => this.input.off('wheel', onWheel);
+
+    const leftArrow = this.add.image(containerX - 480, listTop + 214, "GJ_GameSheet03", "GJ_arrow_01_001.png")
+      .setInteractive();
+    const rightArrow = this.add.image(containerX + 480, listTop + 214, "GJ_GameSheet03", "GJ_arrow_01_001.png")
+      .setFlipX(true).setInteractive();
+    this._achieveLayerInternal.add(leftArrow);
+    this._achieveLayerInternal.add(rightArrow);
+
+    this._makeBouncyButton(leftArrow, 1, () => {
+      if (currentPage > 0) { currentPage--; renderPage(currentPage); }
+    });
+    this._makeBouncyButton(rightArrow, 1, () => {
+      if (currentPage < totalPages - 1) { currentPage++; renderPage(currentPage); }
+    });
+
+    const backBtn = this.add.image(containerX - 535, 30, 'GJ_GameSheet03', 'GJ_arrow_03_001.png')
+      .setInteractive();
+    this._achieveLayerInternal.add(backBtn);
+    this._makeBouncyButton(backBtn, 1, () => this._hideAchievementsScreen());
+  }
+
+  _hideAchievementsScreen() {
+    if (!this._achieveLayerInternal) return;
+    if (this._achieveWheelCleanup) { this._achieveWheelCleanup(); this._achieveWheelCleanup = null; }
+    const cleanup = () => {
+      if (this._achieveOverlay)       { this._achieveOverlay.destroy();       this._achieveOverlay = null; }
+      if (this._achieveLayerInternal) { this._achieveLayerInternal.destroy(); this._achieveLayerInternal = null; }
+      if (this._achieveMaskGfx)       { this._achieveMaskGfx.destroy();       this._achieveMaskGfx = null; }
+      this._achievementsPopup = false;
+    };
+    this.tweens.add({ targets: this._achieveOverlay, alpha: 0, duration: 500, ease: 'Linear' });
+    const _ap = { p: 1 };
+    this.tweens.add({
+      targets: _ap, p: 0, duration: 500, ease: 'Quad.In',
+      onUpdate: () => {
+        if (!this._achieveLayerInternal) return;
+        this._achieveLayerInternal.y = _ap.p * 650 - 640;
+        if (this._achieveMaskGfx) {
+          this._achieveMaskGfx.clear();
+          this._achieveMaskGfx.fillStyle(0xffffff);
+          this._achieveMaskGfx.fillRect(
+            (screenWidth - 712) / 2 + 7.8,
+            102 + this._achieveLayerInternal.y,
+            712 - 15.6, 428
+          );
+        }
+      },
+      onComplete: cleanup
     });
   }
   _playStarAward() {

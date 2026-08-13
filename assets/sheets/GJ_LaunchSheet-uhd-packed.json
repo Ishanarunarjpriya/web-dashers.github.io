@@ -1,0 +1,7 @@
+{
+  "sheet": "GJ_LaunchSheet-uhd-packed.png",
+  "size": { "w": 1716, "h": 208 },
+  "frames": {
+    "GJ_logo_001.png": { "x": 15, "y": 15, "w": 1701, "h": 193 }
+  }
+}

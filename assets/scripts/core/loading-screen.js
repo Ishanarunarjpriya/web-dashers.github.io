@@ -290,6 +290,8 @@ class BootScene extends Phaser.Scene {
       this.load.json("Spider_AnimDesc", "assets/sheets/Spider_AnimDesc.json");
       this.load.json("Robot_AnimDesc", "assets/sheets/Robot_AnimDesc.json");
       this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
+      this.load.image("GJ_LaunchSheet_uhd_src", "assets/sheets/GJ_LaunchSheet-uhd-packed.png");
+      this.load.json("GJ_LaunchSheet_uhd_frames", "assets/sheets/GJ_LaunchSheet-uhd-converted.json");
       this.load.atlas("player_ball_00", "assets/sheets/player_ball_00.png", "assets/sheets/player_ball_00.json");
       this.load.atlas("player_dart_00", "assets/sheets/player_dart_00.png", "assets/sheets/player_dart_00.json");
       this.load.atlas("CCControlColourPickerSpriteSheet-uhd", "assets/sheets/CCControlColourPickerSpriteSheet-uhd.png", "assets/sheets/CCControlColourPickerSpriteSheet-uhd.json");
@@ -300,6 +302,9 @@ class BootScene extends Phaser.Scene {
       this.load.text("bigFontFnt", "assets/fonts/bigFont.fnt");
       this.load.image("square04_001", "assets/sprites/square04_001.png");
       this.load.image("GJ_square02", "assets/sprites/GJ_square02.png");
+      this.load.image("chest_free_closed", "assets/sprites/chests/chest_free_closed.png");
+      this.load.image("chest_ad_closed", "assets/sprites/chests/chest_ad_closed.png");
+      this.load.atlas("geodeBlankSheet_uhd", "assets/geode-resources/geode.loader/BlankSheet-uhd-packed.png", "assets/geode-resources/geode.loader/BlankSheet-uhd-converted.json");
       this.load.image("GJ_square01", "assets/sprites/GJ_square01.png");
       this.load.image("square01_001", "assets/sprites/square01_001.png");
       this.load.image("loadingCircle", "assets/sprites/loadingCircle.png");
@@ -379,6 +384,7 @@ class BootScene extends Phaser.Scene {
           mergeUhdFrames(this, "GJ_GameSheet", "GJ_GameSheet_uhd_src", "GJ_GameSheet_uhd_frames");
           mergeUhdFrames(this, "GJ_GameSheet02", "GJ_GameSheet02_uhd_src", "GJ_GameSheet02_uhd_frames");
           mergeUhdFrames(this, "GJ_GameSheet03", "GJ_GameSheet03_uhd_src", "GJ_GameSheet03_uhd_frames");
+          mergeUhdFrames(this, "GJ_LaunchSheet", "GJ_LaunchSheet_uhd_src", "GJ_LaunchSheet_uhd_frames");
 
           localStorage.setItem('webdash_assets_loaded', 'true');
           localStorage.setItem('webdash_last_load_time', Date.now().toString());
