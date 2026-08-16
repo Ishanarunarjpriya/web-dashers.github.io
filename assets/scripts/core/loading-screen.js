@@ -304,7 +304,14 @@ class BootScene extends Phaser.Scene {
       this.load.image("GJ_square02", "assets/sprites/GJ_square02.png");
       this.load.image("chest_free_closed", "assets/sprites/chests/chest_free_closed.png");
       this.load.image("chest_ad_closed", "assets/sprites/chests/chest_ad_closed.png");
+      this.load.image("geodeLoaderButton", "assets/geode-resources/geode-loader-button.png");
+      this.load.atlas("geodeApiSheet_uhd", "assets/geode-resources/geode.loader/APISheet-uhd-packed.png", "assets/geode-resources/geode.loader/APISheet-uhd-converted.json");
       this.load.atlas("geodeBlankSheet_uhd", "assets/geode-resources/geode.loader/BlankSheet-uhd-packed.png", "assets/geode-resources/geode.loader/BlankSheet-uhd-converted.json");
+      this.load.atlas("geodeLogoSheet_uhd", "assets/geode-resources/geode.loader/LogoSheet-uhd-packed.png", "assets/geode-resources/geode.loader/LogoSheet-uhd-converted.json");
+      this.load.image("GJ_button01_uhd", "assets/GJ_buttons/GJ_button_01-uhd.png");
+      this.load.image("GJ_button02_uhd", "assets/GJ_buttons/GJ_button_02-uhd.png");
+      this.load.image("geodeTabActivated", "assets/geode-resources/geode.loader/tab-activated.png");
+      this.load.image("geodeTabDeactivated", "assets/geode-resources/geode.loader/tab-deactivated.png");
       this.load.image("GJ_square01", "assets/sprites/GJ_square01.png");
       this.load.image("square01_001", "assets/sprites/square01_001.png");
       this.load.image("loadingCircle", "assets/sprites/loadingCircle.png");

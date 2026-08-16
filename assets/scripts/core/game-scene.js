@@ -443,11 +443,45 @@ class GameScene extends Phaser.Scene {
     this._slideIn = false;
     this._slideGroundX = null;
     this._firstPlay = true;
-    this._player.setCubeVisible(false);
+    this._player.setCubeVisible(true);
     this._player.setShipVisible(false);
     this._player.setBallVisible(false);
+    this._randomizeMenuCubeLook();
+    // Same visual config as PlayerObject._initParticles()'s real ground-dust trail, but
+    // screen-space (setScrollFactor(0), through the resScale-patched factory) to match how
+    // the menu cube itself is positioned in the _menuActive block below, rather than reusing
+    // this._player._particleEmitter, which is a world-space child of this._level.container
+    // and expects raw _playerWorldX, not screen coordinates.
+    this._menuCubeParticles = this.add.particles(0, 0, "GJ_WebSheet", {
+      frame: "square.png",
+      speed: { min: 110, max: 190 },
+      angle: { min: 225, max: 315 },
+      lifespan: { min: 150, max: 450 },
+      scale: { start: 0.5, end: 0 },
+      gravityY: 600,
+      frequency: 1000 / 30,
+      blendMode: S,
+      alpha: { start: 1, end: 0 },
+      tint: this._menuCubeColor
+    }).setScrollFactor(0).setDepth(21);
+    this._menuCubeParticles.start();
+    // scene.restart() (level-open flow) tears the scene down on a later frame than the one
+    // that sets input.enabled=true right before calling it, so freezing on !input.enabled
+    // in the update() loop isn't a hard guarantee -- particles could still be alive when
+    // teardown starts, and Phaser's particle render step then crashes on the destroyed
+    // texture ("Cannot read properties of null (reading 'tint')"), which throws mid-callback
+    // and silently aborts scene.restart() itself -- explains why levels wouldn't open at all.
+    // The scene 'shutdown' event is the one guaranteed-safe point to clear everything out.
+    this.events.once('shutdown', () => {
+      if (this._menuCubeParticles) {
+        this._menuCubeParticles.stop();
+        this._menuCubeParticles.killAll();
+        this._menuCubeParticles.destroy();
+        this._menuCubeParticles = null;
+      }
+    });
     this._logo = this.add.image(0, 104, "GJ_LaunchSheet", "GJ_logo_001.png").setScrollFactor(0).setDepth(30).setScale(0.99);
-    this._robLogo = this.add.image(110, 595, "GJ_WebSheet", "RobTopLogoBig_001.png").setScrollFactor(0).setDepth(30).setScale(0.525).setInteractive();
+    this._robLogo = this.add.image(110, 595, "GJ_LaunchSheet", "RobTopLogoBig_001.png").setScrollFactor(0).setDepth(30).setScale(0.525).setInteractive();
     this._makeBouncyButton(this._robLogo, 0.525, () => {
       window.open("https://geometrydash.com", "_blank");
     }, () => this._menuActive);
@@ -516,7 +550,7 @@ this._menuFsBtn = this.add.image(33, 33, "GJ_WebSheet", _0x28fa5b ? "toggleFulls
     this._makeBouncyButton(this._menuInfoBtn, 0.64, () => {
       this._buildInfoPopup();
     }, () => this._menuActive && !this._infoPopup);
-this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet", "GJ_infoIcon_001.png").setScrollFactor(0).setDepth(30).setScale(0.64).setTint(Phaser.Display.Color.GetColor(255, 255, 255)).setInteractive();
+this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_GameSheet03", "GJ_infoIcon_001.png").setScrollFactor(0).setDepth(30).setScale(0.64).setTint(Phaser.Display.Color.GetColor(255, 255, 255)).setInteractive();
     this._expandHitArea(this._menuUpdateLogBtn, 1.5);
     this._makeBouncyButton(this._menuUpdateLogBtn, 0.64, () => {
       this._buildUpdateLogPopup();
@@ -541,42 +575,16 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     this._makeBouncyButton(this._menuNewgroundsBtn, 1, () => {
       this._buildNewgroundsPopup();
     }, () => this._menuActive && !this._newgroundsPopup);
-    this._menuGeodeBtn = this.add.image(centerX + 374, screenHeight - 90, "geodeBlankSheet_uhd", "baseCircle_Big_Green.png").setScrollFactor(0).setDepth(30).setScale(100 / 213).setInteractive();
+    this._menuGeodeBtn = this.add.image(centerX + 373, screenHeight - 90, "geodeLoaderButton").setScrollFactor(0).setDepth(30).setScale(113 / 233).setInteractive();
     this._expandHitArea(this._menuGeodeBtn, 1);
-    this._makeBouncyButton(this._menuGeodeBtn, 100 / 213, () => {
-    }, () => this._menuActive);
+    this._makeBouncyButton(this._menuGeodeBtn, 113 / 233, () => {
+      this._openGeodeLoaderMenu();
+    }, () => this._menuActive && !this._geodeLoaderMenu);
     this._menuDailyChestBtn = this.add.image(screenWidth - 80, screenHeight / 2 - 40, "GJ_GameSheet03", "GJ_dailyRewardBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
     this._expandHitArea(this._menuDailyChestBtn, 1);
     this._makeBouncyButton(this._menuDailyChestBtn, 1, () => {
       this._showDailyRewardScreen();
     }, () => this._menuActive && !this._dailyRewardLayerInternal);
-    this._menuGlitter = this.add.particles(0, 0, "GJ_WebSheet", {
-      frame: "square.png",
-      speed: 0,
-      scale: {
-        start: 0.5,
-        end: 0
-      },
-      alpha: {
-        start: 0.6,
-        end: 0.2
-      },
-      lifespan: {
-        min: 1000,
-        max: 2000
-      },
-      frequency: 35,
-      blendMode: S,
-      tint: 20670,
-      x: {
-        min: -130,
-        max: 130
-      },
-      y: {
-        min: -100,
-        max: 100
-      }
-    }).setScrollFactor(0).setDepth(29);
     this._playBtn = this.add.image(0, 0, "GJ_GameSheet04", "GJ_playBtn_001.png").setScrollFactor(0).setDepth(30).setInteractive();
     this._playBtnPressed = false;
     this._makeBouncyButton(this._playBtn, 1, () => {
@@ -1344,12 +1352,12 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         if (createdLevels.length === 0) {
             container.add(this.add.bitmapText(centerX, tableY + (tableH/2), "bigFont", "No Levels", 30).setOrigin(0.5).setAlpha(0.5));
         }
-        const sideFrame = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-        const sideScaleY = tableH / sideFrame.height;
-        container.add(this.add.image(tableX - 40, tableY, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, sideScaleY));
-        container.add(this.add.image(tableX + tableW + 40, tableY, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, sideScaleY));
-        container.add(this.add.image(centerX, tableY - 10, "GJ_WebSheet", "GJ_table_top_001.png"));
-        container.add(this.add.image(centerX, tableY + tableH + 20, "GJ_WebSheet", "GJ_table_bottom_001.png"));
+        const sideFrame = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+        const sideScaleY = tableH / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? sideFrame.height);
+        container.add(this.add.image(tableX - 40, tableY, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, sideScaleY));
+        container.add(this.add.image(tableX + tableW + 40, tableY, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, sideScaleY));
+        container.add(this.add.image(centerX, tableY - 10, "GJ_GameSheet03", "GJ_table_top_001.png"));
+        container.add(this.add.image(centerX, tableY + tableH + 20, "GJ_GameSheet03", "GJ_table_bottom_001.png"));
         container.add(this.add.bitmapText(centerX, tableY - 15, "bigFont", "My Levels", 42).setOrigin(0.5).setScale(1.1));
 
         let startY = tableY;
@@ -3527,7 +3535,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
 
     this._updatePracticeHUDBar = () => {};
 
-    this._pauseBtn = this.add.image(screenWidth - 30, 30, "GJ_WebSheet", "GJ_pauseBtn_clean_001.png").setScrollFactor(0).setDepth(30).setAlpha(75 / 255).setVisible(false);
+    this._pauseBtn = this.add.image(screenWidth - 30, 30, "GJ_GameSheet03", "GJ_pauseBtn_clean_001.png").setScrollFactor(0).setDepth(30).setAlpha(75 / 255).setVisible(false);
     this._pauseBtn.setInteractive();
     this._expandHitArea(this._pauseBtn, 2);
     this._pauseBtn.on("pointerdown", () => this._pauseGame());
@@ -3573,6 +3581,10 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       }
       if (this._savedOverlay) {
         if (this._closeSavedLevelsOverlay) this._closeSavedLevelsOverlay();
+        return;
+      }
+      if (this._geodeLoaderMenu) {
+        if (this._closeGeodeLoaderMenu) this._closeGeodeLoaderMenu();
         return;
       }
       if (this._creatorOverlay) {
@@ -3929,10 +3941,10 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         staticGround2Tiles.push(gt2);
       }
     }
-    const floorLineFrame = this.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
-    const floorLineW = floorLineFrame ? floorLineFrame.width : 888;
+    const floorLineFrame = this.textures.getFrame("GJ_GameSheet02", "floorLine_01_001.png");
+    const floorLineW = floorLineFrame ? (window._uhdOrigSizes?.GJ_GameSheet02?.["floorLine_01_001.png"]?.w ?? floorLineFrame.width) : 888;
     const floorLineScale = sw / floorLineW;
-    const staticFloorLine = this.add.image(cx, groundTopY, "GJ_WebSheet", "floorLine_01_001.png")
+    const staticFloorLine = this.add.image(cx, groundTopY, "GJ_GameSheet02", "floorLine_01_001.png")
       .setScrollFactor(0).setDepth(152).setOrigin(0.5, 0.5).setScale(floorLineScale, 1).setBlendMode(S);
     const cornerBL = this.add.image(0,  sh, "GJ_GameSheet03", "GJ_sideArt_001.png").setScrollFactor(0).setDepth(152).setOrigin(0, 1).setFlipY(false);
     const cornerBR = this.add.image(sw, sh, "GJ_GameSheet03", "GJ_sideArt_001.png").setScrollFactor(0).setDepth(152).setOrigin(1, 1).setFlipX(true);
@@ -4802,7 +4814,7 @@ _closeSettingsPopup() {
     const panel = this._drawScale9(0, 0, panelWidth, panelHeight, 'GJ_square01', corner, 16777215, 1);
     innerContainer.add(panel);
 
-    const closeBtn = this.add.image(-(panelWidth / 2) + 10, -(panelHeight / 2) + 10, 'GJ_WebSheet', "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    const closeBtn = this.add.image(-(panelWidth / 2) + 10, -(panelHeight / 2) + 10, 'GJ_GameSheet03', "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
     innerContainer.add(closeBtn);
     this._makeBouncyButton(closeBtn, 0.8, () => {
         this._closeSettingsPopup();
@@ -6039,7 +6051,7 @@ _closeSettingsPopup() {
     const cornerRadius = this.textures.get("GJ_square02").source[0].width * 0.325;
     const popupBg = this._drawScale9(0, 0, 480, popupWidth, "GJ_square02", cornerRadius, 16777215, 1);
     bounceContainer.add(popupBg);
-    const closeBtn = this.add.image(-240 + 20, -148, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    const closeBtn = this.add.image(-240 + 20, -148, "GJ_GameSheet03", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
     bounceContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._closeInfoPopup());
@@ -6319,7 +6331,7 @@ _closeSettingsPopup() {
   this._howToPlayPopup.add(panelContainer);
   const _0x2c64c2 = this._drawScale9(0, 0, 830, 530, "GJ_square01", _0x14e46f, 16777215, 1);
   panelContainer.add(_0x2c64c2);
-  const _0x5a0f88 = this.add.image(-240 - 160, 172 - _0x4c3182 - 110, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+  const _0x5a0f88 = this.add.image(-240 - 160, 172 - _0x4c3182 - 110, "GJ_GameSheet03", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
   this._expandHitArea(_0x5a0f88, 2);
   this._makeBouncyButton(_0x5a0f88, 0.8, () => this._closeHowToPlayPopup());
   panelContainer.add(_0x5a0f88);
@@ -6447,7 +6459,7 @@ _closeSettingsPopup() {
     const cornerRadius = this.textures.get("GJ_square02").source[0].width * 0.325;
     const popupBg = this._drawScale9(0, 0, 480, popupWidth, "GJ_square02", cornerRadius, 16777215, 1);
     bounceContainer.add(popupBg);
-    const closeBtn = this.add.image(-240 + 20, -148, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    const closeBtn = this.add.image(-240 + 20, -148, "GJ_GameSheet03", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
     bounceContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._closeUpdateLogPopup());
@@ -6975,6 +6987,8 @@ _closeSettingsPopup() {
     if (!this._menuActive) {
       return;
     }
+    this._restoreMenuCubeLook();
+    if (this._menuCubeParticles) this._menuCubeParticles.stop();
     const _instant = !!this._instantLevelStart;
     this._instantLevelStart = false;
     const _dismiss = (target, tweenProps, cleanup) => {
@@ -6998,10 +7012,6 @@ _closeSettingsPopup() {
     this._menuActive = false;
     this._practiceBypassPending = false;
     this._slideIn = true;
-    if (this._menuGlitter) {
-      this._menuGlitter.destroy();
-      this._menuGlitter = null;
-    }
     if (this._menuUpdateLogBtn) {
       this._menuUpdateLogBtn.setVisible(false);
     }
@@ -7347,6 +7357,65 @@ _closeSettingsPopup() {
 
     fileInput.click();
   }
+  // Cosmetic-only: swaps the real player cube's on-screen icon/colors to a random pick
+  // for the main-menu backdrop, directly on the sprite layers (same live-refresh
+  // mechanism the icon selector's "icon" tab uses -- see the click handler around
+  // window[prop] = ... a few hundred lines up). Deliberately does NOT touch
+  // window.currentPlayer/mainColor/secondaryColor -- those are the user's real saved
+  // choice, read elsewhere (e.g. by the icon selector to show what's equipped), so
+  // leaving them alone means no restore-before-play step is needed either.
+  _randomizeMenuCubeLook() {
+    if (!this._player) return;
+    const n = 1 + Math.floor(Math.random() * 248);
+    const iconKey = "player_" + String(n).padStart(2, "0");
+    const palette = [
+      0xFF6EC7, 0x4AA8FF, 0xFFD23F, 0x7CFC00, 0xFF5C5C,
+      0x8C52FF, 0x37E2E2, 0xFFA500, 0x00FFAB, 0xFF3EA5
+    ];
+    const primary = palette[Math.floor(Math.random() * palette.length)];
+    const secondary = palette[Math.floor(Math.random() * palette.length)];
+    this._menuCubeColor = primary;
+    // Plain `.tint = color` silently no-ops -- Phaser stores tint as an EmitterOp object
+    // (this.ops.tint) that a raw number assignment overwrites without updating; the real
+    // live-recolor path is setParticleTint(), which calls this.ops.tint.onChange(color).
+    if (this._menuCubeParticles) this._menuCubeParticles.setParticleTint(primary);
+
+    const layerMap = [
+      { lp: "_playerSpriteLayer",  suffix: "_001.png",       tint: primary   },
+      { lp: "_playerGlowLayer",    suffix: "_glow_001.png",  tint: secondary },
+      { lp: "_playerOverlayLayer", suffix: "_2_001.png",     tint: secondary },
+      { lp: "_playerExtraLayer",   suffix: "_extra_001.png", tint: primary   },
+    ];
+    for (const { lp, suffix, tint } of layerMap) {
+      const layer = this._player[lp];
+      if (!layer || !layer.sprite) continue;
+      const found = getAtlasFrame(this, `${iconKey}${suffix}`);
+      if (found) {
+        layer.sprite.setTexture(found.atlas, found.frame);
+        layer.sprite.setTint(tint);
+      }
+    }
+  }
+  // Puts the real saved icon/colors back on the sprite layers before actual gameplay
+  // starts, undoing _randomizeMenuCubeLook()'s direct layer edits.
+  _restoreMenuCubeLook() {
+    if (!this._player) return;
+    const layerMap = [
+      { lp: "_playerSpriteLayer",  suffix: "_001.png",       tint: window.mainColor      },
+      { lp: "_playerGlowLayer",    suffix: "_glow_001.png",  tint: window.secondaryColor },
+      { lp: "_playerOverlayLayer", suffix: "_2_001.png",     tint: window.secondaryColor },
+      { lp: "_playerExtraLayer",   suffix: "_extra_001.png", tint: window.mainColor      },
+    ];
+    for (const { lp, suffix, tint } of layerMap) {
+      const layer = this._player[lp];
+      if (!layer || !layer.sprite) continue;
+      const found = getAtlasFrame(this, `${window.currentPlayer}${suffix}`);
+      if (found) {
+        layer.sprite.setTexture(found.atlas, found.frame);
+        layer.sprite.setTint(tint);
+      }
+    }
+  }
   _positionMenuItems() {
     const _0x1e5db8 = screenWidth / 2;
     if (this._logo) {
@@ -7357,10 +7426,6 @@ _closeSettingsPopup() {
     }
     if (this._tryMeImg) {
       this._tryMeImg.x = _0x1e5db8 + 260;
-    }
-    if (this._menuGlitter) {
-      this._menuGlitter.x = _0x1e5db8;
-      this._menuGlitter.y = 300;
     }
     if (this._playBtn) {
       this._playBtn.x = _0x1e5db8;
@@ -8238,6 +8303,33 @@ _closeSettingsPopup() {
       this._bg.setTint(_rainbowHex);
       this._level.setGroundColor(_groundHex);
       this._level.setGround2Color?.(_groundHex);
+      // A level-start click/keypress sets this.input.enabled = false while it downloads
+      // level/song assets, but _menuActive stays true the whole time -- this block keeps
+      // running and, before this guard, kept emitting new particles for that entire
+      // (sometimes multi-second) window right up until this.scene.restart() tore the
+      // scene down mid-emission, which crashed with "Cannot read properties of null
+      // (reading 'tint')" inside Phaser's particle render step and silently aborted the
+      // level-open flow. Freeze the cube and stop the emitter as soon as loading starts.
+      if (this.input.enabled) {
+        const menuCubeDtSec = deltaTime / 1000;
+        const menuCubeSpeed = 450;
+        const menuCubeMargin = 40;
+        this._playerWorldX += menuCubeDtSec * menuCubeSpeed;
+        if (this._playerWorldX - this._cameraX > screenWidth + menuCubeMargin) {
+          this._playerWorldX -= (screenWidth + menuCubeMargin * 2);
+          this._randomizeMenuCubeLook();
+        }
+        this._player.updateGroundRotation(menuCubeDtSec * d);
+        const menuCubeScreenX = this._getMirrorXOffset(this._playerWorldX - this._cameraX);
+        this._player.syncSprites(this._cameraX, this._cameraY, menuCubeDtSec, menuCubeScreenX);
+        if (this._menuCubeParticles) {
+          this._menuCubeParticles.particleX = menuCubeScreenX - 20;
+          this._menuCubeParticles.particleY = T;
+        }
+      } else if (this._menuCubeParticles) {
+        this._menuCubeParticles.stop();
+        this._menuCubeParticles.killAll();
+      }
       return;
     }
     if (this._slideIn) {
@@ -9133,7 +9225,7 @@ _applyMirrorEffect() {
   }
   _showNewBest() {
     let _0x9f2437 = screenWidth / 2;
-    let _0x12bde3 = this.add.image(0, 0, "GJ_WebSheet", "GJ_newBest_001.png").setOrigin(0.5, 1);
+    let _0x12bde3 = this.add.image(0, 0, "GJ_GameSheet03", "GJ_newBest_001.png").setOrigin(0.5, 1);
     let _0x544c9c = this.add.bitmapText(0, 2, "bigFont", this._lastPercent + "%", 65).setOrigin(0.5, 0).setScale(1.1);
     let _0x326cb9 = this.add.container(_0x9f2437, 300, [_0x12bde3, _0x544c9c]).setScrollFactor(0).setDepth(60).setScale(0.01);
     this.tweens.add({
@@ -9282,7 +9374,7 @@ _applyMirrorEffect() {
     const _0x56628c = screenWidth / 2;
     const _0x45ab26 = this._practicedMode.practiceMode
       ? this.add.image(_0x56628c, 250, "GJ_GameSheet03", "GJ_practiceComplete_001.png").setScrollFactor(0).setDepth(60).setScale(0.01)
-      : this.add.image(_0x56628c, 250, "GJ_WebSheet", "GJ_levelComplete_001.png").setScrollFactor(0).setDepth(60).setScale(0.01);
+      : this.add.image(_0x56628c, 250, "GJ_GameSheet03", "GJ_levelComplete_001.png").setScrollFactor(0).setDepth(60).setScale(0.01);
     this.tweens.add({
       targets: _0x45ab26,
       scale: 1.1,
@@ -9384,19 +9476,19 @@ _applyMirrorEffect() {
     const _0x950c8d = 460;
     const _0x2a115c = (screenWidth - _0x595215) / 2;
     this._endLayerInternal.add(this.add.rectangle(_0x2a115c + 356, 310, _0x595215, _0x950c8d, 0, 180 / 255));
-    const _0x43f2e3 = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-    const _0x3feccc = _0x43f2e3 ? _0x950c8d / _0x43f2e3.height : 1;
-    this._endLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
-    this._endLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
-    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_WebSheet", "GJ_table_top_001.png");
+    const _0x43f2e3 = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+    const _0x3feccc = _0x43f2e3 ? _0x950c8d / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? _0x43f2e3.height) : 1;
+    this._endLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
+    this._endLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
+    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_GameSheet03", "GJ_table_top_001.png");
     this._endLayerInternal.add(_0x33b564);
-    this._endLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_WebSheet", "GJ_table_bottom_001.png"));
+    this._endLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_GameSheet03", "GJ_table_bottom_001.png"));
     const _0x3e9c79 = _0x33b564.y - 35;
-    this._endLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
-    this._endLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._endLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._endLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
     const _completeBanner = this._practicedMode.practiceMode
       ? this.add.image(containerX, 170, "GJ_GameSheet03", "GJ_practiceComplete_001.png").setScale(0.8)
-      : this.add.image(containerX, 170, "GJ_WebSheet", "GJ_levelComplete_001.png").setScale(0.8);
+      : this.add.image(containerX, 170, "GJ_GameSheet03", "GJ_levelComplete_001.png").setScale(0.8);
     this._endLayerInternal.add(_completeBanner);
     const _0x45b6e4 = 0.8;
     let _0xe44f6d = 250;
@@ -9499,16 +9591,16 @@ _applyMirrorEffect() {
     const _0x950c8d = 460;
     const _0x2a115c = (screenWidth - _0x595215) / 2;
     this._settingsLayerInternal.add(this.add.rectangle(_0x2a115c + 356, 310, _0x595215, _0x950c8d, 0, 180 / 255));
-    const _0x43f2e3 = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-    const _0x3feccc = _0x43f2e3 ? _0x950c8d / _0x43f2e3.height : 1;
-    this._settingsLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
-    this._settingsLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
-    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_WebSheet", "GJ_table_top_001.png");
+    const _0x43f2e3 = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+    const _0x3feccc = _0x43f2e3 ? _0x950c8d / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? _0x43f2e3.height) : 1;
+    this._settingsLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
+    this._settingsLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
+    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_GameSheet03", "GJ_table_top_001.png");
     this._settingsLayerInternal.add(_0x33b564);
-    this._settingsLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_WebSheet", "GJ_table_bottom_001.png"));
+    this._settingsLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_GameSheet03", "GJ_table_bottom_001.png"));
     const _0x3e9c79 = _0x33b564.y - 35;
-    this._settingsLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
-    this._settingsLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._settingsLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._settingsLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
     this._settingsLayerInternal.add(this.add.bitmapText(containerX, 65, "bigFont", "Settings", 55).setOrigin(0.5, 0.5));
     const _sBtnBorder = this.textures.get("GJ_button01").source[0].width * 0.3;
     const _sBtnH = 62;
@@ -9653,7 +9745,7 @@ _applyMirrorEffect() {
     }
     const _0x4edc03 = containerX;
     const _0x5a0e9 = 200;
-    const _0x453043 = this.add.image(_0x4edc03, _0x5a0e9, "GJ_WebSheet", "GJ_bigStar_001.png").setScale(3).setAlpha(0);
+    const _0x453043 = this.add.image(_0x4edc03, _0x5a0e9, "GJ_GameSheet03", "GJ_bigStar_001.png").setScale(3).setAlpha(0);
     this._settingsLayerInternal.add(_0x453043);
     this.tweens.add({
       targets: _0x453043,
@@ -9748,16 +9840,16 @@ _applyMirrorEffect() {
     const _0x950c8d = 460;
     const _0x2a115c = (screenWidth - _0x595215) / 2;
     this._robTopGamesLayerInternal.add(this.add.rectangle(_0x2a115c + 356, 310, _0x595215, _0x950c8d, 0, 180 / 255));
-    const _0x43f2e3 = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-    const _0x3feccc = _0x43f2e3 ? _0x950c8d / _0x43f2e3.height : 1;
-    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
-    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
-    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_WebSheet", "GJ_table_top_001.png");
+    const _0x43f2e3 = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+    const _0x3feccc = _0x43f2e3 ? _0x950c8d / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? _0x43f2e3.height) : 1;
+    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
+    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
+    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_GameSheet03", "GJ_table_top_001.png");
     this._robTopGamesLayerInternal.add(_0x33b564);
-    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_WebSheet", "GJ_table_bottom_001.png"));
+    this._robTopGamesLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_GameSheet03", "GJ_table_bottom_001.png"));
     const _0x3e9c79 = _0x33b564.y - 35;
-    this._robTopGamesLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
-    this._robTopGamesLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._robTopGamesLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._robTopGamesLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
     this._robTopGamesLayerInternal.add(this.add.bitmapText(containerX, 65, "bigFont", "RobTop Games", 55).setOrigin(0.5, 0.5));
     this._robTopGamesLayerInternal.add(this.add.bitmapText(containerX, 310, "bigFont", "Nothing here yet... sorry :(", 40).setOrigin(0.5, 0.5));
 
@@ -9880,7 +9972,7 @@ _applyMirrorEffect() {
     this._makeBouncyButton(chestLeft, chestScale, () => { /* open chest */ }, () => !!this._dailyRewardLayerInternal);
     this._makeBouncyButton(chestRight, chestScale, () => { /* open chest */ }, () => !!this._dailyRewardLayerInternal);
 
-    const closeBtn = this.add.image(boxLeft + 5, boxTop + 15, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    const closeBtn = this.add.image(boxLeft + 5, boxTop + 15, "GJ_GameSheet03", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
     panelContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._hideDailyRewardScreen());
@@ -9940,16 +10032,16 @@ _applyMirrorEffect() {
     const _0x950c8d = 460;
     const _0x2a115c = (screenWidth - _0x595215) / 2;
     this._statsLayerInternal.add(this.add.rectangle(_0x2a115c + 356, 310, _0x595215, _0x950c8d, 0xac531e));
-    const _0x43f2e3 = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-    const _0x3feccc = _0x43f2e3 ? _0x950c8d / _0x43f2e3.height : 1;
-    this._statsLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
-    this._statsLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_WebSheet", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
-    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_WebSheet", "GJ_table_top_001.png");
+    const _0x43f2e3 = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+    const _0x3feccc = _0x43f2e3 ? _0x950c8d / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? _0x43f2e3.height) : 1;
+    this._statsLayerInternal.add(this.add.image(_0x2a115c - 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(0, 0).setScale(1, _0x3feccc));
+    this._statsLayerInternal.add(this.add.image(_0x2a115c + _0x595215 + 40, 80, "GJ_GameSheet03", "GJ_table_side_001.png").setOrigin(1, 0).setFlipX(true).setScale(1, _0x3feccc));
+    const _0x33b564 = this.add.image(_0x2a115c + 356, 70, "GJ_GameSheet03", "GJ_table_top_001.png");
     this._statsLayerInternal.add(_0x33b564);
-    this._statsLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_WebSheet", "GJ_table_bottom_001.png"));
+    this._statsLayerInternal.add(this.add.image(_0x2a115c + 356, 560, "GJ_GameSheet03", "GJ_table_bottom_001.png"));
     const _0x3e9c79 = _0x33b564.y - 35;
-    this._statsLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
-    this._statsLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._statsLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
+    this._statsLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_GameSheet", "chain_01_001.png").setOrigin(0.5, 1));
     this._statsLayerInternal.add(this.add.bitmapText(containerX, 65, "bigFont", "Stats", 55).setOrigin(0.5, 0.5));
     const _rowPanelTop = 102;
     const _rowPanelBottom = 528;
@@ -10086,28 +10178,28 @@ _applyMirrorEffect() {
       this.add.rectangle(tableX + 356, 310, tableW, tableH, 0xac531e)
     );
 
-    const sideFrame = this.textures.getFrame('GJ_WebSheet', 'GJ_table_side_001.png');
-    const sideScaleY = sideFrame ? tableH / sideFrame.height : 1;
+    const sideFrame = this.textures.getFrame('GJ_GameSheet03', 'GJ_table_side_001.png');
+    const sideScaleY = sideFrame ? tableH / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? sideFrame.height) : 1;
     this._achieveLayerInternal.add(
-      this.add.image(tableX - 40, 80, 'GJ_WebSheet', 'GJ_table_side_001.png')
+      this.add.image(tableX - 40, 80, 'GJ_GameSheet03', 'GJ_table_side_001.png')
         .setOrigin(0, 0).setScale(1, sideScaleY)
     );
     this._achieveLayerInternal.add(
-      this.add.image(tableX + tableW + 40, 80, 'GJ_WebSheet', 'GJ_table_side_001.png')
+      this.add.image(tableX + tableW + 40, 80, 'GJ_GameSheet03', 'GJ_table_side_001.png')
         .setOrigin(1, 0).setFlipX(true).setScale(1, sideScaleY)
     );
 
-    const topImg = this.add.image(tableX + 356, 70, 'GJ_WebSheet', 'GJ_table_top_001.png');
+    const topImg = this.add.image(tableX + 356, 70, 'GJ_GameSheet03', 'GJ_table_top_001.png');
     this._achieveLayerInternal.add(topImg);
     this._achieveLayerInternal.add(
-      this.add.image(tableX + 356, 560, 'GJ_WebSheet', 'GJ_table_bottom_001.png')
+      this.add.image(tableX + 356, 560, 'GJ_GameSheet03', 'GJ_table_bottom_001.png')
     );
 
     this._achieveLayerInternal.add(
-      this.add.image(containerX - 312, topImg.y - 35, 'GJ_WebSheet', 'chain_01_001.png').setOrigin(0.5, 1)
+      this.add.image(containerX - 312, topImg.y - 35, 'GJ_GameSheet', 'chain_01_001.png').setOrigin(0.5, 1)
     );
     this._achieveLayerInternal.add(
-      this.add.image(containerX + 312, topImg.y - 35, 'GJ_WebSheet', 'chain_01_001.png').setOrigin(0.5, 1)
+      this.add.image(containerX + 312, topImg.y - 35, 'GJ_GameSheet', 'chain_01_001.png').setOrigin(0.5, 1)
     );
 
     this._achieveLayerInternal.add(
@@ -10280,7 +10372,7 @@ _applyMirrorEffect() {
     }
     const _0x4edc03 = this._endStarX;
     const _0x5a0e9 = this._endStarY;
-    const _0x453043 = this.add.image(_0x4edc03, _0x5a0e9, "GJ_WebSheet", "GJ_bigStar_001.png").setScale(3).setAlpha(0);
+    const _0x453043 = this.add.image(_0x4edc03, _0x5a0e9, "GJ_GameSheet03", "GJ_bigStar_001.png").setScale(3).setAlpha(0);
     this._endLayerInternal.add(_0x453043);
     this.tweens.add({
       targets: _0x453043,
@@ -10408,22 +10500,22 @@ _applyMirrorEffect() {
 
     const addRow = () => { _rowCount++; _redrawStripes(); };
     const clearRows = () => { _rowCount = 0; _redrawStripes(); };
-    const sideFrame = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-    const sideScaleY = sideFrame ? panelH / sideFrame.height : 1;
+    const sideFrame = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+    const sideScaleY = sideFrame ? panelH / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? sideFrame.height) : 1;
     const leftBorder = this.add.image(listLeft - 40, 90,
-      "GJ_WebSheet", "GJ_table_side_001.png")
+      "GJ_GameSheet03", "GJ_table_side_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(0, 0).setScale(1, sideScaleY);
     objects.push(leftBorder);
     const rightBorder = this.add.image(listLeft + panelW + 40, 90,
-      "GJ_WebSheet", "GJ_table_side_001.png")
+      "GJ_GameSheet03", "GJ_table_side_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(1, 0).setFlipX(true).setScale(1, sideScaleY);
     objects.push(rightBorder);
     const topBorder = this.add.image(panelCX, 80,
-      "GJ_WebSheet", "GJ_table_top_001.png")
+      "GJ_GameSheet03", "GJ_table_top_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(0.5);
     objects.push(topBorder);
     const bottomBorder = this.add.image(panelCX, 570,
-      "GJ_WebSheet", "GJ_table_bottom_001.png")
+      "GJ_GameSheet03", "GJ_table_bottom_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(0.5);
     objects.push(bottomBorder);
 
@@ -11136,22 +11228,22 @@ _applyMirrorEffect() {
     const addRow   = () => { _rowCount++; redrawStripes(); };
     const clearRows = () => { _rowCount = 0; redrawStripes(); };
 
-    const sideFrame = this.textures.getFrame("GJ_WebSheet", "GJ_table_side_001.png");
-    const sideScaleY = sideFrame ? panelH / sideFrame.height : 1;
+    const sideFrame = this.textures.getFrame("GJ_GameSheet03", "GJ_table_side_001.png");
+    const sideScaleY = sideFrame ? panelH / (window._uhdOrigSizes?.GJ_GameSheet03?.["GJ_table_side_001.png"]?.h ?? sideFrame.height) : 1;
     const leftBorder = this.add.image(listLeft - 40, 90,
-      "GJ_WebSheet", "GJ_table_side_001.png")
+      "GJ_GameSheet03", "GJ_table_side_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(0, 0).setScale(1, sideScaleY);
     objects.push(leftBorder);
     const rightBorder = this.add.image(listLeft + panelW + 40, 90,
-      "GJ_WebSheet", "GJ_table_side_001.png")
+      "GJ_GameSheet03", "GJ_table_side_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(1, 0).setFlipX(true).setScale(1, sideScaleY);
     objects.push(rightBorder);
     const topBorder = this.add.image(panelCX, 80,
-      "GJ_WebSheet", "GJ_table_top_001.png")
+      "GJ_GameSheet03", "GJ_table_top_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(0.5);
     objects.push(topBorder);
     const bottomBorder = this.add.image(panelCX, 570,
-      "GJ_WebSheet", "GJ_table_bottom_001.png")
+      "GJ_GameSheet03", "GJ_table_bottom_001.png")
       .setScrollFactor(0).setDepth(203).setOrigin(0.5);
     objects.push(bottomBorder);
 
@@ -11586,6 +11678,357 @@ _applyMirrorEffect() {
     }
   }
 
+  _openGeodeLoaderMenu() {
+    if (this._geodeLoaderMenu) return;
+    this._geodeLoaderMenu = true;
+    const sw = screenWidth;
+    const sh = screenHeight;
+    const objects = [];
+
+    const fadeIn = this.add.graphics().setScrollFactor(0).setDepth(300);
+    fadeIn.fillStyle(0x000000, 1);
+    fadeIn.fillRect(0, 0, sw, sh);
+    this.tweens.add({ targets: fadeIn, alpha: 0, duration: 280, ease: "Linear",
+      onComplete: () => fadeIn.destroy() });
+
+    const bgGfx = this.add.graphics().setScrollFactor(0).setDepth(200);
+    const steps = 80;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const r = 0;
+      const g = Math.round(0x66 * (1 - t) + 0x33 * t);
+      const b = Math.round(0xff * (1 - t) + 0x99 * t);
+      bgGfx.fillStyle((r << 16) | (g << 8) | b, 1);
+      bgGfx.fillRect(0, Math.floor(i * sh / steps), sw, Math.ceil(sh / steps) + 1);
+    }
+    objects.push(bgGfx);
+
+    const blocker = this.add.zone(sw / 2, sh / 2, sw, sh)
+      .setScrollFactor(0).setDepth(200).setInteractive();
+    objects.push(blocker);
+
+    const panelW  = 712;
+    const panelH  = 460;
+    const panelCX = sw / 2;
+    const panelCY = sh / 2;
+    const panelBg = this.add.rectangle(panelCX, panelCY + 10, panelW, panelH, 0xA8552C)
+      .setScrollFactor(0).setDepth(201).setOrigin(0.5);
+    objects.push(panelBg);
+
+    const listLeft = panelCX - panelW / 2;
+
+    // Anchored by its left edge (fixed at the same spot the old right-edge anchor's
+    // left edge landed on: listLeft+4 minus its old 32px display width), so widening
+    // its width grows it rightward toward the panel instead of jumping position.
+    const sideGapWidth = 40;
+    const sideFrame = this.textures.getFrame("geodeApiSheet_uhd", "mods-list-side-gd.png");
+    const sideScaleY = sideFrame ? (panelH / sideFrame.height) * 0.91 : 1;
+    const sideScaleX = sideFrame ? (sideGapWidth / sideFrame.width) * 0.85 : 1;
+    const leftBorder = this.add.image(listLeft - 28, 90 + panelH,
+      "geodeApiSheet_uhd", "mods-list-side-gd.png")
+      .setScrollFactor(0).setDepth(203).setOrigin(0, 1).setScale(sideScaleX, sideScaleY);
+    objects.push(leftBorder);
+    const rightBorder = this.add.image(listLeft + panelW + 28, 90 + panelH,
+      "geodeApiSheet_uhd", "mods-list-side-gd.png")
+      .setScrollFactor(0).setDepth(203).setOrigin(1, 1).setFlipX(true).setScale(sideScaleX, sideScaleY);
+    objects.push(rightBorder);
+    // mods-list-top-gd.png has a hard, white-outlined cutoff along its bottom edge (not
+    // meant to blend into an arbitrary width), so scale it uniformly (preserving its
+    // aspect ratio) instead of stretching it flush across the panel -- sized so its width
+    // spans the side borders' outer edges and its bottom sits level with their top, so the
+    // corner pieces meet up instead of leaving a gap or overlapping oddly.
+    const topFrame = this.textures.getFrame("geodeApiSheet_uhd", "mods-list-top-gd.png");
+    const topOuterWidth = panelW + 56;
+    const topScale = topFrame ? (topOuterWidth / topFrame.width) * 1.075 : 1;
+    const topBorder = this.add.image(panelCX, 90 + panelH * 0.1 + 3,
+      "geodeApiSheet_uhd", "mods-list-top-gd.png")
+      .setScrollFactor(0).setDepth(203).setOrigin(0.5, 1).setScale(topScale);
+    objects.push(topBorder);
+
+    const insideFillLeft = panelCX - (panelW - 100) / 2 - 28;
+    const insideFillWidth = (panelW - 225) * 1.06;
+    const insideFillBottom = topBorder.y + panelH / 12 + 10;
+    const insideFillHeight = (panelH / 12) * 1.15;
+    const insideFillBack = this.add.graphics().setScrollFactor(0).setDepth(201.5);
+    insideFillBack.fillStyle(0x723F1F, 1);
+    const insideFillBackTop = insideFillBottom - insideFillHeight - 8;
+    const insideFillBackHeight = insideFillHeight * 1.36;
+    insideFillBack.fillRect(listLeft, insideFillBackTop,
+      panelW, insideFillBackHeight);
+    objects.push(insideFillBack);
+
+    const insideFill = this.add.graphics().setScrollFactor(0).setDepth(202);
+    insideFill.fillStyle(0x000000, 0x5A / 255);
+    insideFill.fillRoundedRect(insideFillLeft, insideFillBottom - insideFillHeight,
+      insideFillWidth, insideFillHeight, 6);
+    objects.push(insideFill);
+
+    const insideFillLabel = this.add.bitmapText(insideFillLeft + 14, insideFillBottom - insideFillHeight / 2,
+      "bigFont", "Search Mods", 24)
+      .setScrollFactor(0).setDepth(202.5).setOrigin(0, 0.5).setTint(0x969696);
+    objects.push(insideFillLabel);
+
+    const insideFillBtn = this.add.image(insideFillLeft + insideFillWidth + 38,
+      insideFillBottom - insideFillHeight / 2, "GJ_button01_uhd")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.24).setInteractive();
+    objects.push(insideFillBtn);
+
+    const insideFillBtnIcon = this.add.image(insideFillBtn.x, insideFillBtn.y,
+      "GJ_GameSheet03", "GJ_sortIcon_001.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.46);
+    objects.push(insideFillBtnIcon);
+
+    this._makeCompositeBouncyButton(insideFillBtn, [insideFillBtn, insideFillBtnIcon], 0.24, () => {},
+      () => this._menuActive && !!this._geodeLoaderMenu);
+
+    const filterBtn = this.add.image(insideFillBtn.x + 45, insideFillBtn.y, "GJ_button01_uhd")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.24).setInteractive();
+    objects.push(filterBtn);
+
+    const filterBtnIcon = this.add.image(filterBtn.x, filterBtn.y,
+      "GJ_GameSheet03", "GJ_filterIcon_001.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.46);
+    objects.push(filterBtnIcon);
+
+    this._makeCompositeBouncyButton(filterBtn, [filterBtn, filterBtnIcon], 0.24, () => {},
+      () => this._menuActive && !!this._geodeLoaderMenu);
+
+    const deleteBtn = this.add.image(filterBtn.x + 45, filterBtn.y, "GJ_button01_uhd")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.24).setInteractive().setAlpha(90 / 255);
+    objects.push(deleteBtn);
+
+    const deleteBtnIcon = this.add.image(deleteBtn.x, deleteBtn.y,
+      "GJ_GameSheet03", "GJ_deleteIcon_001.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.5).setAlpha(90 / 255);
+    objects.push(deleteBtnIcon);
+
+    this._makeCompositeBouncyButton(deleteBtn, [deleteBtn, deleteBtnIcon], 0.24, () => {},
+      () => this._menuActive && !!this._geodeLoaderMenu);
+
+    const tabScale = 0.45;
+    const tabActive = this.add.image(listLeft + 76.5, topBorder.y - 44.5,
+      "geodeTabActivated")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5, 0.5).setScale(tabScale).setInteractive();
+    objects.push(tabActive);
+
+    const tabInactive = this.add.image(tabActive.x + tabActive.displayWidth - 34, tabActive.y,
+      "geodeTabDeactivated")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5, 0.5).setScale(tabScale).setInteractive();
+    objects.push(tabInactive);
+
+    const tabInactive2 = this.add.image(tabInactive.x + tabActive.displayWidth - 34, tabActive.y,
+      "geodeTabDeactivated")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5, 0.5).setScale(tabScale).setInteractive();
+    objects.push(tabInactive2);
+
+    const tabInactive3 = this.add.image(tabInactive2.x + tabActive.displayWidth - 34, tabActive.y,
+      "geodeTabDeactivated")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5, 0.5).setScale(tabScale).setInteractive();
+    objects.push(tabInactive3);
+
+    const downloadIconScale = 0.165;
+    const activeContent = this.add.container(tabActive.x, tabActive.y).setScrollFactor(0).setDepth(205);
+    const downloadIcon = this.add.image(-tabActive.displayWidth / 2 + 36.5, 0.5,
+      "geodeApiSheet_uhd", "download.png")
+      .setOrigin(0, 0.5).setScale(downloadIconScale);
+    const installedLabel = this.add.bitmapText(15, 1, "bigFont", "Installed", 19.5)
+      .setOrigin(0.5, 0.5);
+    activeContent.add([downloadIcon, installedLabel]);
+    objects.push(activeContent);
+
+    const inactiveContent = this.add.container(tabInactive.x, tabInactive.y).setScrollFactor(0).setDepth(205);
+    const featuredIcon = this.add.image(-tabInactive.displayWidth / 2 + 34.5, 0.5,
+      "GJ_GameSheet03", "GJ_starsIcon_001.png")
+      .setOrigin(0, 0.5).setScale(0.65);
+    const featuredLabel = this.add.bitmapText(14, 1, "bigFont", "Featured", 20)
+      .setOrigin(0.5, 0.5);
+    inactiveContent.add([featuredIcon, featuredLabel]);
+    objects.push(inactiveContent);
+
+    const downloadTabContent = this.add.container(tabInactive2.x, tabInactive2.y).setScrollFactor(0).setDepth(205);
+    const globeIcon = this.add.image(-tabInactive2.displayWidth / 2 + 34, 0.5,
+      "geodeApiSheet_uhd", "globe.png")
+      .setOrigin(0, 0.5).setScale(0.175);
+    const downloadTabLabel = this.add.bitmapText(14, 1, "bigFont", "Download", 19.25)
+      .setOrigin(0.5, 0.5);
+    downloadTabContent.add([globeIcon, downloadTabLabel]);
+    objects.push(downloadTabContent);
+
+    const recentTabContent = this.add.container(tabInactive3.x, tabInactive3.y).setScrollFactor(0).setDepth(205);
+    const recentIcon = this.add.image(-tabInactive3.displayWidth / 2 + 34, 0.5,
+      "GJ_GameSheet03", "GJ_timeIcon_001.png")
+      .setOrigin(0, 0.5).setScale(0.682);
+    const recentTabLabel = this.add.bitmapText(13.75, 1.25, "bigFont", "Recent", 25.25)
+      .setOrigin(0.5, 0.5);
+    recentTabContent.add([recentIcon, recentTabLabel]);
+    objects.push(recentTabContent);
+
+    const installedTabButton = this.add.image(tabActive.x - tabActive.displayWidth / 2 - 19.5, tabActive.y + 175,
+      "GJ_button01_uhd")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.26).setInteractive();
+    objects.push(installedTabButton);
+
+    const gridViewIcon = this.add.image(installedTabButton.x, installedTabButton.y,
+      "geodeApiSheet_uhd", "grid-view.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.3);
+    objects.push(gridViewIcon);
+
+    const extendedTabButton = this.add.image(installedTabButton.x, installedTabButton.y - 44,
+      "GJ_button01_uhd")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.26).setInteractive();
+    objects.push(extendedTabButton);
+
+    const extendedIcon = this.add.image(extendedTabButton.x, extendedTabButton.y,
+      "GJ_GameSheet03", "GJ_extendedIcon_001.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.57);
+    objects.push(extendedIcon);
+
+    const smallModeTabButton = this.add.image(extendedTabButton.x, extendedTabButton.y - 44,
+      "GJ_button02_uhd")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.26).setInteractive();
+    objects.push(smallModeTabButton);
+
+    const smallModeIcon = this.add.image(smallModeTabButton.x, smallModeTabButton.y,
+      "GJ_GameSheet03", "GJ_smallModeIcon_001.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.57);
+    objects.push(smallModeIcon);
+
+    const modeButtons = [installedTabButton, extendedTabButton, smallModeTabButton];
+    const modeButtonIcon = new Map([
+      [installedTabButton, gridViewIcon],
+      [extendedTabButton, extendedIcon],
+      [smallModeTabButton, smallModeIcon]
+    ]);
+    let activeModeButton = smallModeTabButton;
+    const selectModeButton = (btn) => {
+      if (btn === activeModeButton) return;
+      activeModeButton.setTexture("GJ_button01_uhd");
+      btn.setTexture("GJ_button02_uhd");
+      activeModeButton = btn;
+    };
+    for (const btn of modeButtons) {
+      const icon = modeButtonIcon.get(btn);
+      this._makeCompositeBouncyButton(btn, [btn, icon], 0.26, () => selectModeButton(btn),
+        () => this._menuActive && !!this._geodeLoaderMenu && btn !== activeModeButton);
+    }
+
+    const tabs = [tabActive, tabInactive, tabInactive2, tabInactive3];
+    const tabContent = new Map([[tabActive, activeContent], [tabInactive, inactiveContent], [tabInactive2, downloadTabContent], [tabInactive3, recentTabContent]]);
+    let activeTab = tabActive;
+    const installedTabObjects = [];
+    const selectTab = (tab) => {
+      if (tab === activeTab) return;
+      activeTab.setTexture("geodeTabDeactivated");
+      tab.setTexture("geodeTabActivated");
+      activeTab = tab;
+      for (const o of installedTabObjects) o.setVisible(activeTab === tabActive);
+    };
+    for (const tab of tabs) {
+      const content = tabContent.get(tab);
+      const visualTargets = content ? [tab, content] : [tab];
+      this._makeCompositeBouncyButton(tab, visualTargets, tabScale, () => selectTab(tab), () => this._menuActive && !!this._geodeLoaderMenu && tab !== activeTab);
+    }
+    const modsListFillLeft   = insideFillLeft - 9.5;
+    const modsListFillWidth  = insideFillWidth + 162 + 9.5;
+    const modsListFillHeight = insideFillHeight + 15.5;
+    const modsListFillTop    = insideFillBottom + 13;
+    const modsListFill = this.add.graphics().setScrollFactor(0).setDepth(202);
+    modsListFill.fillStyle(0x000000, 0x5A / 255);
+    modsListFill.fillRoundedRect(modsListFillLeft, modsListFillTop,
+      modsListFillWidth, modsListFillHeight, 6);
+    objects.push(modsListFill);
+    installedTabObjects.push(modsListFill);
+
+    const modsListFillIcon = this.add.image(modsListFillLeft + 13.5, modsListFillTop + modsListFillHeight / 2 - 0.5,
+      "geodeLogoSheet_uhd", "geode-logo.png")
+      .setScrollFactor(0).setDepth(202.5).setOrigin(0, 0.5).setScale(40 / 336);
+    objects.push(modsListFillIcon);
+    installedTabObjects.push(modsListFillIcon);
+
+    const modsListFillTextX = modsListFillIcon.x + modsListFillIcon.displayWidth + 24;
+    const modsListFillNameLabel = this.add.bitmapText(modsListFillTextX - 4, modsListFillTop + modsListFillHeight / 2 - 14.5,
+      "bigFont", "Geode", 24)
+      .setScrollFactor(0).setDepth(202.5).setOrigin(0, 0.5).setLetterSpacing(-1.5);
+    objects.push(modsListFillNameLabel);
+    installedTabObjects.push(modsListFillNameLabel);
+
+    const modsListFillDevLabel = this.add.bitmapText(modsListFillTextX - 4, modsListFillTop + modsListFillHeight / 2 + 10,
+      "goldFont", "Geode Team", 19)
+      .setScrollFactor(0).setDepth(202.5).setOrigin(0, 0.5);
+    objects.push(modsListFillDevLabel);
+    installedTabObjects.push(modsListFillDevLabel);
+
+    const modsListFillVersionLabel = this.add.bitmapText(
+      modsListFillNameLabel.x + modsListFillNameLabel.width + 7.5,
+      modsListFillTop + modsListFillHeight / 2 - 14.5,
+      "bigFont", "vWEB", 18)
+      .setScrollFactor(0).setDepth(202.5).setOrigin(0, 0.5).setTint(0x70EB29);
+    objects.push(modsListFillVersionLabel);
+    installedTabObjects.push(modsListFillVersionLabel);
+
+    const bottomBorder = this.add.image(panelCX, 574,
+      "geodeApiSheet_uhd", "mods-list-bottom-gd.png")
+      .setScrollFactor(0).setDepth(203).setOrigin(0.5).setScale(0.5);
+    objects.push(bottomBorder);
+
+    const greenCircle = this.add.image(panelCX + panelW / 2 + 143, panelCY + 10 + panelH / 2 + 17,
+      "geodeBlankSheet_uhd", "baseCircle_Medium_Green.png")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.4).setInteractive();
+    objects.push(greenCircle);
+
+    const reloadIcon = this.add.image(greenCircle.x + 1.5, greenCircle.y,
+      "geodeApiSheet_uhd", "reload.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.3775);
+    objects.push(reloadIcon);
+
+    this._makeCompositeBouncyButton(greenCircle, [greenCircle, reloadIcon], 0.4, () => {},
+      () => this._menuActive && !!this._geodeLoaderMenu);
+
+    const greenCircleLeft = this.add.image(panelCX - panelW / 2 - 143, greenCircle.y,
+      "geodeBlankSheet_uhd", "baseCircle_Medium_Green.png")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.4).setInteractive();
+    objects.push(greenCircleLeft);
+
+    const reloadIconLeft = this.add.image(greenCircleLeft.x, greenCircleLeft.y,
+      "geodeApiSheet_uhd", "settings.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.3575);
+    objects.push(reloadIconLeft);
+
+    this._makeCompositeBouncyButton(greenCircleLeft, [greenCircleLeft, reloadIconLeft], 0.4, () => {},
+      () => this._menuActive && !!this._geodeLoaderMenu);
+
+    const greenCircleLeftTop = this.add.image(greenCircleLeft.x, greenCircleLeft.y - 82,
+      "geodeBlankSheet_uhd", "baseCircle_Medium_Green.png")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setScale(0.4).setInteractive();
+    objects.push(greenCircleLeftTop);
+
+    const keybindsIcon = this.add.image(greenCircleLeftTop.x + 0.5, greenCircleLeftTop.y - 2,
+      "geodeApiSheet_uhd", "keybinds.png")
+      .setScrollFactor(0).setDepth(205).setOrigin(0.5).setScale(0.38);
+    objects.push(keybindsIcon);
+
+    this._makeCompositeBouncyButton(greenCircleLeftTop, [greenCircleLeftTop, keybindsIcon], 0.4, () => {},
+      () => this._menuActive && !!this._geodeLoaderMenu);
+
+    const backBtn = this.add.image(48.5, 46.5, "GJ_GameSheet03", "GJ_arrow_03_001.png")
+      .setScrollFactor(0).setDepth(204).setOrigin(0.5).setInteractive();
+    objects.push(backBtn);
+    const closeOverlay = () => {
+      const fadeOut = this.add.graphics().setScrollFactor(0).setDepth(400).setAlpha(0);
+      fadeOut.fillStyle(0x000000, 1);
+      fadeOut.fillRect(0, 0, sw, sh);
+      this.tweens.add({ targets: fadeOut, alpha: 1, duration: 160, ease: "Linear",
+        onComplete: () => {
+          for (const o of objects) if (o && o.destroy) o.destroy();
+          this._geodeLoaderMenu = null;
+          this.tweens.add({ targets: fadeOut, alpha: 0, duration: 160, ease: "Linear",
+            onComplete: () => fadeOut.destroy() });
+        }
+      });
+    };
+    this._closeGeodeLoaderMenu = closeOverlay;
+    this._makeBouncyButton(backBtn, 1, () => closeOverlay());
+  }
 
   _closeOnlineLevelsScene() {
     if (this._onlineLevelsOverlay) {
