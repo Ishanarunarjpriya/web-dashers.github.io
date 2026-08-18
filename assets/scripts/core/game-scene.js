@@ -7286,6 +7286,8 @@ _buildSettingsPopup() {
       return;
     }
     this._deathTimer = 0;
+    this._endCameraOverride = false;
+    this._endCamTween = null;
     this._deathSoundPlayed = false;
     this._newBestShown = false;
     this._state.isDead = false;
