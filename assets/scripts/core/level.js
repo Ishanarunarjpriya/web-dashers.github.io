@@ -2982,31 +2982,65 @@ window.LevelObject = class LevelObject {
       if ([35, 67, 140, 1332, 3005].includes(_padId) && !window.enableLDM && !window.isEditor && !scene?._editorPlaytestActive) {
         const _padW = objectDef.gridW * a;
         let _padTint = 0xffffff;
-        if (_padId === 35) {
+        if (levelObj.color1 > 0 && scene._colorManager) {
+          _padTint = scene._colorManager.getHex(levelObj.color1);
+        } else if (_padId === 35) {
           _padTint = 0xffcc00;
-        } else if (_padId === 67 || _padId === 1332) {
+        } else if (_padId === 67) {
+          _padTint = 0x00ffff;
+        } else if (_padId === 1332) {
           _padTint = 0xff3344;
+        } else if (_padId === 140) {
+          _padTint = 0xff33aa;
         } else if (_padId === 3005) {
-          _padTint = 0x3388ff;
+          _padTint = 0xa833ff;
         }
-        const _padEmitter = scene.add.particles(worldX, b(worldY) - 2, "GJ_WebSheet", {
+        const rotDeg = ((levelObj.rot || 0) % 360 + 360) % 360;
+        const isUpsideDown = normRot => normRot === 180 || (levelObj.flipY && normRot === 0);
+        let minAngle = 240, maxAngle = 300;
+        let gravY = -500, gravX = 0;
+        let offsetY = -2, offsetX = 0;
+        if (isUpsideDown(rotDeg)) {
+          minAngle = 60;
+          maxAngle = 120;
+          gravY = 500;
+          offsetY = 2;
+        } else if (rotDeg === 90) {
+          minAngle = -30;
+          maxAngle = 30;
+          gravY = 0;
+          gravX = 500;
+          offsetX = 2;
+        } else if (rotDeg === 270) {
+          minAngle = 150;
+          maxAngle = 210;
+          gravY = 0;
+          gravX = -500;
+          offsetX = -2;
+        }
+        const _padEmitter = scene.add.particles(worldX + offsetX, b(worldY) + offsetY, "GJ_WebSheet", {
           frame: "square.png",
           lifespan: { min: 200, max: 600 },
           speed: { min: 180, max: 380 },
-          angle: { min: 240, max: 300 },
-          x: { min: -_padW / 2, max: _padW / 2 },
+          angle: { min: minAngle, max: maxAngle },
+          x: rotDeg === 90 || rotDeg === 270 ? 0 : { min: -_padW / 2, max: _padW / 2 },
+          y: rotDeg === 90 || rotDeg === 270 ? { min: -_padW / 2, max: _padW / 2 } : 0,
           scale: { start: 0.55, end: 0 },
           alpha: { start: 1, end: 0 },
-          gravityY: -500,
+          gravityX: gravX,
+          gravityY: gravY,
           frequency: 12,
           tint: _padTint,
           blendMode: Phaser.BlendModes.ADD,
           emitting: true
         });
         _padEmitter.setDepth(12);
-        _padEmitter.setScrollFactor(0);
         padObj._padParticleEmitter = _padEmitter;
         padObj.emitters = [_padEmitter];
+        if (levelObj.color1 > 0) {
+          if (!this._colorChannelSprites[levelObj.color1]) this._colorChannelSprites[levelObj.color1] = [];
+          this._colorChannelSprites[levelObj.color1].push(_padEmitter);
+        }
         this.topContainer.add(_padEmitter);
       }
     } else if (objectDef.type === ringType) {
@@ -4459,6 +4493,11 @@ window.LevelObject = class LevelObject {
       }
       if (_0x3d473e.userCoinId !== undefined) {
         _0x3d473e.activated = false;
+      }
+      if (_0x3d473e._padParticleEmitter) {
+        if (typeof _0x3d473e._padParticleEmitter.start === "function") {
+          _0x3d473e._padParticleEmitter.start();
+        }
       }
     }
     this._secretCoinRunCollected.clear();
