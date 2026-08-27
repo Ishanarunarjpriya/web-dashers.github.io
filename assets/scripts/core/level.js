@@ -2533,6 +2533,37 @@ window.LevelObject = class LevelObject {
       this.objects.push(padObj);
       hasCollisionEntry = true;
       this._addCollisionToSection(padObj);
+      const _padId = parseInt(levelObj.id ?? 0, 10);
+      if ([35, 67, 140, 1332, 3005].includes(_padId) && !window.enableLDM && !window.isEditor && !scene?._editorPlaytestActive) {
+        const _padW = objectDef.gridW * a;
+        let _padTint = 0xffffff;
+        if (_padId === 35) {
+          _padTint = 0xffcc00;
+        } else if (_padId === 67 || _padId === 1332) {
+          _padTint = 0xff3344;
+        } else if (_padId === 3005) {
+          _padTint = 0x3388ff;
+        }
+        const _padEmitter = scene.add.particles(worldX, b(worldY) - 2, "GJ_WebSheet", {
+          frame: "square.png",
+          lifespan: { min: 200, max: 600 },
+          speed: { min: 180, max: 380 },
+          angle: { min: 240, max: 300 },
+          x: { min: -_padW / 2, max: _padW / 2 },
+          scale: { start: 0.55, end: 0 },
+          alpha: { start: 1, end: 0 },
+          gravityY: -500,
+          frequency: 12,
+          tint: _padTint,
+          blendMode: Phaser.BlendModes.ADD,
+          emitting: true
+        });
+        _padEmitter.setDepth(12);
+        _padEmitter.setScrollFactor(0);
+        padObj._padParticleEmitter = _padEmitter;
+        padObj.emitters = [_padEmitter];
+        this.topContainer.add(_padEmitter);
+      }
     } else if (objectDef.type === ringType) {
       const orbW = objectDef.gridW * a;
       const orbH = objectDef.gridH * a;

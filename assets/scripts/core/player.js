@@ -4306,6 +4306,9 @@ if (this.p.isFlying || this.p.isUfo) {
               this.runRotateAction();
               _boostedThisStep = true;
             }
+            if (gameObj._padParticleEmitter) {
+              gameObj._padParticleEmitter.explode(24, this._scene._playerWorldX, b(this.p.y) + (this.p.gravityFlipped ? -24 : 24));
+            }
           }
         } else if (_colType === jumpRingType) {
           const _orbId = gameObj.orbId;
