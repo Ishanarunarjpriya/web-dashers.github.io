@@ -7396,6 +7396,23 @@ _showwippopup() {
     this._endCamTween = null;
     this._spaceWasDown = false;
     this._physicsFrame = 0;
+    if (this._mirrorTween) {
+      this._mirrorTween.stop();
+      this._mirrorTween = null;
+    }
+    if (this._mirrorClipGfx) {
+      for (const c of [this._level?.additiveContainer, this._level?.container, this._level?.topContainer]) {
+        c?.clearMask();
+      }
+      this._mirrorClipGfx.destroy();
+      this._mirrorClipGfx = null;
+      this._mirrorClipMask = null;
+    }
+    if (this._mirrorAnim) {
+      this._mirrorAnim.p = 0;
+    } else {
+      this._mirrorAnim = { p: 0 };
+    }
   }
   _restartLevel() {
     this._attempts++;
@@ -7648,6 +7665,23 @@ _showwippopup() {
     this._state.gravity = checkpoint.gravity;
     this._state.jumpPower = checkpoint.jumpPower;
     this._state.mirrored = checkpoint.mirrored;
+    if (this._mirrorTween) {
+      this._mirrorTween.stop();
+      this._mirrorTween = null;
+    }
+    if (this._mirrorClipGfx) {
+      for (const c of [this._level?.additiveContainer, this._level?.container, this._level?.topContainer]) {
+        c?.clearMask();
+      }
+      this._mirrorClipGfx.destroy();
+      this._mirrorClipGfx = null;
+      this._mirrorClipMask = null;
+    }
+    if (this._mirrorAnim) {
+      this._mirrorAnim.p = checkpoint.mirrored ? 1 : 0;
+    } else {
+      this._mirrorAnim = { p: checkpoint.mirrored ? 1 : 0 };
+    }
     this._state.isDashing = checkpoint.isDashing;
     this._state.dashYVelocity = checkpoint.dashYVelocity;
     this._state.ballShouldRotate = checkpoint.ballShouldRotate || false;
@@ -8655,34 +8689,99 @@ _showwippopup() {
     this._applyMirrorEffect();
   }
 
-_applyMirrorEffect() {
-    const isMirrored = this._state.mirrored;
+  toggleMirror(isMirrored) {
+    const currentP = this._mirrorAnim
+      ? this._mirrorAnim.p
+      : (this._state.mirrored ? 1 : 0);
+
+    this._state.mirrored = isMirrored;
+    if (this._state2) this._state2.mirrored = isMirrored;
+
+    if (!this._mirrorAnim) {
+      this._mirrorAnim = { p: currentP };
+    }
+
+    if (this._editorPlaytestActive) {
+      this._mirrorAnim.p = isMirrored ? 1 : 0;
+      return;
+    }
+
+    if (this._mirrorTween) {
+      this._mirrorTween.stop();
+      this._mirrorTween = null;
+    }
+    this._mirrorTween = this.tweens.add({
+      targets: this._mirrorAnim,
+      p: isMirrored ? 1 : 0,
+      duration: 400,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        this._mirrorTween = null;
+      }
+    });
+  }
+
+  _applyMirrorEffect() {
+    const p = this._mirrorAnim ? this._mirrorAnim.p : (this._state.mirrored ? 1 : 0);
     const containers = [this._level.additiveContainer, this._level.container, this._level.topContainer];
-    if (isMirrored) {
+    const raw = 1 - 2 * p;
+    const scaleX = Math.abs(raw) < 0.0001 ? 0.0001 : raw;
+    const containerX = screenWidth / 2 * (1 - scaleX) - this._cameraX * scaleX;
+
+    for (const c of containers) {
+      c.scaleX = scaleX;
+      c.x = containerX;
+    }
+
+    const isTransitioning = p > 0.001 && p < 0.999;
+    if (isTransitioning) {
+      const visibleWidth = Math.max(1, screenWidth * Math.abs(scaleX));
+      const visibleLeft = (screenWidth - visibleWidth) / 2;
+
+      if (!this._mirrorClipGfx) {
+        this._mirrorClipGfx = this.make.graphics({ add: false });
+        this._mirrorClipMask = this._mirrorClipGfx.createGeometryMask();
+        for (const c of containers) {
+          c.setMask(this._mirrorClipMask);
+        }
+      }
+
+      this._mirrorClipGfx.clear();
+      this._mirrorClipGfx.fillStyle(0xffffff, 1);
+      this._mirrorClipGfx.fillRect(visibleLeft, 0, visibleWidth, screenHeight);
+    } else if (this._mirrorClipGfx) {
       for (const c of containers) {
-        c.scaleX = -1;
-        c.x = this._cameraX + screenWidth;
+        c.clearMask();
       }
-      for (const tile of this._level._groundTiles) {
-        tile.x = screenWidth - tile.x - this._level._tileW;
-        tile.setFlipX(true);
+      this._mirrorClipGfx.destroy();
+      this._mirrorClipGfx = null;
+      this._mirrorClipMask = null;
+    }
+
+    const isFlipped = p >= 0.5;
+    for (let i = 0; i < this._level._groundTiles.length; i++) {
+      const tile = this._level._groundTiles[i];
+      const tileScreenX = tile._worldX - this._cameraX;
+      tile.x = isFlipped ? (screenWidth - tileScreenX - this._level._tileW) : tileScreenX;
+      tile.setFlipX(isFlipped);
+
+      const ground2Tile = this._level._ground2Tiles?.[i];
+      if (ground2Tile) {
+        ground2Tile.x = tile.x;
+        ground2Tile.setFlipX(isFlipped);
       }
-      for (const tile of this._level._ceilingTiles) {
-        tile.x = screenWidth - tile.x - this._level._tileW;
-        tile.setFlipX(true);
-      }
-    } else {
-      for (const c of containers) {
-        if (c.scaleX !== 1) c.scaleX = 1;
-      }
-      for (const tile of this._level._groundTiles) {
-        tile.setFlipX(false);
-      }
-      for (const tile of this._level._ceilingTiles) {
-        tile.setFlipX(false);
+
+      const ceilingTile = this._level._ceilingTiles[i];
+      ceilingTile.x = tile.x;
+      ceilingTile.setFlipX(isFlipped);
+
+      const ceiling2Tile = this._level._ceiling2Tiles?.[i];
+      if (ceiling2Tile) {
+        ceiling2Tile.x = tile.x;
+        ceiling2Tile.setFlipX(isFlipped);
       }
     }
-    this._bg.setFlipX(isMirrored);
+    this._bg.setFlipX(isFlipped);
   }
   _getDualSharedSignature(state) {
     if (!state) return "0|0";
@@ -9012,7 +9111,8 @@ _applyMirrorEffect() {
   }
 
   _getMirrorXOffset(xOffset) {
-    return this._state.mirrored ? screenWidth - xOffset : xOffset;
+    const p = this._mirrorAnim ? this._mirrorAnim.p : (this._state.mirrored ? 1 : 0);
+    return xOffset + (screenWidth - 2 * xOffset) * p;
   }
   _enableDualMode() {
     if (this._isDual) return;
