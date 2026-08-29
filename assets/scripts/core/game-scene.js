@@ -7956,8 +7956,11 @@ _showwippopup() {
   }
 
   _updateBackground() {
-    this._bg.tilePositionX += (this._cameraX - this._prevCameraX) * this._bgSpeedX;
-    this._prevCameraX = this._cameraX;
+    const isTransitioning = this._mirrorAnim ? this._mirrorAnim.p > 0.001 && this._mirrorAnim.p < 0.999 : false;
+    if (!isTransitioning) {
+      this._bg.tilePositionX += (this._cameraX - this._prevCameraX) * this._bgSpeedX;
+      this._prevCameraX = this._cameraX;
+    }
     let tileY = this._bgInitY - this._cameraY * this._bgSpeedY;
     if (this._bgMirrorTileHeight > 0) {
       tileY = ((tileY % this._bgMirrorTileHeight) + this._bgMirrorTileHeight) % this._bgMirrorTileHeight;
@@ -8701,6 +8704,13 @@ _showwippopup() {
       this._mirrorAnim = { p: currentP };
     }
 
+    // Freeze ground/bg at current positions when transition starts
+    if (currentP > 0.001 && currentP < 0.999) {
+      this._mirrorFrozenTiles = true;
+    } else if (currentP <= 0.001 || currentP >= 0.999) {
+      this._mirrorFrozenTiles = false;
+    }
+
     if (this._editorPlaytestActive) {
       this._mirrorAnim.p = isMirrored ? 1 : 0;
       return;
@@ -8717,6 +8727,7 @@ _showwippopup() {
       ease: "Sine.easeInOut",
       onComplete: () => {
         this._mirrorTween = null;
+        this._mirrorFrozenTiles = false;
       }
     });
   }
@@ -8758,30 +8769,42 @@ _showwippopup() {
       this._mirrorClipMask = null;
     }
 
+    this._bg.setFlipX(false);
+
     const isFlipped = p >= 0.5;
+
+    // Freeze ground during transition, resume after
+    if (!isTransitioning && this._mirrorFrozenTiles) {
+      this._mirrorFrozenTiles = false;
+    }
+
     for (let i = 0; i < this._level._groundTiles.length; i++) {
       const tile = this._level._groundTiles[i];
       const tileScreenX = tile._worldX - this._cameraX;
-      tile.x = isFlipped ? (screenWidth - tileScreenX - this._level._tileW) : tileScreenX;
-      tile.setFlipX(isFlipped);
+
+      if (!this._mirrorFrozenTiles) {
+        tile.x = isFlipped ? (screenWidth - tileScreenX - this._level._tileW) : tileScreenX;
+      }
 
       const ground2Tile = this._level._ground2Tiles?.[i];
       if (ground2Tile) {
-        ground2Tile.x = tile.x;
-        ground2Tile.setFlipX(isFlipped);
+        if (!this._mirrorFrozenTiles) {
+          ground2Tile.x = tile.x;
+        }
       }
 
       const ceilingTile = this._level._ceilingTiles[i];
-      ceilingTile.x = tile.x;
-      ceilingTile.setFlipX(isFlipped);
+      if (!this._mirrorFrozenTiles) {
+        ceilingTile.x = tile.x;
+      }
 
       const ceiling2Tile = this._level._ceiling2Tiles?.[i];
       if (ceiling2Tile) {
-        ceiling2Tile.x = tile.x;
-        ceiling2Tile.setFlipX(isFlipped);
+        if (!this._mirrorFrozenTiles) {
+          ceiling2Tile.x = tile.x;
+        }
       }
     }
-    this._bg.setFlipX(isFlipped);
   }
   _getDualSharedSignature(state) {
     if (!state) return "0|0";
