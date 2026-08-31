@@ -7400,14 +7400,6 @@ _showwippopup() {
       this._mirrorTween.stop();
       this._mirrorTween = null;
     }
-    if (this._mirrorClipGfx) {
-      for (const c of [this._level?.additiveContainer, this._level?.container, this._level?.topContainer]) {
-        c?.clearMask();
-      }
-      this._mirrorClipGfx.destroy();
-      this._mirrorClipGfx = null;
-      this._mirrorClipMask = null;
-    }
     if (this._mirrorAnim) {
       this._mirrorAnim.p = 0;
     } else {
@@ -7668,14 +7660,6 @@ _showwippopup() {
     if (this._mirrorTween) {
       this._mirrorTween.stop();
       this._mirrorTween = null;
-    }
-    if (this._mirrorClipGfx) {
-      for (const c of [this._level?.additiveContainer, this._level?.container, this._level?.topContainer]) {
-        c?.clearMask();
-      }
-      this._mirrorClipGfx.destroy();
-      this._mirrorClipGfx = null;
-      this._mirrorClipMask = null;
     }
     if (this._mirrorAnim) {
       this._mirrorAnim.p = checkpoint.mirrored ? 1 : 0;
@@ -7956,11 +7940,10 @@ _showwippopup() {
   }
 
   _updateBackground() {
-    const isTransitioning = this._mirrorAnim ? this._mirrorAnim.p > 0.001 && this._mirrorAnim.p < 0.999 : false;
-    if (!isTransitioning) {
-      this._bg.tilePositionX += (this._cameraX - this._prevCameraX) * this._bgSpeedX;
-      this._prevCameraX = this._cameraX;
-    }
+    const isMirrored = this._mirrorAnim ? (this._mirrorAnim.p >= 0.5) : this._state.mirrored;
+    const deltaX = this._cameraX - this._prevCameraX;
+    this._bg.tilePositionX += isMirrored ? -deltaX * this._bgSpeedX : deltaX * this._bgSpeedX;
+    this._prevCameraX = this._cameraX;
     let tileY = this._bgInitY - this._cameraY * this._bgSpeedY;
     if (this._bgMirrorTileHeight > 0) {
       tileY = ((tileY % this._bgMirrorTileHeight) + this._bgMirrorTileHeight) % this._bgMirrorTileHeight;
@@ -8713,6 +8696,7 @@ _showwippopup() {
 
     if (this._editorPlaytestActive) {
       this._mirrorAnim.p = isMirrored ? 1 : 0;
+      this._attemptsLabel.setVisible(isMirrored);
       return;
     }
 
@@ -8728,6 +8712,7 @@ _showwippopup() {
       onComplete: () => {
         this._mirrorTween = null;
         this._mirrorFrozenTiles = false;
+        this._attemptsLabel.setVisible(this._state.mirrored);
       }
     });
   }
@@ -8735,8 +8720,7 @@ _showwippopup() {
   _applyMirrorEffect() {
     const p = this._mirrorAnim ? this._mirrorAnim.p : (this._state.mirrored ? 1 : 0);
     const containers = [this._level.additiveContainer, this._level.container, this._level.topContainer];
-    const raw = 1 - 2 * p;
-    const scaleX = Math.abs(raw) < 0.0001 ? 0.0001 : raw;
+    const scaleX = 1 - 2 * p;
     const containerX = screenWidth / 2 * (1 - scaleX) - this._cameraX * scaleX;
 
     for (const c of containers) {
@@ -8744,67 +8728,27 @@ _showwippopup() {
       c.x = containerX;
     }
 
-    const isTransitioning = p > 0.001 && p < 0.999;
-    if (isTransitioning) {
-      const visibleWidth = Math.max(1, screenWidth * Math.abs(scaleX));
-      const visibleLeft = (screenWidth - visibleWidth) / 2;
-
-      if (!this._mirrorClipGfx) {
-        this._mirrorClipGfx = this.make.graphics({ add: false });
-        this._mirrorClipMask = this._mirrorClipGfx.createGeometryMask();
-        for (const c of containers) {
-          c.setMask(this._mirrorClipMask);
-        }
-      }
-
-      this._mirrorClipGfx.clear();
-      this._mirrorClipGfx.fillStyle(0xffffff, 1);
-      this._mirrorClipGfx.fillRect(visibleLeft, 0, visibleWidth, screenHeight);
-    } else if (this._mirrorClipGfx) {
-      for (const c of containers) {
-        c.clearMask();
-      }
-      this._mirrorClipGfx.destroy();
-      this._mirrorClipGfx = null;
-      this._mirrorClipMask = null;
-    }
-
     this._bg.setFlipX(false);
 
     const isFlipped = p >= 0.5;
 
-    // Freeze ground during transition, resume after
-    if (!isTransitioning && this._mirrorFrozenTiles) {
-      this._mirrorFrozenTiles = false;
-    }
-
     for (let i = 0; i < this._level._groundTiles.length; i++) {
       const tile = this._level._groundTiles[i];
       const tileScreenX = tile._worldX - this._cameraX;
-
-      if (!this._mirrorFrozenTiles) {
-        tile.x = isFlipped ? (screenWidth - tileScreenX - this._level._tileW) : tileScreenX;
-      }
+      tile.x = isFlipped ? (screenWidth - tileScreenX - this._level._tileW) : tileScreenX;
 
       const ground2Tile = this._level._ground2Tiles?.[i];
-      if (ground2Tile) {
-        if (!this._mirrorFrozenTiles) {
-          ground2Tile.x = tile.x;
-        }
-      }
+      if (ground2Tile) ground2Tile.x = tile.x;
 
       const ceilingTile = this._level._ceilingTiles[i];
-      if (!this._mirrorFrozenTiles) {
-        ceilingTile.x = tile.x;
-      }
+      ceilingTile.x = tile.x;
 
       const ceiling2Tile = this._level._ceiling2Tiles?.[i];
-      if (ceiling2Tile) {
-        if (!this._mirrorFrozenTiles) {
-          ceiling2Tile.x = tile.x;
-        }
-      }
+      if (ceiling2Tile) ceiling2Tile.x = tile.x;
     }
+
+    const isAnimating = this._mirrorTween !== null;
+    this._attemptsLabel.setVisible(isAnimating ? false : this._state.mirrored);
   }
   _getDualSharedSignature(state) {
     if (!state) return "0|0";
