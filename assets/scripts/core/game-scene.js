@@ -6476,56 +6476,21 @@ _showwippopup() {
     */
     const updateEntries = [
       { text: "Update Log", scale: 1, font: "goldFont" },
-      { text: "Coins reworked", scale: 0.75, },
-      { text: "Ufo rotation changed", scale: 0.75, },
-      { text: "Unlockable Levels", scale: 0.7, },
-      { text: "Saws optimized", scale: 0.75, },
-      { text: "Special suprise in Blast Processing...", scale: 0.6, },
-      { text: "Rate, Help, and Songs menu", scale: 0.75, },
-      { text: "Songs is empty- ;-;", scale: 0.5, color: 0x666666},
-      { text: "Default Mini Icon", scale: 0.75, },
-      { text: "New animation plays when-", scale: 0.75, },
-      { text: "-hitting orbs, pads, etc.", scale: 0.75, },
-      { text: "New More Games button-", scale: 0.7, },
-      { text: "-that links Interdimentional", scale: 0.7, },
-      { text: "Links and Notes page coming-", scale: 0.7, color: 0x666666 },
-      { text: "Next PR, still working on them.", scale: 0.7, color: 0x666666 },
-      { text: "Slopes OVERHAULED", scale: 0.75, color: 0xff9944 },
-      { text: "Bug reports are appreciated", scale: 0.75, },
-      { text: "-Bari", scale: 0.75, },
-      { text: "Credits menu fixed :3", scale: 0.75, },
-      { text: "Small Icon Kit changes", scale: 0.75, },
-      { text: "Low Detail Mode", scale: 0.75, },
-      { text: "Object culling changes", scale: 0.75, },
-      { text: "MOST Animated objects", scale: 0.75, },
-      { text: "Added a bunch of missing buttons", scale: 0.7, },
-      { text: "Level select info icon is bouncy now", scale: 0.65, },
-      { text: "Rotation for deco and saws", scale: 0.75, },
-      { text: "Particlesheet added <3", scale: 0.75, },
-      { text: "Better ball rotation ", scale: 0.75, },
-      { text: "Fixed ball noclip too.", scale: 0.75, },
-      { text: "Editor placing offsets", scale: 0.75, },
-      { text: "Pulsing rods reworked a lil", scale: 0.75, },
-      { text: "Breakable blocks break now.", scale: 0.75, },
-      { text: "Fixed objects not showing in editor", scale: 0.65, },
-      { text: "Slopes (very buggy)", scale: 0.75, color: 0xff9944 },
-      { text: "THEY WILL BE FIXED-", scale: 0.75, },
-      { text: "OVER TIME.", scale: 0.75, },
-      { text: "Slopes work in imported-", scale: 0.75, },
-      { text: "levels now (thanks lasokadadyy)", scale: 0.7, },
-      { text: "Fixed SOME objects", scale: 0.75 },
-      { text: "-pinkdih", scale: 0.65, color: 0xFF008E }
+      { text: "Sorry for the 10 hour downtime\ni forgot to change the proxy\nurl because i changed the\nsubdomain - rohanis0000", scale: 0.7, color: 0xaaddff },
+      { text: "To anyone who is wondering\nwhy online features don't work,\nthe worker is constantly being\nused and its request limit\nis hit daily in a short time\ndue to many users using\nthe online levels feature.\nThis has hopefully been\nfixed now with this update.\n- rohanis0000", scale: 0.7, color: 0xaaddff },
+      { text: "Added 2 new proxies to fall back\nto when ones request limit is\n hit to allow you to still\nbe able to use online features.", scale: 0.65 }
     ]; 
     let yPos = 0;
     const lineItems = [];
     updateEntries.forEach(entry => {
       const txt = this.add.bitmapText(0, yPos, entry.font || "bigFont", entry.text, 32)
         .setOrigin(0.5, 0)
+        .setCenterAlign()
         .setScale(entry.scale || 0.65);
       if (entry.color != null) txt.setTint(entry.color);
       contentContainer.add(txt);
       lineItems.push(txt);
-      yPos += Math.round(32 * (entry.scale || 0.65)) + 10;
+      yPos += txt.displayHeight + 10;
     });
     const totalContentH = yPos;
     const maxScrollDown = Math.max(0, totalContentH - scrollAreaH + 16);
