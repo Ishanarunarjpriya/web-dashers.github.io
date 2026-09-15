@@ -641,6 +641,7 @@ window.LevelObject = class LevelObject {
     this._touchColorTriggerActivated = new Set();
     this._touchSpawnTriggerActivated = new Set();
     this._touchMoveTriggerActivated = new Set();
+    this._touchAlphaTriggerActivated = new Set();
     this._audioScaleSprites = [];
     this._editorTriggerVisuals = [];
     this._orbSprites = [];
@@ -2235,6 +2236,7 @@ window.LevelObject = class LevelObject {
       this._alphaTriggers.push({
         ...triggerBase,
         x: levelObj.x * 2,
+        y: levelObj.y * 2,
         duration: parseFloat(_raw[10] ?? 0),
         targetGroup: parseInt(_raw[51] ?? 0, 10),
         targetOpacity: Math.max(0, Math.min(1, parseFloat(_raw[35] ?? 1)))
@@ -2665,7 +2667,8 @@ window.LevelObject = class LevelObject {
       }
 
       if (objectDef && objectDef.type === ringType) {
-        sprite.setScale(0.75);
+        sprite.setScale(0.75 * (Number(levelObj.scale) || 1));
+        sprite._eeBaseScale = 0.75 * (Number(levelObj.scale) || 1);
         sprite._eeAudioScale = true;
         sprite._orbId = levelObj.id;
         this._orbSprites.push(sprite);
@@ -2676,7 +2679,8 @@ window.LevelObject = class LevelObject {
         }
 
         if (orbGlow) {
-          orbGlow.setScale(0.75);
+          orbGlow.setScale(0.75 * (Number(levelObj.scale) || 1));
+          orbGlow._eeBaseScale = 0.75 * (Number(levelObj.scale) || 1);
           orbGlow._eeAudioScale = true;
           orbGlow._orbId = levelObj.id;
           this._orbSprites.push(orbGlow);
@@ -2928,7 +2932,8 @@ window.LevelObject = class LevelObject {
           }
 
           if (objectDef && objectDef.type === ringType && childDef.orbGuide) {
-            childSprite.setScale(0.75);
+            childSprite.setScale(0.75 * (Number(levelObj.scale) || 1));
+            childSprite._eeBaseScale = 0.75 * (Number(levelObj.scale) || 1);
             childSprite._orbId = levelObj.id;
             childSprite._eeOrbGuide = true;
             childSprite._OrbGuideGrav = !!(childDef.frame && /grav(?:ring|JumpRing)/.test(childDef.frame));
@@ -4283,8 +4288,27 @@ window.LevelObject = class LevelObject {
     while (this._alphaTriggerIdx < this._alphaTriggers.length) {
       const trig = this._alphaTriggers[this._alphaTriggerIdx];
       if (trig.x > playerX) break;
-      if (!trig.spawnTriggered) this._startAlphaTriggerTween(trig);
+      if (!trig.spawnTriggered && !trig.touchTriggered) this._startAlphaTriggerTween(trig);
       this._alphaTriggerIdx++;
+    }
+  }
+
+  checkTouchAlphaTriggers(playerX, playerY) {
+    const px = Number(playerX) || 0;
+    const py = Number(playerY) || 0;
+    this._touchAlphaTriggerActivated ||= new Set();
+
+    const playerHalfSize = (typeof playerSize === "number" ? playerSize : 20);
+    const halfHitbox = 30 + playerHalfSize;
+
+    for (const trig of this._alphaTriggers) {
+      if (!trig || !trig.touchTriggered || trig.spawnTriggered || !this._isTriggerSaveObjectLive(trig.uid)) continue;
+      const uid = trig.uid ?? `${trig.x},${trig.y},${trig.targetGroup}`;
+      if (this._touchAlphaTriggerActivated.has(uid)) continue;
+      if (Math.abs(px - trig.x) <= halfHitbox && Math.abs(py - (trig.y ?? 0)) <= halfHitbox) {
+        this._touchAlphaTriggerActivated.add(uid);
+        this._startAlphaTriggerTween(trig);
+      }
     }
   }
 
@@ -4329,6 +4353,7 @@ window.LevelObject = class LevelObject {
   resetAlphaTriggers() {
     this._alphaTriggerIdx = 0;
     this._activeAlphaTweens = [];
+    this._touchAlphaTriggerActivated = new Set();
     this._groupOpacity = {};
     for (const gid in this._groupSprites) {
       for (const spr of this._groupSprites[gid]) {
@@ -4455,8 +4480,8 @@ window.LevelObject = class LevelObject {
       const colliders = this._getUniqueGroupColliders(targetGroup);
       for (const col of colliders) {
         if (!col) continue;
-        const initialScreenY = col._eeInitialBaseY !== undefined ? col._eeInitialBaseY : (col._origBaseY ?? col.y);
-        groupInitialGDY += (typeof b === "function" ? b(initialScreenY) : (460 - initialScreenY));
+        const initialWorldY = col._eeInitialBaseY !== undefined ? col._eeInitialBaseY : (col._origBaseY ?? col.y);
+        groupInitialGDY += Number(initialWorldY) || 0;
         n++;
       }
     }
@@ -5252,6 +5277,13 @@ window.LevelObject = class LevelObject {
   resetPulseTriggers() {
     this._pulseTriggerIdx = 0;
     this._activePulses = [];
+    for (const gid in this._groupSprites || {}) {
+      for (const spr of this._groupSprites[gid] || []) {
+        if (!spr || !spr._eePulsed) continue;
+        if (typeof spr.clearTint === "function") spr.clearTint();
+        spr._eePulsed = false;
+      }
+    }
   }
 
   applyColorChannels(colorManager) {
@@ -5446,11 +5478,13 @@ window.LevelObject = class LevelObject {
     const _now = Date.now();
     const _clickMult = window.orbClickScale || 2.0;
     const _shrinkMs = window.orbClickShrinkTime || 250;
-    const _baseScale = Math.min(_maxaudioScale, 0.75 + _meterValue * 0.15);
+    const _pulseMult = Math.min(2.0, 1 + _meterValue * 0.2);
     for (let _0xOrbSpr of this._orbSprites) {
       if (!_0xOrbSpr || !_0xOrbSpr.active) continue;
       const _worldX = _0xOrbSpr._eeWorldX;
       if (Number.isFinite(_worldX) && (_worldX < _minVisibleX || _worldX > _maxVisibleX)) continue;
+      const _orbBase = Number(_0xOrbSpr._eeBaseScale) > 0 ? Number(_0xOrbSpr._eeBaseScale) : 0.75;
+      const _baseScale = Math.min(_maxaudioScale, _orbBase * _pulseMult);
       let _targetScale = _baseScale;
       if (_0xOrbSpr._hitTime) {
         const _elapsed = _now - _0xOrbSpr._hitTime;

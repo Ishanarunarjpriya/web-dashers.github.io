@@ -8621,6 +8621,12 @@ _showwippopup() {
     this._level.stepMoveTriggers(deltaTime / 1000);
     this._level.stepSpawnTriggers(deltaTime / 1000, this._colorManager);
     this._level.checkAlphaTriggers(playerX);
+    if (this._level.checkTouchAlphaTriggers) {
+        this._level.checkTouchAlphaTriggers(playerX, this._state.y);
+        if (this._isDual && !this._state2.isDead) {
+            this._level.checkTouchAlphaTriggers(playerX, this._state2.y);
+        }
+    }
     this._level.stepAlphaTriggers(deltaTime / 1000);
     this._level.checkRotateTriggers(playerX);
     this._level.stepRotateTriggers(deltaTime / 1000);
