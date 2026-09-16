@@ -1210,6 +1210,7 @@ window.LevelObject = class LevelObject {
   }
   _setUpSettings(settingsStr) {
     this._initialColors = {};
+    this._channelBlending = {};
     this._backgroundId = null;
     this._groundId = null;
     if (!settingsStr) return;
@@ -1237,6 +1238,7 @@ window.LevelObject = class LevelObject {
             g: parseInt(colorProps[2] || "255", 10),
             b: parseInt(colorProps[3] || "255", 10)
           };
+          this._channelBlending[channelId] = colorProps[15] === "1";
         }
       }
     }
@@ -2561,6 +2563,10 @@ window.LevelObject = class LevelObject {
         spr._eeColorChannel = ch;
         if (!this._colorChannelSprites[ch]) this._colorChannelSprites[ch] = [];
         this._colorChannelSprites[ch].push(spr);
+        if (this._channelBlending && this._channelBlending[ch]) {
+          spr.setBlendMode(Phaser.BlendModes.ADD);
+          spr._eeChannelAdditive = true;
+        }
         if (forceParentColor && spr._SawColor === undefined) {
           spr._SawColor = ch;
         }
