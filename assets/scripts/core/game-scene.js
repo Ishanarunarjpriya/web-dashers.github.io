@@ -431,12 +431,14 @@ class GameScene extends Phaser.Scene {
     if (this._audio == null) {
       this._audio = new AudioManager(this);
     }
+    this._loadSettings();
     if (window._onlineLevelString && window._onlineLevelId &&
         window.currentlevel[2] === window._onlineLevelId) {
       try {
         this.cache.text.entries.set(window._onlineLevelId, window._onlineLevelString);
       } catch(e) {}
     }
+    this._syncBeastAnimDescs();
     let _0x591888 = this.cache.text.get(window.currentlevel[2]);
     if (!_0x591888 && window._onlineLevelString && window.currentlevel[2] === window._onlineLevelId) {
       _0x591888 = window._onlineLevelString;
@@ -3892,7 +3894,6 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
 
     this._buildHUD();
     this._createStartPosGui();
-    this._loadSettings();
 
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
@@ -3958,6 +3959,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
         const cachedLevelText = this.cache.text.get(window.currentlevel[2]) ||
           ((window._onlineLevelString && window.currentlevel[2] === window._onlineLevelId) ? window._onlineLevelString : null);
         if (cachedLevelText) {
+          this._syncBeastAnimDescs();
           this._level.loadLevel(cachedLevelText);
         }
       }
@@ -4689,7 +4691,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       fontSize: "28px",
       fill: "#ffffff",
       fontFamily: "Arial"
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(999).setVisible(false);
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(999).setVisible(!!window.showFPS);
     this._fpsAccum = 0;
     this._fpsFrames = 0;
   }
@@ -5560,6 +5562,13 @@ _buildSettingsPopup() {
     localStorage.setItem("gd_settings", JSON.stringify(settings));
     localStorage.setItem("gd_useDirectInternet", String(!!window.useDirectInternet));
   }
+  _syncBeastAnimDescs() {
+    for (const beastKey of ["GJBeast01", "GJBeast02", "GJBeast03", "GJBeast04", "GJBeast05"]) {
+      const descKey = beastKey + "_AnimDesc";
+      window[descKey] = this.cache.json.get(descKey) || window[descKey] || null;
+    }
+  }
+
   _loadSettings() {
     const saved = localStorage.getItem("gd_settings");
     const defaults = {
@@ -5597,7 +5606,8 @@ _buildSettingsPopup() {
     window.showHitboxes = data.showHitboxes;
     window.startPosSwitcher = data.startPosSwitcher;
     window.showHitboxTrail = data.hitboxTrail;
-    this._fpsText.visible = data.showFPS;
+    if (this._fpsText) this._fpsText.visible = data.showFPS;
+    window.showFPS = !!data.showFPS;
     window.solidWave = data.solidWaveTrail;
     window.noClipAccuracy = data.noclipAccuracy;
     window.hitboxesOnDeath = data.hitboxesOnDeath;
@@ -7454,6 +7464,7 @@ _showwippopup() {
     this._level.resetFollowPlayerYTriggers?.();
     this._level.resetFollowTriggers?.();
     this._level.resetToggleTriggers?.();
+    this._level.resetAnimationTriggers?.();
     this._level.resetShakeTriggers?.();
     this._level.resetOnDeathTriggers?.();
     this._level.resetTouchTriggers?.();
@@ -7783,6 +7794,7 @@ _showwippopup() {
     this._level.resetFollowPlayerYTriggers?.();
     this._level.resetFollowTriggers?.();
     this._level.resetToggleTriggers?.();
+    this._level.resetAnimationTriggers?.();
     this._level.resetShakeTriggers?.();
     this._level.resetOnDeathTriggers?.();
     this._level.resetTouchTriggers?.();
@@ -7796,6 +7808,7 @@ _showwippopup() {
     this._level.checkOnDeathTriggers?.(checkpoint.x);
     this._level.checkTouchTriggers?.(checkpoint.x);
     this._level.resetVisibility();
+    this._level.applyShakeToOffsets?.(this.time.now);
     this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
     this._level.additiveContainer.y = this._cameraY + (this._level.shakeOffsetY || 0);
     this._level.container.x = -this._cameraX + (this._level.shakeOffsetX || 0);
@@ -7860,6 +7873,7 @@ _showwippopup() {
       const _0x56287b = this._cameraX;
       this._cameraX = this._playerWorldX - centerX;
       this._cameraXRef._v = this._cameraX;
+      this._level.applyShakeToOffsets?.(this.time.now);
       this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
       this._level.additiveContainer.y = this._cameraY + (this._level.shakeOffsetY || 0);
       this._level.container.x = -this._cameraX + (this._level.shakeOffsetX || 0);
@@ -7873,6 +7887,9 @@ _showwippopup() {
       this._level.applyEnterEffects(this._cameraX);
       const _0xde8a1a = this._playerWorldX - this._cameraX;
       this._player.syncSprites(this._cameraX, this._cameraY, 0, this._getMirrorXOffset(_0xde8a1a));
+      if (this._level.shakeOffsetX || this._level.shakeOffsetY) {
+        this._player.applyShakeOffset(this._level.shakeOffsetX || 0, this._level.shakeOffsetY || 0);
+      }
       this._applyMirrorEffect();
     }
   }
@@ -8172,6 +8189,9 @@ _showwippopup() {
       const slidePlayerScreenX = this._playerWorldX - this._cameraX;
       this._player.updateGroundRotation(slideDelta * d);
       this._player.syncSprites(this._cameraX, this._cameraY, deltaTime / 1000, this._getMirrorXOffset(slidePlayerScreenX));
+      if (this._level.shakeOffsetX || this._level.shakeOffsetY) {
+        this._player.applyShakeOffset(this._level.shakeOffsetX || 0, this._level.shakeOffsetY || 0);
+      }
       this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
       this._level.additiveContainer.y = this._cameraY + (this._level.shakeOffsetY || 0);
       this._level.container.x = -this._cameraX + (this._level.shakeOffsetX || 0);
@@ -8361,6 +8381,121 @@ _showwippopup() {
           sawRotationSpeed += Math.sin(sawTimer + _saw._SawRandom1) * (_saw._SawRandom2 || 0);
         }
         _saw.rotation += deltaTime * sawRotationSpeed;
+      }
+    }
+    if (this._level && this._level._beastSprites && this._level._beastSprites.length) {
+      const dtSec = Number.isFinite(deltaTime) ? deltaTime / 1000 : 0;
+      for (const beast of this._level._beastSprites) {
+        if (!beast || !beast.state) continue;
+        if (beast.hiddenStatics) {
+          for (const hiddenSpr of beast.hiddenStatics) {
+            if (hiddenSpr.visible) hiddenSpr.setVisible(false);
+            if (hiddenSpr.active) hiddenSpr.active = false;
+          }
+        }
+        if (!beast.state.desc) continue;
+        if (!beast.state.base) window.BeastAnim.defaultBase(beast.state);
+        window.BeastAnim.advance(beast.state, dtSec);
+        const st = beast.state;
+        const group = st.desc.groups[st.animName + "_" + st.base];
+        if (!group || !group.length) continue;
+        const frameKey = group[Math.min(st.frameIdx, group.length - 1)];
+        const frame = st.desc.container[frameKey];
+        if (!frame) continue;
+        const flipSignX = beast.flipX ? -1 : 1;
+        const anchorSpr = beast.anchorSprite && beast.anchorSprite.active ? beast.anchorSprite : null;
+        let rigOffX = 0;
+        let rigOffY = 0;
+        let rigRot = 0;
+        if (anchorSpr && anchorSpr._eeGroups && anchorSpr._eeGroups.length && this._level._getCombinedGroupOffset) {
+          const groupMove = this._level._getCombinedGroupOffset(anchorSpr);
+          rigOffX = Number(groupMove.x) || 0;
+          rigOffY = Number(groupMove.y) || 0;
+          for (const gid of anchorSpr._eeGroups) {
+            const rotData = this._level._groupRotations ? this._level._groupRotations[gid] : null;
+            if (!rotData || !rotData.totalRad) continue;
+            rigRot += rotData.totalRad;
+            if (rotData.centerGroupId > 0 && this._level._getGroupCenter) {
+              const pivot = this._level._getGroupCenter(rotData.centerGroupId);
+              const pivotDX = beast.worldX + rigOffX - pivot.cx;
+              const pivotDY = beast.baseY + rigOffY - pivot.cy;
+              const pivotCos = Math.cos(rotData.totalRad);
+              const pivotSin = Math.sin(rotData.totalRad);
+              rigOffX = pivot.cx + pivotDX * pivotCos - pivotDY * pivotSin - beast.worldX;
+              rigOffY = pivot.cy + pivotDX * pivotSin + pivotDY * pivotCos - beast.baseY;
+            }
+          }
+        }
+        const rigCos = rigRot ? Math.cos(rigRot) : 1;
+        const rigSin = rigRot ? Math.sin(rigRot) : 0;
+        const frameParts = {};
+        for (const partKey of Object.keys(frame)) {
+          if (partKey.startsWith("sprite_")) frameParts[frame[partKey].texture] = true;
+        }
+        for (const tex of Object.keys(beast.partSprites)) {
+          if (frameParts[tex]) continue;
+          const idleSpr = beast.partSprites[tex];
+          idleSpr.scaleX = 0;
+          idleSpr.scaleY = 0;
+          const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
+          if (idleGlow) {
+            idleGlow.scaleX = 0;
+            idleGlow.scaleY = 0;
+          }
+        }
+        for (const partKey of Object.keys(frame)) {
+          if (!partKey.startsWith("sprite_")) continue;
+          const part = frame[partKey];
+          const spr = beast.partSprites[part.texture];
+          if (!spr) continue;
+          const pos = window.BeastAnim.parsePair(part.position, 0, 0);
+          const sc = window.BeastAnim.parsePair(part.scale, 1, 1);
+          const fl = window.BeastAnim.parsePair(part.flipped, 0, 0);
+          const rotDeg = parseFloat(part.rotation || "0") || 0;
+          const localX = pos.x * window.BeastAnim.UNIT_SCALE * beast.scale * flipSignX;
+          const localY = -pos.y * window.BeastAnim.UNIT_SCALE * beast.scale * (beast.flipY ? -1 : 1);
+          const rigLocalX = localX * rigCos - localY * rigSin;
+          const rigLocalY = localX * rigSin + localY * rigCos;
+          const worldX = beast.worldX + rigOffX + (rigLocalX * beast.rotCos - rigLocalY * beast.rotSin);
+          const worldY = beast.baseY + rigOffY + (rigLocalX * beast.rotSin + rigLocalY * beast.rotCos);
+          const effectDX = spr._eeEffectOffsetX || 0;
+          const effectDY = spr._eeEffectOffsetY || 0;
+          const effectScale = spr._eeEffectScale === undefined ? 1 : spr._eeEffectScale;
+          spr._eeEffectOffsetX = 0;
+          spr._eeEffectOffsetY = 0;
+          spr._eeEffectScale = 1;
+          let angle = rotDeg * Math.PI / 180;
+          if (beast.flipX !== beast.flipY) angle = -angle;
+          angle += Math.atan2(beast.rotSin, beast.rotCos) + rigRot;
+          spr.x = worldX + effectDX;
+          spr.y = worldY + effectDY;
+          spr.rotation = angle;
+          const partScaleX = sc.x * (fl.x ? -1 : 1) * (beast.flipX ? -1 : 1) * beast.scale * effectScale;
+          const partScaleY = sc.y * (fl.y ? -1 : 1) * (beast.flipY ? -1 : 1) * beast.scale * effectScale;
+          spr.scaleX = partScaleX;
+          spr.scaleY = partScaleY;
+          const zValue = parseFloat(part.zValue || "0") || 0;
+          spr._eeZDepthBase = spr._eeZDepthBase ?? spr._eeZDepth;
+          spr._eeZDepth = spr._eeZDepthBase + zValue * 0.001;
+          spr.depth = spr._eeZDepth;
+          const glowSpr = beast.partGlows ? beast.partGlows[part.texture] : null;
+          if (glowSpr) {
+            glowSpr.x = worldX + effectDX;
+            glowSpr.y = worldY + effectDY;
+            glowSpr.rotation = angle;
+            glowSpr.scaleX = partScaleX;
+            glowSpr.scaleY = partScaleY;
+            glowSpr._eeZDepth = spr._eeZDepth - 0.001;
+            glowSpr.depth = glowSpr._eeZDepth;
+          }
+          if (beast.eye && beast.eyeParent === part.texture) {
+            beast.eye.x = worldX + effectDX;
+            beast.eye.y = worldY + effectDY;
+            beast.eye.rotation = angle;
+            beast.eye.scaleX = partScaleX;
+            beast.eye.scaleY = partScaleY;
+          }
+        }
       }
     }
     if (this._level && this._level._orbSprites) {
@@ -8578,6 +8713,7 @@ _showwippopup() {
     if (!this._endCameraOverride) {
       this._updateCameraY(quantizedDelta);
     }
+    this._level.applyShakeToOffsets?.(this.time.now);
     this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
     this._level.additiveContainer.y = this._cameraY + (this._level.shakeOffsetY || 0);
     this._level.container.x = -this._cameraX + (this._level.shakeOffsetX || 0);
@@ -8654,6 +8790,13 @@ _showwippopup() {
     }
     this._level.stepFollowTriggers?.(deltaTime / 1000);
     this._level.checkToggleTriggers?.(playerX);
+    this._level.checkAnimationTriggers?.(playerX);
+    if (this._level.checkTouchAnimationTriggers) {
+        this._level.checkTouchAnimationTriggers(playerX, this._state.y);
+        if (this._isDual && !this._state2.isDead) {
+            this._level.checkTouchAnimationTriggers(playerX, this._state2.y);
+        }
+    }
     if (this._level.checkTouchToggleTriggers) {
         this._level.checkTouchToggleTriggers(playerX, this._state.y);
         if (this._isDual && !this._state2.isDead) {
@@ -8681,9 +8824,19 @@ _showwippopup() {
             this._level.checkTouchTouchTriggers(playerX, this._state2.y);
         }
     }
-    const isHoldingInput = Boolean(this._state?.upKeyDown || (this._isDual && !this._state2?.isDead && this._state2?.upKeyDown));
-    const isPressedInput = Boolean(this._state?.upKeyPressed || (this._isDual && !this._state2?.isDead && this._state2?.upKeyPressed));
-    this._level.stepTouchTriggers?.(isHoldingInput, isPressedInput, this._colorManager);
+    const isHoldingInput = Boolean(this._state?.upKeyDown);
+    const isPressedInput = Boolean(this._state?.upKeyPressed);
+    let p2HoldingInput = false;
+    let p2PressedInput = false;
+    if (this._isDual && !this._state2?.isDead) {
+        p2HoldingInput = Boolean(this._state2?.upKeyDown);
+        p2PressedInput = Boolean(this._state2?.upKeyPressed);
+    }
+    if (!this._level.isTouchTriggerDualMode?.()) {
+        p2HoldingInput = false;
+        p2PressedInput = false;
+    }
+    this._level.stepTouchTriggers?.(isHoldingInput, isPressedInput, p2HoldingInput, p2PressedInput, this._colorManager);
     this._level.checkPickupTriggers?.(playerX, this._colorManager);
     if (this._level.checkTouchPickupTriggers) {
         this._level.checkTouchPickupTriggers(playerX, this._state.y, this._colorManager);
@@ -8731,6 +8884,12 @@ _showwippopup() {
     this._player.syncSprites(this._cameraX, this._cameraY, deltaTime / 1000, this._getMirrorXOffset(playerScreenX));
     if (this._isDual && !this._state2.isDead) {
       this._player2.syncSprites(this._cameraX, this._cameraY, deltaTime / 1000, this._getMirrorXOffset(playerScreenX));
+    }
+    if (this._level.shakeOffsetX || this._level.shakeOffsetY) {
+      this._player.applyShakeOffset(this._level.shakeOffsetX || 0, this._level.shakeOffsetY || 0);
+      if (this._isDual && !this._state2.isDead) {
+        this._player2.applyShakeOffset(this._level.shakeOffsetX || 0, this._level.shakeOffsetY || 0);
+      }
     }
     this._applyMirrorEffect();
   }

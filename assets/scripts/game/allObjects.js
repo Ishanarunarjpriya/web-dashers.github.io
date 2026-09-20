@@ -3448,7 +3448,7 @@ window.allobjects = function() {
         "rot": 270
       }
     ],
-    "default_base_color_channel": 1005,
+    "default_base_color_channel": 1006,
     "frame": "d_roundCloud_01_001.png",
     "glow_frame": "d_roundCloud_01_glow_001.png",
     "gridH": 1.5833333730697632,
@@ -3462,7 +3462,7 @@ window.allobjects = function() {
   },
   "223": {
     "can_color": true,
-    "default_base_color_channel": 1005,
+    "default_base_color_channel": 1006,
     "frame": "d_roundCloud_02_001.png",
     "glow_frame": "d_roundCloud_02_glow_001.png",
     "gridH": 2.116666555404663,
@@ -15442,20 +15442,20 @@ window.allobjects = function() {
         "frame": "GJBeast01_01_001.png",
         "localDy": -28,
         "tint": 0,
-        "z": 1
+        "z": 1,
       },
       {
         "frame": "GJBeast01_02_001.png",
         "localDy": 16,
         "tint": 0,
-        "z": 1
+        "z": 1,
       },
     {
         "frame": "GJBeast01_03_001.png",
         "localDy": -19,
         "localDx": -4,
         "Cant_Color": true,
-        "z": 2
+        "z": 2,
       }
     ]
   },
@@ -24090,7 +24090,7 @@ window.allobjects = function() {
       {
         "frame": "GJBeast02_02_001.png",
         "localDy": 5,
-        "z": 2
+        "z": 2,
       }
     ]
   },
@@ -24112,7 +24112,7 @@ window.allobjects = function() {
       {
         "frame": "GJBeast03_02_001.png",
         "localDy": 0,
-        "z": 2
+        "z": 2,
       }
     ]
   },
@@ -27283,7 +27283,7 @@ window.allobjects = function() {
         "frame": "GJBeast04_01_001.png",
         "localDy": -10,
         "tint": 0,
-        "z": 1
+        "z": 1,
       },
       {
         "frame": "GJBeast04_02_001.png",
@@ -34538,12 +34538,12 @@ window.allobjects = function() {
       {
         "frame": "GJBeast05_04_001.png",
         "localDy": -10,
-        "z": 2
+        "z": 2,
       },
       {
         "frame": "GJBeast05_05_001.png",
         "localDy": 10,
-        "z": 2
+        "z": 2,
       }
     ]
   },

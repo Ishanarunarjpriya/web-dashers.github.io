@@ -2025,6 +2025,16 @@ if (this.p.isFlying || this.p.isUfo) {
     }
     this._setGamemodeFlyBounds(true, spawnY, f, false);
   }
+  applyShakeOffset(ox, oy) {
+    for (const layer of this._allLayers) {
+      if (layer?.sprite) {
+        layer.sprite.x += ox;
+        layer.sprite.y += oy;
+      }
+    }
+    this._aboveContainer.x += ox;
+    this._aboveContainer.y += oy;
+  }
   exitShipMode() {
     if (this.p.isFlying) {
       this.p.isFlying = false;

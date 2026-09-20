@@ -681,12 +681,17 @@ window.LevelObject = class LevelObject {
     this._toggleTriggers = [];
     this._toggleTriggerIdx = 0;
     this._touchToggleTriggerActivated = new Set();
+    this._animationTriggers = [];
+    this._animationTriggerIdx = 0;
+    this._touchAnimationTriggerActivated = new Set();
     this._groupToggledOff = {};
     this._shakeTriggers = [];
     this._shakeTriggerIdx = 0;
     this._touchShakeTriggerActivated = new Set();
+    this._shakeState = null;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
+    this._beastSprites = [];
     this._onDeathTriggers = [];
     this._onDeathTriggerIdx = 0;
     this._armedOnDeathTriggers = [];
@@ -967,6 +972,8 @@ window.LevelObject = class LevelObject {
         }
       }
     }
+
+    this.checkAnimationTriggers(targetX);
 
     if (Array.isArray(this._pickupTriggers)) {
       this.checkPickupTriggers(targetX, colorManager);
@@ -1761,15 +1768,20 @@ window.LevelObject = class LevelObject {
           glow.setVisible(glowVisible);
       }
   };
-  _addGlowSprite(scene, x, y, frameName, objectData, worldX, colorData = null, objectDef = null) {
+  _addGlowSprite(scene, x, y, frameName, objectData, worldX, colorData = null, objectDef = null, forceUnique = false) {
     let glowFrameName = this._getGlowFrameName(frameName, objectData, objectDef);
     if (!glowFrameName || glowFrameName === frameName) {
       return;
     }
     const rotation = Number.isFinite(objectData?.rot) ? Number(objectData.rot) : 0;
-    const glowKey = `${worldX ?? x}:${y}:${glowFrameName}:${Number(Math.round(rotation * 1000))}`;
+    let glowKey = `${worldX ?? x}:${y}:${glowFrameName}:${Number(Math.round(rotation * 1000))}`;
     if (this._glowSpriteKeys.has(glowKey)) {
-      return;
+      if (!forceUnique) {
+        return;
+      }
+      let suffix = 1;
+      while (this._glowSpriteKeys.has(`${glowKey}|${suffix}`)) suffix++;
+      glowKey = `${glowKey}|${suffix}`;
     }
     let glowSprite = addImageToScene(scene, x, y, glowFrameName);
     if (glowSprite) {
@@ -2337,15 +2349,15 @@ window.LevelObject = class LevelObject {
         y: levelObj.y * 2,
         touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
         targetGroup: parseInt(_raw[51] ?? 0, 10),
-        speed: Math.max(0, parseFloat(_raw[72] ?? 1)),
-        delay: Math.max(0, parseFloat(_raw[73] ?? 0)),
-        offset: parseFloat(_raw[74] ?? 0) * 2,
-        maxSpeed: Math.max(0, parseFloat(_raw[75] ?? 0)) * 2,
+        speed: Math.max(0, parseFloat(_raw[90] ?? 1)),
+        delay: Math.max(0, parseFloat(_raw[92] ?? 0)),
+        offset: parseFloat(_raw[105] ?? 0) * 2,
+        maxSpeed: Math.max(0, parseFloat(_raw[91] ?? 0)) * 2,
         duration: Math.max(0, parseFloat(_raw[10] ?? 0))
       });
     }
 
-    if (levelObj.id === 1347 || levelObj.id === 1817) {
+    if (levelObj.id === 1347) {
       const _raw = levelObj._raw;
       this._followTriggers.push({
         ...triggerBase,
@@ -2380,8 +2392,20 @@ window.LevelObject = class LevelObject {
         y: levelObj.y * 2,
         touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
         duration: Math.max(0, parseFloat(_raw[10] ?? 0)),
-        strength: Math.max(0, parseFloat(_raw[75] ?? _raw[84] ?? 1)),
-        interval: Math.max(0, parseFloat(_raw[84] ?? _raw[85] ?? 0))
+        strength: Math.max(0, parseFloat(_raw[75] ?? 1)),
+        interval: Math.max(0, parseFloat(_raw[84] ?? 0))
+      });
+    }
+
+    if (levelObj.id === 1585) {
+      const _raw = levelObj._raw;
+      this._animationTriggers.push({
+        ...triggerBase,
+        x: levelObj.x * 2,
+        y: levelObj.y * 2,
+        touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
+        targetGroup: parseInt(_raw[51] ?? 0, 10),
+        animateId: parseInt(_raw[76] ?? 0, 10)
       });
     }
 
@@ -2407,7 +2431,9 @@ window.LevelObject = class LevelObject {
         targetGroup: parseInt(_raw[51] ?? 0, 10),
         toggleType: parseInt(_raw[56] ?? 0, 10),
         dualTouch: String(_raw[81] ?? "0") === "1",
-        holdMode: String(_raw[82] ?? "0") === "1"
+        holdMode: String(_raw[82] ?? "0") === "1",
+        dualAction: parseInt(_raw[198] ?? 0, 10),
+        specialMode: parseInt(_raw[89] ?? 0, 10)
       });
     }
 
@@ -2900,8 +2926,6 @@ window.LevelObject = class LevelObject {
           this._addToSection(childSprite);
           registerToGroups(childSprite, childWorldX, childBaseY);
           registerObjectSprite(childSprite);
-          registerAnimatedSprite(childSprite, childDef);
-
           const childGlowEnabled = this._hasGlow(childDef, childObjectData) || this._hasGlow(objectDef, levelObj);
           if (childGlowEnabled) {
             const childGlowSprite = this._addGlowSprite(scene, spriteWorldX + childDx, baseY + childDy, childDef.frame, childObjectData, childWorldX, null, childVisualDef);
@@ -2989,6 +3013,10 @@ window.LevelObject = class LevelObject {
     }
     if (parseInt(levelObj.id ?? 0, 10) === 747) {
       this._spawnTeleportExitPortalVisual(scene, levelObj, objectDef, linkedObjectId, registerObjectSprite, registerToGroups, registerColor, objZDepth, col1);
+    }
+
+    if (window.BeastAnim && window.BeastAnim.IDS.includes(parseInt(levelObj.id ?? 0, 10))) {
+      this._spawnBeastAnimation(scene, levelObj, objectDef, worldX, baseY, objZDepth, col1, linkedObjectId, registerObjectSprite, registerToGroups, registerColor);
     }
   }
 
@@ -3346,6 +3374,144 @@ window.LevelObject = class LevelObject {
   return objectDef;
 }
 
+  _spawnBeastAnimation(scene, levelObj, objectDef, worldX, baseY, objZDepth, col1, linkedObjectId, registerObjectSprite, registerToGroups, registerColor) {
+    const objectId = parseInt(levelObj.id ?? 0, 10);
+    const state = window.BeastAnim.createState(objectId);
+    if (!state) return;
+    const col2 = levelObj.color2 || (objectDef.default_detail_color_channel !== undefined ? objectDef.default_detail_color_channel : -1);
+    const objScale = Number(levelObj.scale) || 1;
+    const flipX = !!levelObj.flipX;
+    const flipY = !!levelObj.flipY;
+    const objRot = (levelObj.rot || 0) * Math.PI / 180;
+    const rotCos = Math.cos(objRot);
+    const rotSin = Math.sin(objRot);
+    const groupMap = {};
+    for (const frameKey of Object.keys(state.desc.container)) {
+      const frame = state.desc.container[frameKey];
+      for (const partKey of Object.keys(frame)) {
+        if (!partKey.startsWith("sprite_")) continue;
+        const tex = frame[partKey].texture;
+        if (tex && tex.endsWith(".png")) groupMap[tex] = true;
+      }
+    }
+    const eyeDef = window.BeastAnim.eyeFor ? window.BeastAnim.eyeFor(objectId) : null;
+    const childrenByFrame = new Map();
+    for (const childDef of (objectDef.children || [])) {
+      if (childDef && childDef.frame) childrenByFrame.set(childDef.frame, childDef);
+    }
+    const slotTextures = {};
+    const slotChildDef = {};
+    for (const frameKey of Object.keys(state.desc.container)) {
+      const frame = state.desc.container[frameKey];
+      for (const partKey of Object.keys(frame)) {
+        if (!partKey.startsWith("sprite_")) continue;
+        const partTex = frame[partKey].texture;
+        if (!partTex || !partTex.endsWith(".png")) continue;
+        if (!slotTextures[partKey]) slotTextures[partKey] = [];
+        if (!slotTextures[partKey].includes(partTex)) slotTextures[partKey].push(partTex);
+        const slotChild = childrenByFrame.get(partTex);
+        if (slotChild && !slotChildDef[partKey]) slotChildDef[partKey] = slotChild;
+      }
+    }
+    const detailPartDef = {};
+    for (const partKey of Object.keys(slotChildDef)) {
+      for (const partTex of slotTextures[partKey] || []) {
+        if (!detailPartDef[partTex]) detailPartDef[partTex] = slotChildDef[partKey];
+      }
+    }
+    const detailChannel = Number(col2) > 0 ? Number(col2) : 1011;
+    let eyeSprite = null;
+    const hiddenStatics = [];
+    const staticSprites = this.objectSprites[linkedObjectId] || [];
+    for (const staticSpr of staticSprites) {
+      if (!staticSpr || staticSpr._beastPartOf) continue;
+      const staticFrame = staticSpr.frame && staticSpr.frame.name;
+      if (!staticFrame) continue;
+      if (eyeDef && staticFrame === eyeDef.frame) {
+        eyeSprite = staticSpr;
+        staticSpr._beastManaged = true;
+        continue;
+      }
+      const baseFrame = staticFrame.replace("_glow_001.png", "_001.png");
+      if (!groupMap[staticFrame] && !groupMap[baseFrame]) continue;
+      staticSpr.setVisible(false);
+      staticSpr.active = false;
+      staticSpr._beastStaticHidden = true;
+      hiddenStatics.push(staticSpr);
+    }
+    const partSprites = {};
+    const partGlows = {};
+    const beastGlowEnabled = this._hasGlow(objectDef, levelObj);
+    for (const tex of Object.keys(groupMap)) {
+      const spr = addImageToScene(scene, worldX, baseY, tex);
+      if (!spr) continue;
+      spr.setOrigin(0.5, 0.5);
+      spr.x = worldX;
+      spr.y = baseY;
+      spr._eeLayer = 1;
+      spr._eeWorldX = worldX;
+      spr._eeBaseY = baseY;
+      spr._eeZDepth = objZDepth + 0.005;
+      spr._eeOrigAlpha = 1;
+      spr._beastPartOf = objectId;
+      spr._beastManaged = true;
+      const childDef = detailPartDef[tex];
+      const colorDef = childDef
+        ? {
+            ...childDef,
+            can_color: (childDef.black === true || childDef.tint === 0)
+              ? (childDef.can_color ?? objectDef.can_color)
+              : childDef.can_color
+          }
+        : objectDef;
+      if (colorDef.tint !== undefined) spr.setTint(colorDef.tint);
+      const partBlackDefault = colorDef.black === true || colorDef.tint === 0;
+      if (partBlackDefault) {
+        spr.setTint(0);
+        spr._isBlack = true;
+        spr._canColor = colorDef.can_color === true;
+        spr._blackDefault = spr._canColor && !(Number(levelObj.color1) > 0);
+      }
+      const partChannel = childDef && !partBlackDefault ? detailChannel : col1;
+      this._addToSection(spr);
+      registerColor(spr, partChannel);
+      registerToGroups(spr, worldX, baseY);
+      registerObjectSprite(spr);
+      partSprites[tex] = spr;
+      if (beastGlowEnabled) {
+        const glowSpr = this._addGlowSprite(scene, worldX, baseY, tex, { ...levelObj, rot: 0 }, worldX, null, null, true);
+        if (glowSpr) {
+          glowSpr._eeOrigAlpha = glowSpr.alpha;
+          glowSpr._eeZDepth = objZDepth + 0.002;
+          glowSpr._beastPartOf = objectId;
+          glowSpr._beastManaged = true;
+          registerColor(glowSpr, partChannel);
+          registerToGroups(glowSpr, worldX, baseY);
+          partGlows[tex] = glowSpr;
+        }
+      }
+    }
+    if (!Object.keys(partSprites).length) return;
+    this._beastSprites.push({
+      objectId,
+      state,
+      partSprites,
+      anchorSprite: partSprites[Object.keys(partSprites)[0]],
+      partGlows,
+      hiddenStatics,
+      eye: eyeSprite,
+      eyeParent: eyeDef ? eyeDef.parent : null,
+      worldX,
+      baseY,
+      scale: objScale,
+      flipX,
+      flipY,
+      rotCos,
+      rotSin
+    });
+    window.BeastAnim.defaultBase(state);
+  }
+
   _spawnLevelObjects(_0x35f1ae) {
     const unknownObjectIds = new Set();
     this._lastObjectX = 0;
@@ -3379,6 +3545,7 @@ window.LevelObject = class LevelObject {
     this._shakeTriggers.sort((a, b) => a.x - b.x);
     this._onDeathTriggers.sort((a, b) => a.x - b.x);
     this._touchTriggers.sort((a, b) => a.x - b.x);
+    this._animationTriggers.sort((a, b) => a.x - b.x);
     this._pickupTriggers.sort((a, b) => a.x - b.x);
     this._countTriggers.sort((a, b) => a.x - b.x);
     this._instantCountTriggers.sort((a, b) => a.x - b.x);
@@ -4237,6 +4404,7 @@ window.LevelObject = class LevelObject {
     for (const trig of spawnMatches(this._followPlayerYTriggers)) this._startFollowPlayerYTween(trig);
     for (const trig of spawnMatches(this._followTriggers)) this._startFollowTriggerTween(trig);
     for (const trig of spawnMatches(this._toggleTriggers)) this._executeToggleTrigger(trig);
+    for (const trig of spawnMatches(this._animationTriggers)) this._executeAnimationTrigger(trig);
     for (const trig of spawnMatches(this._shakeTriggers)) this._executeShakeTrigger(trig);
     for (const trig of spawnMatches(this._pulseTriggers)) this._startPulseTrigger(trig);
     for (const trig of spawnMatches(this._spawnTriggers)) this._queueSpawnTrigger(trig);
@@ -4711,7 +4879,8 @@ window.LevelObject = class LevelObject {
       } else {
         spr._eeToggledOffGroups.add(targetGroup);
       }
-      const isVisible = spr._eeToggledOffGroups.size === 0;
+      const guideHidden = (spr._eePortalGuide && window.enablePortalGuide === false) || (spr._eeOrbGuide && window.enableOrbGuide === false) || spr._beastStaticHidden === true;
+      const isVisible = !guideHidden && spr._eeToggledOffGroups.size === 0;
       if (typeof spr.setVisible === "function") spr.setVisible(isVisible);
       spr.active = isVisible;
     }
@@ -4736,6 +4905,52 @@ window.LevelObject = class LevelObject {
       if (trig.x > playerX) break;
       if (!trig.spawnTriggered && !trig.touchTriggered) this._executeToggleTrigger(trig);
       this._toggleTriggerIdx++;
+    }
+  }
+
+  checkAnimationTriggers(playerX) {
+    while (this._animationTriggerIdx < this._animationTriggers.length) {
+      const trig = this._animationTriggers[this._animationTriggerIdx];
+      if (trig.x > playerX) break;
+      if (!trig.spawnTriggered && !trig.touchTriggered) this._executeAnimationTrigger(trig);
+      this._animationTriggerIdx++;
+    }
+  }
+
+  checkTouchAnimationTriggers(playerX, playerY) {
+    const px = Number(playerX) || 0;
+    const py = Number(playerY) || 0;
+    this._touchAnimationTriggerActivated ||= new Set();
+    const playerHalfSize = (typeof playerSize === "number" ? playerSize : 20);
+    const halfHitbox = 30 + playerHalfSize;
+    for (const trig of this._animationTriggers) {
+      if (!trig || !trig.touchTriggered || trig.spawnTriggered || !this._isTriggerSaveObjectLive(trig.uid)) continue;
+      const uid = trig.uid ?? `${trig.x},${trig.y},${trig.animateId}`;
+      if (this._touchAnimationTriggerActivated.has(uid)) continue;
+      if (Math.abs(px - trig.x) <= halfHitbox && Math.abs(py - (trig.y ?? 0)) <= halfHitbox) {
+        this._touchAnimationTriggerActivated.add(uid);
+        this._executeAnimationTrigger(trig);
+      }
+    }
+  }
+
+  _executeAnimationTrigger(trig) {
+    if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
+    if (!Number.isFinite(trig.targetGroup) || trig.targetGroup <= 0) return;
+    const sprites = this._groupSprites[trig.targetGroup];
+    if (!Array.isArray(sprites)) return;
+    for (const spr of sprites) {
+      if (!spr || !spr._beastPartOf) continue;
+      const record = this._beastSprites.find(b => b.objectId === spr._beastPartOf && Object.values(b.partSprites).includes(spr));
+      if (record) window.BeastAnim.command(record.state, trig.animateId);
+    }
+  }
+
+  resetAnimationTriggers() {
+    this._animationTriggerIdx = 0;
+    this._touchAnimationTriggerActivated = new Set();
+    for (const beast of this._beastSprites) {
+      if (beast.state) window.BeastAnim.defaultBase(beast.state);
     }
   }
 
@@ -4769,8 +4984,9 @@ window.LevelObject = class LevelObject {
         if (!spr || seenSprites.has(spr)) continue;
         seenSprites.add(spr);
         if (spr._eeToggledOffGroups) spr._eeToggledOffGroups.clear();
-        if (typeof spr.setVisible === "function") spr.setVisible(true);
-        spr.active = true;
+        const guideHidden = (spr._eePortalGuide && window.enablePortalGuide === false) || (spr._eeOrbGuide && window.enableOrbGuide === false) || spr._beastStaticHidden === true;
+        if (typeof spr.setVisible === "function") spr.setVisible(!guideHidden);
+        spr.active = !guideHidden;
       }
     }
 
@@ -4788,26 +5004,32 @@ window.LevelObject = class LevelObject {
 
   _executeShakeTrigger(trig) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
-    const dur = Math.max(0.05, Number(trig.duration) || 0.2);
-    const str = Math.max(0.1, Number(trig.strength) || 1);
-    const durationMs = Math.round(dur * 1000);
-    const amplitude = Math.max(1, Math.min(40, str * 4));
-    const scene = this._scene;
-    if (!scene?.time) return;
-    const steps = Math.max(4, Math.round(dur * 30));
-    const stepMs = Math.round(durationMs / steps);
-    let remaining = steps;
-    const self = this;
-    const doStep = () => {
-      if (remaining <= 0) { self.shakeOffsetX = 0; self.shakeOffsetY = 0; return; }
-      const t = remaining / steps;
-      const mag = amplitude * t;
-      self.shakeOffsetX = (Math.random() * 2 - 1) * mag;
-      self.shakeOffsetY = (Math.random() * 2 - 1) * mag;
-      remaining--;
-      scene.time.delayedCall(stepMs, doStep);
+    const dur = Math.max(0, Number(trig.duration) || 0);
+    const str = Math.max(0, Number(trig.strength) || 0);
+    if (dur <= 0 || str <= 0) return;
+    const iv = Number(trig.interval) > 0 ? Number(trig.interval) : 1 / 60;
+    this._shakeState = {
+      strength: str,
+      endTime: (this._scene?.time?.now ?? 0) + dur * 1000,
+      interval: iv,
+      lastStepTime: -Infinity
     };
-    doStep();
+  }
+
+  applyShakeToOffsets(nowMs) {
+    const s = this._shakeState;
+    if (!s) return;
+    if (nowMs > s.endTime) {
+      this._shakeState = null;
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+      return;
+    }
+    if (nowMs - s.lastStepTime >= s.interval * 1000) {
+      this.shakeOffsetX = (Math.random() * 2 - 1) * s.strength;
+      this.shakeOffsetY = (Math.random() * 2 - 1) * s.strength;
+      s.lastStepTime = nowMs;
+    }
   }
 
   checkShakeTriggers(playerX) {
@@ -4841,6 +5063,7 @@ window.LevelObject = class LevelObject {
   resetShakeTriggers() {
     this._shakeTriggerIdx = 0;
     this._touchShakeTriggerActivated = new Set();
+    this._shakeState = null;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
   }
@@ -4942,9 +5165,11 @@ window.LevelObject = class LevelObject {
     }
   }
 
-  stepTouchTriggers(isHolding, isPressed, colorManager) {
+  stepTouchTriggers(p1Holding, p1Pressed, p2Holding, p2Pressed, colorManager) {
     for (const trig of this._activeTouchTriggers) {
       if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) continue;
+      const isHolding = Boolean(p1Holding || p2Holding);
+      const isPressed = Boolean(p1Pressed || p2Pressed);
       if (trig.holdMode) {
         if (isHolding && !trig._holding) {
           trig._holding = true;
@@ -4982,6 +5207,13 @@ window.LevelObject = class LevelObject {
         }
       }
     }
+  }
+
+  isTouchTriggerDualMode() {
+    for (const trig of this._touchTriggers) {
+      if (trig && trig.dualTouch) return true;
+    }
+    return false;
   }
 
   resetTouchTriggers() {
@@ -5327,7 +5559,15 @@ window.LevelObject = class LevelObject {
           visMinSection._eeActive = false;
           const showtheportalthing = !visMinSection._eePortalGuide || (!window.isEditor && window.enablePortalGuide !== false);
           const showtheorbthing = !visMinSection._eeOrbGuide || (!window.isEditor && window.enableOrbGuide !== false);
-          visMinSection.visible = showtheportalthing && showtheorbthing;
+          const showthebeastthing = visMinSection._beastStaticHidden !== true;
+          visMinSection.visible = showtheportalthing && showtheorbthing && showthebeastthing;
+          if (visMinSection._beastManaged) {
+            visMinSection._eeEffectOffsetX = 0;
+            visMinSection._eeEffectOffsetY = 0;
+            visMinSection._eeEffectScale = 1;
+            visMinSection.setAlpha(this._getGroupOpacityForSprite(visMinSection));
+            continue;
+          }
           visMinSection.x = visMinSection._eeWorldX;
           visMinSection.y = visMinSection._eeBaseY;
           if (!visMinSection._eeAudioScale) {
@@ -5374,10 +5614,16 @@ window.LevelObject = class LevelObject {
         if (_0x8f9d56) {
           if (effectSprite._eeActive) {
             effectSprite._eeActive = false;
-            effectSprite.y = effectSprite._eeBaseY;
-            effectSprite.x = effectSprite._eeWorldX;
-            if (!effectSprite._eeAudioScale) {
-              effectSprite.setScale(1);
+            if (effectSprite._beastManaged) {
+              effectSprite._eeEffectOffsetX = 0;
+              effectSprite._eeEffectOffsetY = 0;
+              effectSprite._eeEffectScale = 1;
+            } else {
+              effectSprite.y = effectSprite._eeBaseY;
+              effectSprite.x = effectSprite._eeWorldX;
+              if (!effectSprite._eeAudioScale) {
+                effectSprite.setScale(1);
+              }
             }
             effectSprite.setAlpha(this._getGroupOpacityForSprite(effectSprite));
           }
@@ -5390,10 +5636,16 @@ window.LevelObject = class LevelObject {
         if (_0x289aa2 >= 1) {
           if (effectSprite._eeActive) {
             effectSprite._eeActive = false;
-            effectSprite.y = effectSprite._eeBaseY;
-            effectSprite.x = effectSprite._eeWorldX;
-            if (!effectSprite._eeAudioScale) {
-              effectSprite.setScale(1);
+            if (effectSprite._beastManaged) {
+              effectSprite._eeEffectOffsetX = 0;
+              effectSprite._eeEffectOffsetY = 0;
+              effectSprite._eeEffectScale = 1;
+            } else {
+              effectSprite.y = effectSprite._eeBaseY;
+              effectSprite.x = effectSprite._eeWorldX;
+              if (!effectSprite._eeAudioScale) {
+                effectSprite.setScale(1);
+              }
             }
             effectSprite.setAlpha(this._getGroupOpacityForSprite(effectSprite));
           }
@@ -5431,18 +5683,24 @@ window.LevelObject = class LevelObject {
               _0x127ace = 1 + _0x20804e * 0.75;
             }
         }
-        if (effectSprite.x !== _0x17437c) {
-          effectSprite.x = _0x17437c;
-        }
-        if (effectSprite.y !== _0x50e6d9) {
-          effectSprite.y = _0x50e6d9;
+        if (effectSprite._beastManaged) {
+          effectSprite._eeEffectOffsetX = _0x17437c - effectSprite._eeWorldX;
+          effectSprite._eeEffectOffsetY = _0x50e6d9 - effectSprite._eeBaseY;
+          effectSprite._eeEffectScale = _0x127ace;
+        } else {
+          if (effectSprite.x !== _0x17437c) {
+            effectSprite.x = _0x17437c;
+          }
+          if (effectSprite.y !== _0x50e6d9) {
+            effectSprite.y = _0x50e6d9;
+          }
+          if (!effectSprite._eeAudioScale && effectSprite.scaleX !== _0x127ace) {
+            effectSprite.setScale(_0x127ace);
+          }
         }
         const _eeFinalAlpha = _0x2128bf * this._getGroupOpacityForSprite(effectSprite);
         if (effectSprite.alpha !== _eeFinalAlpha) {
           effectSprite.alpha = _eeFinalAlpha;
-        }
-        if (!effectSprite._eeAudioScale && effectSprite.scaleX !== _0x127ace) {
-          effectSprite.setScale(_0x127ace);
         }
       }
     }
@@ -5565,6 +5823,11 @@ window.LevelObject = class LevelObject {
     }
     this._secretCoinRunCollected.clear();
     this._userCoinRunCollected.clear();
+    for (const staticSpr of this.objectSprites.flat()) {
+      if (staticSpr && staticSpr._beastStaticHidden) {
+        staticSpr.setVisible(false);
+      }
+    }
     for (let _0x5c5d9a of this._audioScaleSprites) {
       _0x5c5d9a.setScale(0.1);
     }

@@ -162,6 +162,9 @@ class ColorManager {
     }
   }
   getColor(index) {
+    const ch = parseInt(index, 10);
+    if (ch === 1005) return this._colors[1005] || { r: (window.mainColor >> 16) & 0xff, g: (window.mainColor >> 8) & 0xff, b: window.mainColor & 0xff };
+    if (ch === 1006) return this._colors[1006] || { r: (window.secondaryColor >> 16) & 0xff, g: (window.secondaryColor >> 8) & 0xff, b: window.secondaryColor & 0xff };
     return this._colors[index] || {
       r: 255,
       g: 255,

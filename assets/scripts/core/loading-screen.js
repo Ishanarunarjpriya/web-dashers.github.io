@@ -207,6 +207,11 @@ class BootScene extends Phaser.Scene {
     this.load.text("goldFontFnt", "assets/fonts/goldFont.fnt");
     
     this.load.once("complete", () => {
+      window.GJBeast01_AnimDesc = this.cache.json.get("GJBeast01_AnimDesc") || null;
+      window.GJBeast02_AnimDesc = this.cache.json.get("GJBeast02_AnimDesc") || null;
+      window.GJBeast03_AnimDesc = this.cache.json.get("GJBeast03_AnimDesc") || null;
+      window.GJBeast04_AnimDesc = this.cache.json.get("GJBeast04_AnimDesc") || null;
+      window.GJBeast05_AnimDesc = this.cache.json.get("GJBeast05_AnimDesc") || null;
       const tex = this.textures.get("game_bg_01");
       const s = Math.max(W / tex.source[0].width, H / tex.source[0].height);
       const bg = this.add.image(cx, cy, "game_bg_01").setScale(s).setTint(0x0066ff);
@@ -255,6 +260,11 @@ class BootScene extends Phaser.Scene {
       this.load.atlas("Wavesheet", "assets/sheets/Wavesheet.png", "assets/sheets/Wavesheet.json");
       this.load.json("Spider_AnimDesc", "assets/sheets/Spider_AnimDesc.json");
       this.load.json("Robot_AnimDesc", "assets/sheets/Robot_AnimDesc.json");
+      this.load.json("GJBeast01_AnimDesc", "assets/sheets/GJBeast01_AnimDesc.json");
+      this.load.json("GJBeast02_AnimDesc", "assets/sheets/GJBeast02_AnimDesc.json");
+      this.load.json("GJBeast03_AnimDesc", "assets/sheets/GJBeast03_AnimDesc.json");
+      this.load.json("GJBeast04_AnimDesc", "assets/sheets/GJBeast04_AnimDesc.json");
+      this.load.json("GJBeast05_AnimDesc", "assets/sheets/GJBeast05_AnimDesc.json");
       this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
       this.load.atlas("player_ball_00", "assets/sheets/player_ball_00.png", "assets/sheets/player_ball_00.json");
       this.load.atlas("player_dart_00", "assets/sheets/player_dart_00.png", "assets/sheets/player_dart_00.json");
