@@ -8085,7 +8085,7 @@ _showwippopup() {
     }
     this._cpsIndicator.setPosition(10, 10 + (window.noClip * 20) + (window.noClip && window.noClipAccuracy * 40));
 
-    this._bottedIndicator.setVisible(this._macroBot?.playing);
+    this._bottedIndicator.setVisible(this._macroBot?.playing && !this._menuActive && !this._paused && !this._levelWon);
     this._bottedIndicator.setPosition(10, 10 + (window.noClip * 20) + (window.noClip && window.noClipAccuracy * 40) + (window.showCPS * 20));
     if (this._macroBtn){
       this._macroBtn.setVisible(window.macroBot);
