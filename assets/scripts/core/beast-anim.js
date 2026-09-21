@@ -8,14 +8,6 @@ const BEAST_ANIM_NAME_BY_ID = {
   2012: "GJBeast05"
 };
 
-const BEAST_ANIM_ID_FOR_NAME = {
-  GJBeast01: "918",
-  GJBeast02: "1327",
-  GJBeast03: "1328",
-  GJBeast04: "1584",
-  GJBeast05: "2012"
-};
-
 const BEAST_ANIM_DEFAULT_ANIM_ID = { 918: 0, 1327: 0, 1328: 0, 1584: 0, 2012: 0 };
 
 const BEAST_ANIM_DEFS = {
@@ -75,7 +67,7 @@ const BEAST_ANIM_DEFS = {
 };
 
 const BEAST_ANIM_NAMES_BY_ID = {
-  918: ["bite", "attack01", "attack01_end", "idle01"],
+  918: ["bite", "attack01", "attack01_end", "idle01", "attack01_loop"],
   1584: ["idle01", "idle02", "idle03", "attack01", "attack02", "attack02_end", "sleep", "sleep_loop", "sleep_end", "attack02_loop"],
   2012: ["idle01", "idle02", "toAttack01", "attack01", "attack02", "toAttack03", "attack03", "idle03", "fromAttack03"]
 };
@@ -116,6 +108,7 @@ function beastAnimIsLoopingBase(state, base) {
 
 function beastAnimRandomizeTimer(state) {
   if (!state) return;
+  state.rng = Math.random();
   state.timer = state.rng * beastAnimDelay(state);
 }
 
@@ -150,6 +143,7 @@ function beastAnimGetDesc(animName) {
   } catch (err) { data = null; }
   if (!data && typeof BEAST_DESC_FALLBACK !== "undefined") data = null;
   if (!data || !data.animationContainer) {
+    beastAnimCache[key] = null;
     return null;
   }
   const groups = {};
@@ -198,7 +192,7 @@ function beastAnimCreateState(objectId) {
   if (!animName) return null;
   const desc = beastAnimGetDesc(animName);
   if (!desc) return null;
-  return {
+  const state = {
     objectId,
     animName,
     desc,
@@ -206,10 +200,10 @@ function beastAnimCreateState(objectId) {
     base: null,
     frameIdx: 0,
     timer: 0,
-    rng: Math.random(),
-    pendingAnim: null,
-    tweenTimer: 0
+    rng: Math.random()
   };
+  beastAnimDefaultBase(state);
+  return state;
 }
 
 function beastAnimSetBase(state, base, animId) {
@@ -238,13 +232,7 @@ function beastAnimFinishAction(state) {
         beastAnimRandomizeTimer(state);
         return;
       }
-      if (prev === "bite") {
-        if (beastAnimFrameExists(state.animName, "attack01_loop")) {
-          beastAnimSetBase(state, "attack01_loop", 1);
-          beastAnimRandomizeTimer(state);
-        }
-        return;
-      }
+      if (prev === "bite") return;
       beastAnimSetBase(state, "idle01", 3);
       beastAnimRandomizeTimer(state);
       return;
@@ -295,11 +283,9 @@ function beastAnimFinishAction(state) {
         return;
       }
       if (prev === "attack01") {
-        if (beastAnimFrameExists(state.animName, "attack02_end")) {
-          beastAnimSetBase(state, "attack02_end", 5);
-          beastAnimRandomizeTimer(state);
-          return;
-        }
+        beastAnimSetBase(state, "idle01", 0);
+        beastAnimRandomizeTimer(state);
+        return;
       }
       if (rnd <= 0.75) beastAnimSetBase(state, "idle01", 0);
       else beastAnimSetBase(state, "idle02", 0);
@@ -318,14 +304,12 @@ function beastAnimFinishAction(state) {
         beastAnimRandomizeTimer(state);
         return;
       }
-      if (prev === "attack01" || prev === "attack02" || prev === "attack03") {
-        if (prev === "attack01") {
+      if (prev === "attack01" || prev === "attack03") {
           if (rnd <= 0.75) beastAnimSetBase(state, "idle01", 0);
           else beastAnimSetBase(state, "idle02", 0);
           beastAnimRandomizeTimer(state);
           return;
         }
-      }
       if (prev === "idle01") {
         if (rnd <= 0.75) beastAnimSetBase(state, "idle01", 0);
         else beastAnimSetBase(state, "idle02", 1);
@@ -367,11 +351,6 @@ function beastAnimDefaultBase(state) {
       return;
     }
   }
-  if (id === 1327 || id === 1328) {
-    beastAnimSetBase(state, "idle01", 0);
-    beastAnimRandomizeTimer(state);
-    return;
-  }
   beastAnimSetBase(state, "idle01", 0);
   const defGroup = state.desc.groups[state.animName + "_idle01"];
   if (defGroup && defGroup.length > 1) {
@@ -385,6 +364,7 @@ function beastAnimAdvance(state, dt) {
   if (!Number.isFinite(state.timer)) state.timer = 0;
   if (!Number.isFinite(state.frameIdx)) state.frameIdx = 0;
   if (!Number.isFinite(dt) || dt <= 0) return;
+  if (dt > 0.1) dt = 0.1;
   state.timer += dt;
   let guard = 0;
   while (guard++ < 240) {
