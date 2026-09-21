@@ -3448,7 +3448,7 @@ window.allobjects = function() {
         "rot": 270
       }
     ],
-    "default_base_color_channel": 1006,
+    "default_base_color_channel": 1005,
     "frame": "d_roundCloud_01_001.png",
     "glow_frame": "d_roundCloud_01_glow_001.png",
     "gridH": 1.5833333730697632,
@@ -3462,7 +3462,7 @@ window.allobjects = function() {
   },
   "223": {
     "can_color": true,
-    "default_base_color_channel": 1006,
+    "default_base_color_channel": 1005,
     "frame": "d_roundCloud_02_001.png",
     "glow_frame": "d_roundCloud_02_glow_001.png",
     "gridH": 2.116666555404663,
