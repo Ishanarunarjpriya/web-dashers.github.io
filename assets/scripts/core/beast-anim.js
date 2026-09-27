@@ -1,3 +1,5 @@
+// if you couldn't tell this is the file that handles the chompy guys-'s animation
+//yturfvgjhkyutygh
 const BEAST_ANIM_OBJECT_IDS = [918, 1327, 1328, 1584, 2012];
 
 const BEAST_ANIM_NAME_BY_ID = {
@@ -9,7 +11,7 @@ const BEAST_ANIM_NAME_BY_ID = {
 };
 
 const BEAST_ANIM_DEFAULT_ANIM_ID = { 918: 0, 1327: 0, 1328: 0, 1584: 0, 2012: 0 };
-
+//where all the animations are mapped
 const BEAST_ANIM_DEFS = {
   GJBeast01: {
     defaultAnimation: "bite",
@@ -141,7 +143,7 @@ function beastAnimGetDesc(animName) {
       if (data && typeof window !== "undefined") window[animName + "_AnimDesc"] = data;
     }
   } catch (err) { data = null; }
-  if (!data && typeof BEAST_DESC_FALLBACK !== "undefined") data = null;
+  
   if (!data || !data.animationContainer) {
     beastAnimCache[key] = null;
     return null;
@@ -167,10 +169,6 @@ function beastAnimGetDesc(animName) {
   return desc;
 }
 
-function beastAnimGetGroup(animName, base) {
-  const desc = beastAnimGetDesc(animName);
-  return desc ? (desc.groups[animName + "_" + base] || null) : null;
-}
 
 function beastAnimFrameExists(animName, base) {
   const desc = beastAnimGetDesc(animName);
@@ -215,7 +213,7 @@ function beastAnimSetBase(state, base, animId) {
   if (animId !== undefined) state.animId = animId;
   return true;
 }
-
+//defines what player next. dont remove any "duplicates", im not slow
 function beastAnimFinishAction(state) {
   const id = state.objectId;
   const rnd = Math.random();
@@ -224,7 +222,7 @@ function beastAnimFinishAction(state) {
       const prev = state.base;
       if (prev === "attack01") {
         if (beastAnimFrameExists(state.animName, "attack01_loop")) {
-          beastAnimSetBase(state, "attack01_loop", 1);
+          beastAnimSetBase(state, "attack01_loop", 4);
           beastAnimRandomizeTimer(state);
           return;
         }
@@ -409,3 +407,4 @@ window.BeastAnim = {
   resolveBase: beastAnimResolveBase,
   parsePair: beastAnimParsePair
 };
+//all this just for players to die to the first spike in stereo madness
