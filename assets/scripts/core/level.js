@@ -608,6 +608,9 @@ const USER_COIN_ANIM_FRAMES = [
   "secretCoin_2_b_01_003.png",
   "secretCoin_2_b_01_004.png"
 ];
+const GD_UNIT_TO_PIXELS = 2;
+const SHAKE_MAX_STRENGTH = 100;
+const SHAKE_MAX_OFFSET = SHAKE_MAX_STRENGTH * GD_UNIT_TO_PIXELS;
 function getObjectFromId(id) {
   return allObjects[id] || null;
 }
@@ -1325,7 +1328,7 @@ window.LevelObject = class LevelObject {
     this._maxGroundWorldX = startX + (tileCount - 1) * this._tileW;
     const floorLineFrame = scene.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
     const floorLineWidth = floorLineFrame ? floorLineFrame.width : 888;
-    const floorLineScale = screenWidth / floorLineWidth;
+    const floorLineScale = (screenWidth + SHAKE_MAX_OFFSET * 2) / floorLineWidth;
     this._groundLine = scene.add.image(screenWidth / 2, groundY - 1, "GJ_WebSheet", "floorLine_01_001.png").setOrigin(0.5, 0).setScale(floorLineScale, 1).setBlendMode(S).setDepth(21).setScrollFactor(0);
     this._ceilingLine = scene.add.image(screenWidth / 2, groundY + 1, "GJ_WebSheet", "floorLine_01_001.png").setOrigin(0.5, 1).setScale(floorLineScale, 1).setFlipY(true).setBlendMode(S).setDepth(21).setScrollFactor(0).setVisible(false);
     const shadowAlpha = 100 / 255;
@@ -1430,7 +1433,7 @@ window.LevelObject = class LevelObject {
       this._maxGroundWorldX = newTileX;
     }
     const floorLineFrame = this._scene.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
-    const floorLineScale = screenWidth / (floorLineFrame ? floorLineFrame.width : 888);
+    const floorLineScale = (screenWidth + SHAKE_MAX_OFFSET * 2) / (floorLineFrame ? floorLineFrame.width : 888);
     this._groundLine.x = screenWidth / 2;
     this._groundLine.setScale(floorLineScale, 1);
     this._ceilingLine.x = screenWidth / 2;
@@ -1440,6 +1443,8 @@ window.LevelObject = class LevelObject {
   }
   updateGroundTiles(cameraY = 0) {
     const cameraX = this._cameraXRef.value;
+    const shakeX = this.shakeOffsetX || 0;
+    const shakeY = this.shakeOffsetY || 0;
     const tileWidth = this._tileW;
     let leftTileIndex;
     let rightTileIndex;
@@ -1470,44 +1475,46 @@ window.LevelObject = class LevelObject {
     for (let i = 0; i < this._groundTiles.length; i++) {
       let groundTile = this._groundTiles[i];
       let ceilingTile = this._ceilingTiles[i];
-      if (groundTile._worldX + tileWidth <= cameraX) {
+      if (groundTile._worldX + tileWidth <= cameraX - SHAKE_MAX_OFFSET) {
         groundTile._worldX = maxWorldX + tileWidth;
         ceilingTile._worldX = groundTile._worldX;
         maxWorldX = groundTile._worldX;
         this._maxGroundWorldX = maxWorldX;
       }
-      let tileScreenX = groundTile._worldX - cameraX;
+      let tileScreenX = groundTile._worldX - cameraX + shakeX;
       groundTile.x = tileScreenX;
-      groundTile.y = leftTileIndex;
+      groundTile.y = leftTileIndex + shakeY;
       const ground2Tile = this._ground2Tiles?.[i];
       if (ground2Tile) {
         ground2Tile.x = tileScreenX;
-        ground2Tile.y = leftTileIndex;
+        ground2Tile.y = leftTileIndex + shakeY;
         ground2Tile.setVisible(hasGround2);
       }
       ceilingTile.x = tileScreenX;
-      ceilingTile.y = rightTileIndex;
+      ceilingTile.y = rightTileIndex + shakeY;
       const ceilingVisibleForTile = this._flyGroundActive && this._groundTargetValue > 0 || ceilingActive;
       ceilingTile.setVisible(ceilingVisibleForTile);
       const ceiling2Tile = this._ceiling2Tiles?.[i];
       if (ceiling2Tile) {
         ceiling2Tile.x = tileScreenX;
-        ceiling2Tile.y = rightTileIndex;
+        ceiling2Tile.y = rightTileIndex + shakeY;
         ceiling2Tile.setVisible(hasGround2 && ceilingVisibleForTile);
       }
     }
-    this._groundLine.y = leftTileIndex;
+    this._groundLine.x = screenWidth / 2 + shakeX;
+    this._groundLine.y = leftTileIndex + shakeY;
+    this._ceilingLine.x = screenWidth / 2 + shakeX;
     if (this._flyGroundActive && this._groundTargetValue > 0 || ceilingActive) {
-      this._ceilingLine.y = rightTileIndex;
+      this._ceilingLine.y = rightTileIndex + shakeY;
       this._ceilingLine.setVisible(true);
     } else {
       this._ceilingLine.setVisible(false);
     }
-    this._groundShadowL.y = leftTileIndex;
-    this._groundShadowR.y = leftTileIndex;
+    this._groundShadowL.y = leftTileIndex + shakeY;
+    this._groundShadowR.y = leftTileIndex + shakeY;
     let ceilingVisible = this._flyGroundActive && this._groundTargetValue > 0 || ceilingActive;
-    this._ceilingShadowL.y = rightTileIndex;
-    this._ceilingShadowR.y = rightTileIndex;
+    this._ceilingShadowL.y = rightTileIndex + shakeY;
+    this._ceilingShadowR.y = rightTileIndex + shakeY;
     this._ceilingShadowL.setVisible(ceilingVisible);
     this._ceilingShadowR.setVisible(ceilingVisible);
   }
@@ -2386,13 +2393,14 @@ window.LevelObject = class LevelObject {
 
     if (levelObj.id === 1520) {
       const _raw = levelObj._raw;
+      const shakeStrength = Math.max(0, Math.min(SHAKE_MAX_STRENGTH, parseFloat(_raw[75] ?? 0)));
       this._shakeTriggers.push({
         ...triggerBase,
         x: levelObj.x * 2,
         y: levelObj.y * 2,
         touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
         duration: Math.max(0, parseFloat(_raw[10] ?? 0)),
-        strength: Math.max(0, parseFloat(_raw[75] ?? 1)),
+        strength: shakeStrength * GD_UNIT_TO_PIXELS,
         interval: Math.max(0, parseFloat(_raw[84] ?? 0))
       });
     }
@@ -5007,7 +5015,7 @@ window.LevelObject = class LevelObject {
     const dur = Math.max(0, Number(trig.duration) || 0);
     const str = Math.max(0, Number(trig.strength) || 0);
     if (dur <= 0 || str <= 0) return;
-    const iv = Number(trig.interval) > 0 ? Number(trig.interval) : 1 / 60;
+    const iv = Math.max(0, Number(trig.interval) || 0);
     this._shakeState = {
       strength: str,
       endTime: (this._scene?.time?.now ?? 0) + dur * 1000,

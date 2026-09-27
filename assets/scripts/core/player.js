@@ -2034,6 +2034,14 @@ if (this.p.isFlying || this.p.isUfo) {
     }
     this._aboveContainer.x += ox;
     this._aboveContainer.y += oy;
+    if (this._dashAnimationSprite?.visible) {
+      this._dashAnimationSprite.x += ox;
+      this._dashAnimationSprite.y += oy;
+    }
+    if (this._robotJumpFlameSprite?.visible) {
+      this._robotJumpFlameSprite.x += ox;
+      this._robotJumpFlameSprite.y += oy;
+    }
   }
   exitShipMode() {
     if (this.p.isFlying) {
