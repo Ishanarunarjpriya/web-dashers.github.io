@@ -78,6 +78,13 @@ const BEAST_ANIM_EYES = {
   918: { frame: "GJBeast01_03_001.png", parent: "GJBeast01_01_001.png" }
 };
 
+const BEAST_ANIM_SECONDARY_TAGS = {
+  1327: [0],
+  1328: [0],
+  1584: [0],
+  2012: [1, 2]
+};
+
 const BEAST_ANIM_30FPS_DELAY = 1 / 30;
 
 const BEAST_ANIM_UNIT_SCALE = 2;
@@ -164,7 +171,31 @@ function beastAnimGetDesc(animName) {
       return na - nb;
     });
   }
-  const desc = { raw: data, groups, container };
+  const frames = {};
+  for (const frameKey of Object.keys(container)) {
+    const frame = container[frameKey];
+    const parts = [];
+    const texSet = {};
+    for (const partKey of Object.keys(frame)) {
+      if (!partKey.startsWith("sprite_")) continue;
+      const part = frame[partKey];
+      const pos = beastAnimParsePair(part.position, 0, 0);
+      const sc = beastAnimParsePair(part.scale, 1, 1);
+      const fl = beastAnimParsePair(part.flipped, 0, 0);
+      parts.push({
+        texture: part.texture,
+        x: pos.x,
+        y: pos.y,
+        sx: sc.x * (fl.x ? -1 : 1),
+        sy: sc.y * (fl.y ? -1 : 1),
+        rot: (parseFloat(part.rotation || "0") || 0) * Math.PI / 180,
+        z: parseFloat(part.zValue || "0") || 0
+      });
+      texSet[part.texture] = true;
+    }
+    frames[frameKey] = { parts, texSet };
+  }
+  const desc = { raw: data, groups, container, frames };
   beastAnimCache[key] = desc;
   return desc;
 }
@@ -208,6 +239,10 @@ function beastAnimSetBase(state, base, animId) {
   const group = state.desc.groups[state.animName + "_" + base];
   if (!group || !group.length) return false;
   state.base = base;
+  state.group = group;
+  state.delay = beastAnimDelay(state);
+  state.total = beastAnimFrameCount(state);
+  state.looped = beastAnimIsLoopingBase(state, base);
   state.frameIdx = 0;
   state.timer = 0;
   if (animId !== undefined) state.animId = animId;
@@ -359,6 +394,7 @@ function beastAnimDefaultBase(state) {
 
 function beastAnimAdvance(state, dt) {
   if (!state || !state.base) return;
+  if (state.group === undefined) beastAnimSetBase(state, state.base);
   if (!Number.isFinite(state.timer)) state.timer = 0;
   if (!Number.isFinite(state.frameIdx)) state.frameIdx = 0;
   if (!Number.isFinite(dt) || dt <= 0) return;
@@ -366,17 +402,17 @@ function beastAnimAdvance(state, dt) {
   state.timer += dt;
   let guard = 0;
   while (guard++ < 240) {
-    const delay = beastAnimDelay(state);
+    const delay = state.delay;
     if (state.timer < delay) break;
     state.timer -= delay;
     state.frameIdx++;
-    const total = beastAnimFrameCount(state);
+    const total = state.total;
     if (!total) {
       beastAnimDefaultBase(state);
       break;
     }
     if (state.frameIdx >= total) {
-      if (beastAnimIsLoopingBase(state, state.base)) {
+      if (state.looped) {
         state.frameIdx = 0;
         continue;
       }
@@ -390,6 +426,8 @@ window.BeastAnim = {
   IDS: BEAST_ANIM_OBJECT_IDS,
   EYES: BEAST_ANIM_EYES,
   eyeFor: function (objectId) { return BEAST_ANIM_EYES[objectId] || null; },
+  SECONDARY_TAGS: BEAST_ANIM_SECONDARY_TAGS,
+  secondaryTagsFor: function (objectId) { return BEAST_ANIM_SECONDARY_TAGS[objectId] || null; },
   TWEEN_TIME: BEAST_ANIM_TWEEN_TIME,
   UNIT_SCALE: BEAST_ANIM_UNIT_SCALE,
   getDesc: beastAnimGetDesc,

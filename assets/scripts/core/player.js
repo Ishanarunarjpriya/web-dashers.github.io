@@ -4233,13 +4233,20 @@ if (this.p.isFlying || this.p.isUfo) {
       let right = gameObj.x + gameObj.w / 2;
       let top = gameObj.y - gameObj.h / 2;
       let bottom = gameObj.y + gameObj.h / 2;
-      const rad = gameObj.rotationDegrees * Math.PI / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const halfW = gameObj.w / 2;
-      const halfH = gameObj.h / 2;
-      const rotatedHalfWidth  = Math.abs(halfW * cos) + Math.abs(halfH * sin);
-      const rotatedHalfHeight = Math.abs(halfW * sin) + Math.abs(halfH * cos);
+      if (gameObj._bpRot !== gameObj.rotationDegrees || gameObj._bpW !== gameObj.w || gameObj._bpH !== gameObj.h) {
+        const rad = gameObj.rotationDegrees * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const halfW = gameObj.w / 2;
+        const halfH = gameObj.h / 2;
+        gameObj._bpRot = gameObj.rotationDegrees;
+        gameObj._bpW = gameObj.w;
+        gameObj._bpH = gameObj.h;
+        gameObj._bpHalfWidth = Math.abs(halfW * cos) + Math.abs(halfH * sin);
+        gameObj._bpHalfHeight = Math.abs(halfW * sin) + Math.abs(halfH * cos);
+      }
+      const rotatedHalfWidth = gameObj._bpHalfWidth;
+      const rotatedHalfHeight = gameObj._bpHalfHeight;
       let rotatedLeft = gameObj.x - rotatedHalfWidth;
       let rotatedRight = gameObj.x + rotatedHalfWidth;
       let rotatedTop = gameObj.y - rotatedHalfHeight;

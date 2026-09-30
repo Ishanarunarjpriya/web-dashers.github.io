@@ -3394,12 +3394,17 @@ window.LevelObject = class LevelObject {
     const rotCos = Math.cos(objRot);
     const rotSin = Math.sin(objRot);
     const groupMap = {};
+    const detailTextures = {};
+    const detailTags = window.BeastAnim.secondaryTagsFor ? window.BeastAnim.secondaryTagsFor(objectId) : null;
     for (const frameKey of Object.keys(state.desc.container)) {
       const frame = state.desc.container[frameKey];
       for (const partKey of Object.keys(frame)) {
         if (!partKey.startsWith("sprite_")) continue;
-        const tex = frame[partKey].texture;
-        if (tex && tex.endsWith(".png")) groupMap[tex] = true;
+        const entry = frame[partKey];
+        const tex = entry.texture;
+        if (!tex || !tex.endsWith(".png")) continue;
+        groupMap[tex] = true;
+        if (detailTags && detailTags.indexOf(Number(entry.tag)) !== -1) detailTextures[tex] = true;
       }
     }
     const eyeDef = window.BeastAnim.eyeFor ? window.BeastAnim.eyeFor(objectId) : null;
@@ -3465,24 +3470,19 @@ window.LevelObject = class LevelObject {
       spr._beastManaged = true;
       const childDef = detailPartDef[tex];
       const colorDef = childDef
-        ? {
-            ...childDef,
-            can_color: (childDef.black === true || childDef.tint === 0)
-              ? (childDef.can_color ?? objectDef.can_color)
-              : childDef.can_color
-          }
+        ? { ...childDef, can_color: childDef.can_color ?? objectDef.can_color }
         : objectDef;
-      if (colorDef.tint !== undefined) spr.setTint(colorDef.tint);
-      const partBlackDefault = colorDef.black === true || colorDef.tint === 0;
+      const detailPart = detailTextures[tex] === true;
+      if (!detailPart && colorDef.tint !== undefined) spr.setTint(colorDef.tint);
+      const partBlackDefault = !detailPart && (colorDef.black === true || colorDef.tint === 0 || objectDef.black === true);
       if (partBlackDefault) {
         spr.setTint(0);
         spr._isBlack = true;
         spr._canColor = colorDef.can_color === true;
         spr._blackDefault = spr._canColor && !(Number(levelObj.color1) > 0);
       }
-      const partChannel = childDef && !partBlackDefault ? detailChannel : col1;
       this._addToSection(spr);
-      registerColor(spr, partChannel);
+      registerColor(spr, detailPart ? detailChannel : col1);
       registerToGroups(spr, worldX, baseY);
       registerObjectSprite(spr);
       partSprites[tex] = spr;
@@ -3493,14 +3493,14 @@ window.LevelObject = class LevelObject {
           glowSpr._eeZDepth = objZDepth + 0.002;
           glowSpr._beastPartOf = objectId;
           glowSpr._beastManaged = true;
-          registerColor(glowSpr, partChannel);
+          registerColor(glowSpr, detailPart ? detailChannel : col1);
           registerToGroups(glowSpr, worldX, baseY);
           partGlows[tex] = glowSpr;
         }
       }
     }
     if (!Object.keys(partSprites).length) return;
-    this._beastSprites.push({
+    const beastRecord = {
       objectId,
       state,
       partSprites,
@@ -3516,7 +3516,9 @@ window.LevelObject = class LevelObject {
       flipY,
       rotCos,
       rotSin
-    });
+    };
+    for (const tex in partSprites) partSprites[tex]._beastRecord = beastRecord;
+    this._beastSprites.push(beastRecord);
     window.BeastAnim.defaultBase(state);
   }
 
@@ -4947,11 +4949,11 @@ window.LevelObject = class LevelObject {
     if (!Number.isFinite(trig.targetGroup) || trig.targetGroup <= 0) return;
     const sprites = this._groupSprites[trig.targetGroup];
     if (!Array.isArray(sprites)) return;
+    const records = new Set();
     for (const spr of sprites) {
-      if (!spr || !spr._beastPartOf) continue;
-      const record = this._beastSprites.find(b => b.objectId === spr._beastPartOf && Object.values(b.partSprites).includes(spr));
-      if (record) window.BeastAnim.command(record.state, trig.animateId);
+      if (spr && spr._beastRecord) records.add(spr._beastRecord);
     }
+    for (const record of records) window.BeastAnim.command(record.state, trig.animateId);
   }
 
   resetAnimationTriggers() {
@@ -5532,13 +5534,14 @@ window.LevelObject = class LevelObject {
     }
   }
 
-  applyColorChannels(colorManager) {
+  applyColorChannels(colorManager, onlyVisible = false) {
     for (const chId in this._colorChannelSprites) {
       const sprites = this._colorChannelSprites[chId];
       if (!sprites || !sprites.length) continue;
       const hex = colorManager.getHex(parseInt(chId, 10));
       for (const spr of sprites) {
         if (!spr || !spr.active) continue;
+        if (onlyVisible && spr.parentContainer && !spr.parentContainer.visible) continue;
         if (spr._cantColor) continue;
         if (spr._eePulsed) continue;
         if (spr._eeAudioScale) continue;

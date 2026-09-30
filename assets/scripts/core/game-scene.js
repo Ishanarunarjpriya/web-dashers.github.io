@@ -8069,7 +8069,10 @@ _showwippopup() {
 
     this._cpsIndicator.setVisible(window.showCPS && !this._menuActive);
     if (this._clickHistory && this._clickHistory.length > 0) {
-      this._clickHistory = this._clickHistory.filter(timestamp => this.time.now - timestamp <= 1000);
+      const now = this.time.now;
+      let expired = 0;
+      while (expired < this._clickHistory.length && now - this._clickHistory[expired] > 1000) expired++;
+      if (expired) this._clickHistory.splice(0, expired);
       this._cpsIndicator.setText(`${this._clickHistory.length} CPS`);
     } else {
       this._cpsIndicator.setText("0 CPS");
@@ -8357,6 +8360,7 @@ _showwippopup() {
       window._animTimer += deltaTime;
       for (let _as of window._animatedSprites) {
         if (!_as || !_as.active || !_as.visible) continue;
+        if (_as.parentContainer && !_as.parentContainer.visible) continue;
         if (window._animTimer - (_as._lastAnimSwap || 0) >= _as._animInterval) {
           _as._lastAnimSwap = window._animTimer;
           _as._animIdx = (_as._animIdx + 1) % _as._animFrames.length;
@@ -8375,6 +8379,7 @@ _showwippopup() {
       const sawTimer = (window._animTimer || 0) / 1000;
       for (let _saw of this._level._sawSprites) {
         if (!_saw || !_saw.active || !_saw.visible) continue;
+        if (_saw.parentContainer && !_saw.parentContainer.visible) continue;
         const baseSpeed = _saw._Sawrotationspeed ?? 0.0034;
         let sawRotationSpeed = baseSpeed;
         if (_saw._SawRandom1 !== undefined) {
@@ -8397,11 +8402,13 @@ _showwippopup() {
         if (!beast.state.base) window.BeastAnim.defaultBase(beast.state);
         window.BeastAnim.advance(beast.state, dtSec);
         const st = beast.state;
-        const group = st.desc.groups[st.animName + "_" + st.base];
+        const group = st.group;
         if (!group || !group.length) continue;
         const frameKey = group[Math.min(st.frameIdx, group.length - 1)];
-        const frame = st.desc.container[frameKey];
+        const frame = st.desc.frames[frameKey];
         if (!frame) continue;
+        const anchorContainer = beast.anchorSprite ? beast.anchorSprite.parentContainer : null;
+        if (anchorContainer && !anchorContainer.visible) continue;
         const flipSignX = beast.flipX ? -1 : 1;
         const anchorSpr = beast.anchorSprite && beast.anchorSprite.active ? beast.anchorSprite : null;
         let rigOffX = 0;
@@ -8428,32 +8435,34 @@ _showwippopup() {
         }
         const rigCos = rigRot ? Math.cos(rigRot) : 1;
         const rigSin = rigRot ? Math.sin(rigRot) : 0;
-        const frameParts = {};
-        for (const partKey of Object.keys(frame)) {
-          if (partKey.startsWith("sprite_")) frameParts[frame[partKey].texture] = true;
-        }
-        for (const tex of Object.keys(beast.partSprites)) {
-          if (frameParts[tex]) continue;
-          const idleSpr = beast.partSprites[tex];
-          idleSpr.scaleX = 0;
-          idleSpr.scaleY = 0;
-          const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
-          if (idleGlow) {
-            idleGlow.scaleX = 0;
-            idleGlow.scaleY = 0;
+        if (beast.lastFrameKey !== frameKey) {
+          beast.lastFrameKey = frameKey;
+          for (const tex in beast.partSprites) {
+            if (frame.texSet[tex]) continue;
+            const idleSpr = beast.partSprites[tex];
+            idleSpr.scaleX = 0;
+            idleSpr.scaleY = 0;
+            const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
+            if (idleGlow) {
+              idleGlow.scaleX = 0;
+              idleGlow.scaleY = 0;
+            }
           }
         }
-        for (const partKey of Object.keys(frame)) {
-          if (!partKey.startsWith("sprite_")) continue;
-          const part = frame[partKey];
+        if (beast.baseRot === undefined) beast.baseRot = Math.atan2(beast.rotSin, beast.rotCos);
+        const unitScale = window.BeastAnim.UNIT_SCALE * beast.scale;
+        const flipSignY = beast.flipY ? -1 : 1;
+        const angleSign = beast.flipX !== beast.flipY ? -1 : 1;
+        const angleBase = beast.baseRot + rigRot;
+        const scaleSignX = flipSignX * beast.scale;
+        const scaleSignY = flipSignY * beast.scale;
+        const parts = frame.parts;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
           const spr = beast.partSprites[part.texture];
           if (!spr) continue;
-          const pos = window.BeastAnim.parsePair(part.position, 0, 0);
-          const sc = window.BeastAnim.parsePair(part.scale, 1, 1);
-          const fl = window.BeastAnim.parsePair(part.flipped, 0, 0);
-          const rotDeg = parseFloat(part.rotation || "0") || 0;
-          const localX = pos.x * window.BeastAnim.UNIT_SCALE * beast.scale * flipSignX;
-          const localY = -pos.y * window.BeastAnim.UNIT_SCALE * beast.scale * (beast.flipY ? -1 : 1);
+          const localX = part.x * unitScale * flipSignX;
+          const localY = -part.y * unitScale * flipSignY;
           const rigLocalX = localX * rigCos - localY * rigSin;
           const rigLocalY = localX * rigSin + localY * rigCos;
           const worldX = beast.worldX + rigOffX + (rigLocalX * beast.rotCos - rigLocalY * beast.rotSin);
@@ -8464,20 +8473,20 @@ _showwippopup() {
           spr._eeEffectOffsetX = 0;
           spr._eeEffectOffsetY = 0;
           spr._eeEffectScale = 1;
-          let angle = rotDeg * Math.PI / 180;
-          if (beast.flipX !== beast.flipY) angle = -angle;
-          angle += Math.atan2(beast.rotSin, beast.rotCos) + rigRot;
+          const angle = part.rot * angleSign + angleBase;
           spr.x = worldX + effectDX;
           spr.y = worldY + effectDY;
           spr.rotation = angle;
-          const partScaleX = sc.x * (fl.x ? -1 : 1) * (beast.flipX ? -1 : 1) * beast.scale * effectScale;
-          const partScaleY = sc.y * (fl.y ? -1 : 1) * (beast.flipY ? -1 : 1) * beast.scale * effectScale;
+          const partScaleX = part.sx * scaleSignX * effectScale;
+          const partScaleY = part.sy * scaleSignY * effectScale;
           spr.scaleX = partScaleX;
           spr.scaleY = partScaleY;
-          const zValue = parseFloat(part.zValue || "0") || 0;
           spr._eeZDepthBase = spr._eeZDepthBase ?? spr._eeZDepth;
-          spr._eeZDepth = spr._eeZDepthBase + zValue * 0.001;
-          spr.depth = spr._eeZDepth;
+          const zDepth = spr._eeZDepthBase + part.z * 0.001;
+          if (spr._eeZDepth !== zDepth || spr.depth !== zDepth) {
+            spr._eeZDepth = zDepth;
+            spr.depth = zDepth;
+          }
           const glowSpr = beast.partGlows ? beast.partGlows[part.texture] : null;
           if (glowSpr) {
             glowSpr.x = worldX + effectDX;
@@ -8485,8 +8494,11 @@ _showwippopup() {
             glowSpr.rotation = angle;
             glowSpr.scaleX = partScaleX;
             glowSpr.scaleY = partScaleY;
-            glowSpr._eeZDepth = spr._eeZDepth - 0.001;
-            glowSpr.depth = glowSpr._eeZDepth;
+            const glowDepth = zDepth - 0.001;
+            if (glowSpr._eeZDepth !== glowDepth || glowSpr.depth !== glowDepth) {
+              glowSpr._eeZDepth = glowDepth;
+              glowSpr.depth = glowDepth;
+            }
           }
           if (beast.eye && beast.eyeParent === part.texture) {
             beast.eye.x = worldX + effectDX;
@@ -8506,7 +8518,7 @@ _showwippopup() {
         _oSpr.rotation = baseRotation + gravityGuideRotation;
       }
     }
-    this._level.updateAudioScale(this._audio.getMeteringValue());
+    this._level.updateAudioScale(this._audio.getMeteringValue(), this._cameraX, screenWidth);
     if (!this._orbGfx) {
       this._orbGfx = this.add.graphics().setDepth(54).setBlendMode(S);
     }
@@ -8861,11 +8873,11 @@ _showwippopup() {
     this._level.checkPulseTriggers(playerX);
     this._level.stepPulseTriggers(deltaTime / 1000, this._colorManager);
     this._colorManager.step(deltaTime / 1000);
-    this._level.applyColorChannels(this._colorManager);
+    this._level.updateVisibility(this._cameraX);
+    this._level.applyColorChannels(this._colorManager, true);
     this._bg.setTint(this._colorManager.getHex(fs));
     this._level.setGroundColor(this._colorManager.getHex(gs));
     this._level.setGround2Color?.(this._colorManager.getHex(1009));
-    this._level.updateVisibility(this._cameraX);
     this._level.updateObjectDebugIds();
     this._level.checkEnterEffectTriggers(playerX);
     this._level.applyEnterEffects(this._cameraX);
@@ -8924,11 +8936,8 @@ _applyMirrorEffect() {
     this._bg.setFlipX(isMirrored);
   }
   _getDualSharedSignature(state) {
-    if (!state) return "0|0";
-    return [
-      state.gravityFlipped ? 1 : 0,
-      state.mirrored ? 1 : 0
-    ].join("|");
+    if (!state) return 0;
+    return (state.gravityFlipped ? 1 : 0) | (state.mirrored ? 2 : 0);
   }
   _getDualModeId(state) {
     if (!state) return "cube";
