@@ -4174,9 +4174,11 @@ window.LevelObject = class LevelObject {
         finalY = cy + dx * sinR + dy * cosR;
       }
     }
-    spr.x = finalX;
-    spr.y = finalY;
-    if (hasRotation) spr.rotation = finalRot;
+    if (!spr._beastManaged) {
+      spr.x = finalX;
+      spr.y = finalY;
+      if (hasRotation) spr.rotation = finalRot;
+    }
     spr._eeWorldX = finalX;
     spr._eeBaseY = finalY;
     if (spr._eeSectionIndex !== this._getSectionIndexForWorldX(finalX)) this._refreshSpriteSection(spr);

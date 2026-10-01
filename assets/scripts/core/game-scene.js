@@ -8396,128 +8396,6 @@ _showwippopup() {
         _saw.rotation += deltaTime * sawRotationSpeed;
       }
     }
-    if (this._level && this._level._beastSprites && this._level._beastSprites.length) {
-      const dtSec = Number.isFinite(deltaTime) ? deltaTime / 1000 : 0;
-      for (const beast of this._level._beastSprites) {
-        if (!beast || !beast.state) continue;
-        if (beast.hiddenStatics) {
-          for (const hiddenSpr of beast.hiddenStatics) {
-            if (hiddenSpr.visible) hiddenSpr.setVisible(false);
-            if (hiddenSpr.active) hiddenSpr.active = false;
-          }
-        }
-        if (!beast.state.desc) continue;
-        if (!beast.state.base) window.BeastAnim.defaultBase(beast.state);
-        window.BeastAnim.advance(beast.state, dtSec);
-        const st = beast.state;
-        const group = st.group;
-        if (!group || !group.length) continue;
-        const frameKey = group[Math.min(st.frameIdx, group.length - 1)];
-        const frame = st.desc.frames[frameKey];
-        if (!frame) continue;
-        const anchorContainer = beast.anchorSprite ? beast.anchorSprite.parentContainer : null;
-        if (anchorContainer && !anchorContainer.visible) continue;
-        const flipSignX = beast.flipX ? -1 : 1;
-        const anchorSpr = beast.anchorSprite && beast.anchorSprite.active ? beast.anchorSprite : null;
-        let rigOffX = 0;
-        let rigOffY = 0;
-        let rigRot = 0;
-        if (anchorSpr && anchorSpr._eeGroups && anchorSpr._eeGroups.length && this._level._getCombinedGroupOffset) {
-          const groupMove = this._level._getCombinedGroupOffset(anchorSpr);
-          rigOffX = Number(groupMove.x) || 0;
-          rigOffY = Number(groupMove.y) || 0;
-          for (const gid of anchorSpr._eeGroups) {
-            const rotData = this._level._groupRotations ? this._level._groupRotations[gid] : null;
-            if (!rotData || !rotData.totalRad) continue;
-            rigRot += rotData.totalRad;
-            if (rotData.centerGroupId > 0 && this._level._getGroupCenter) {
-              const pivot = this._level._getGroupCenter(rotData.centerGroupId);
-              const pivotDX = beast.worldX + rigOffX - pivot.cx;
-              const pivotDY = beast.baseY + rigOffY - pivot.cy;
-              const pivotCos = Math.cos(rotData.totalRad);
-              const pivotSin = Math.sin(rotData.totalRad);
-              rigOffX = pivot.cx + pivotDX * pivotCos - pivotDY * pivotSin - beast.worldX;
-              rigOffY = pivot.cy + pivotDX * pivotSin + pivotDY * pivotCos - beast.baseY;
-            }
-          }
-        }
-        const rigCos = rigRot ? Math.cos(rigRot) : 1;
-        const rigSin = rigRot ? Math.sin(rigRot) : 0;
-        if (beast.lastFrameKey !== frameKey) {
-          beast.lastFrameKey = frameKey;
-          for (const tex in beast.partSprites) {
-            if (frame.texSet[tex]) continue;
-            const idleSpr = beast.partSprites[tex];
-            idleSpr.scaleX = 0;
-            idleSpr.scaleY = 0;
-            const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
-            if (idleGlow) {
-              idleGlow.scaleX = 0;
-              idleGlow.scaleY = 0;
-            }
-          }
-        }
-        if (beast.baseRot === undefined) beast.baseRot = Math.atan2(beast.rotSin, beast.rotCos);
-        const unitScale = window.BeastAnim.UNIT_SCALE * beast.scale;
-        const flipSignY = beast.flipY ? -1 : 1;
-        const angleSign = beast.flipX !== beast.flipY ? -1 : 1;
-        const angleBase = beast.baseRot + rigRot;
-        const scaleSignX = flipSignX * beast.scale;
-        const scaleSignY = flipSignY * beast.scale;
-        const parts = frame.parts;
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
-          const spr = beast.partSprites[part.texture];
-          if (!spr) continue;
-          const localX = part.x * unitScale * flipSignX;
-          const localY = -part.y * unitScale * flipSignY;
-          const rigLocalX = localX * rigCos - localY * rigSin;
-          const rigLocalY = localX * rigSin + localY * rigCos;
-          const worldX = beast.worldX + rigOffX + (rigLocalX * beast.rotCos - rigLocalY * beast.rotSin);
-          const worldY = beast.baseY + rigOffY + (rigLocalX * beast.rotSin + rigLocalY * beast.rotCos);
-          const effectDX = spr._eeEffectOffsetX || 0;
-          const effectDY = spr._eeEffectOffsetY || 0;
-          const effectScale = spr._eeEffectScale === undefined ? 1 : spr._eeEffectScale;
-          spr._eeEffectOffsetX = 0;
-          spr._eeEffectOffsetY = 0;
-          spr._eeEffectScale = 1;
-          const angle = part.rot * angleSign + angleBase;
-          spr.x = worldX + effectDX;
-          spr.y = worldY + effectDY;
-          spr.rotation = angle;
-          const partScaleX = part.sx * scaleSignX * effectScale;
-          const partScaleY = part.sy * scaleSignY * effectScale;
-          spr.scaleX = partScaleX;
-          spr.scaleY = partScaleY;
-          spr._eeZDepthBase = spr._eeZDepthBase ?? spr._eeZDepth;
-          const zDepth = spr._eeZDepthBase + part.z * 0.001;
-          if (spr._eeZDepth !== zDepth || spr.depth !== zDepth) {
-            spr._eeZDepth = zDepth;
-            spr.depth = zDepth;
-          }
-          const glowSpr = beast.partGlows ? beast.partGlows[part.texture] : null;
-          if (glowSpr) {
-            glowSpr.x = worldX + effectDX;
-            glowSpr.y = worldY + effectDY;
-            glowSpr.rotation = angle;
-            glowSpr.scaleX = partScaleX;
-            glowSpr.scaleY = partScaleY;
-            const glowDepth = zDepth - 0.001;
-            if (glowSpr._eeZDepth !== glowDepth || glowSpr.depth !== glowDepth) {
-              glowSpr._eeZDepth = glowDepth;
-              glowSpr.depth = glowDepth;
-            }
-          }
-          if (beast.eye && beast.eyeParent === part.texture) {
-            beast.eye.x = worldX + effectDX;
-            beast.eye.y = worldY + effectDY;
-            beast.eye.rotation = angle;
-            beast.eye.scaleX = partScaleX;
-            beast.eye.scaleY = partScaleY;
-          }
-        }
-      }
-    }
     if (this._level && this._level._orbSprites) {
       const gravityGuideRotation = (this._state?.gravityFlipped ? Math.PI : 0);
       for (let _oSpr of this._level._orbSprites) {
@@ -8891,6 +8769,128 @@ _showwippopup() {
     this._level.updateObjectDebugIds();
     this._level.checkEnterEffectTriggers(playerX);
     this._level.applyEnterEffects(this._cameraX);
+    if (this._level && this._level._beastSprites && this._level._beastSprites.length) {
+      const dtSec = Number.isFinite(deltaTime) ? deltaTime / 1000 : 0;
+      for (const beast of this._level._beastSprites) {
+        if (!beast || !beast.state) continue;
+        if (beast.hiddenStatics) {
+          for (const hiddenSpr of beast.hiddenStatics) {
+            if (hiddenSpr.visible) hiddenSpr.setVisible(false);
+            if (hiddenSpr.active) hiddenSpr.active = false;
+          }
+        }
+        if (!beast.state.desc) continue;
+        if (!beast.state.base) window.BeastAnim.defaultBase(beast.state);
+        window.BeastAnim.advance(beast.state, dtSec);
+        const st = beast.state;
+        const group = st.group;
+        if (!group || !group.length) continue;
+        const frameKey = group[Math.min(st.frameIdx, group.length - 1)];
+        const frame = st.desc.frames[frameKey];
+        if (!frame) continue;
+        const anchorContainer = beast.anchorSprite ? beast.anchorSprite.parentContainer : null;
+        if (anchorContainer && !anchorContainer.visible) continue;
+        const flipSignX = beast.flipX ? -1 : 1;
+        const anchorSpr = beast.anchorSprite && beast.anchorSprite.active ? beast.anchorSprite : null;
+        let rigOffX = 0;
+        let rigOffY = 0;
+        let rigRot = 0;
+        if (anchorSpr && anchorSpr._eeGroups && anchorSpr._eeGroups.length && this._level._getCombinedGroupOffset) {
+          const groupMove = this._level._getCombinedGroupOffset(anchorSpr);
+          rigOffX = Number(groupMove.x) || 0;
+          rigOffY = Number(groupMove.y) || 0;
+          for (const gid of anchorSpr._eeGroups) {
+            const rotData = this._level._groupRotations ? this._level._groupRotations[gid] : null;
+            if (!rotData || !rotData.totalRad) continue;
+            rigRot += rotData.totalRad;
+            if (rotData.centerGroupId > 0 && this._level._getGroupCenter) {
+              const pivot = this._level._getGroupCenter(rotData.centerGroupId);
+              const pivotDX = beast.worldX + rigOffX - pivot.cx;
+              const pivotDY = beast.baseY + rigOffY - pivot.cy;
+              const pivotCos = Math.cos(rotData.totalRad);
+              const pivotSin = Math.sin(rotData.totalRad);
+              rigOffX = pivot.cx + pivotDX * pivotCos - pivotDY * pivotSin - beast.worldX;
+              rigOffY = pivot.cy + pivotDX * pivotSin + pivotDY * pivotCos - beast.baseY;
+            }
+          }
+        }
+        const rigCos = rigRot ? Math.cos(rigRot) : 1;
+        const rigSin = rigRot ? Math.sin(rigRot) : 0;
+        if (beast.lastFrameKey !== frameKey) {
+          beast.lastFrameKey = frameKey;
+          for (const tex in beast.partSprites) {
+            if (frame.texSet[tex]) continue;
+            const idleSpr = beast.partSprites[tex];
+            idleSpr.scaleX = 0;
+            idleSpr.scaleY = 0;
+            const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
+            if (idleGlow) {
+              idleGlow.scaleX = 0;
+              idleGlow.scaleY = 0;
+            }
+          }
+        }
+        if (beast.baseRot === undefined) beast.baseRot = Math.atan2(beast.rotSin, beast.rotCos);
+        const unitScale = window.BeastAnim.UNIT_SCALE * beast.scale;
+        const flipSignY = beast.flipY ? -1 : 1;
+        const angleSign = beast.flipX !== beast.flipY ? -1 : 1;
+        const angleBase = beast.baseRot + rigRot;
+        const scaleSignX = flipSignX * beast.scale;
+        const scaleSignY = flipSignY * beast.scale;
+        const parts = frame.parts;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          const spr = beast.partSprites[part.texture];
+          if (!spr) continue;
+          const localX = part.x * unitScale * flipSignX;
+          const localY = -part.y * unitScale * flipSignY;
+          const rigLocalX = localX * rigCos - localY * rigSin;
+          const rigLocalY = localX * rigSin + localY * rigCos;
+          const worldX = beast.worldX + rigOffX + (rigLocalX * beast.rotCos - rigLocalY * beast.rotSin);
+          const worldY = beast.baseY + rigOffY + (rigLocalX * beast.rotSin + rigLocalY * beast.rotCos);
+          const effectDX = spr._eeEffectOffsetX || 0;
+          const effectDY = spr._eeEffectOffsetY || 0;
+          const effectScale = spr._eeEffectScale === undefined ? 1 : spr._eeEffectScale;
+          spr._eeEffectOffsetX = 0;
+          spr._eeEffectOffsetY = 0;
+          spr._eeEffectScale = 1;
+          const angle = part.rot * angleSign + angleBase;
+          spr.x = worldX + effectDX;
+          spr.y = worldY + effectDY;
+          spr.rotation = angle;
+          const partScaleX = part.sx * scaleSignX * effectScale;
+          const partScaleY = part.sy * scaleSignY * effectScale;
+          spr.scaleX = partScaleX;
+          spr.scaleY = partScaleY;
+          spr._eeZDepthBase = spr._eeZDepthBase ?? spr._eeZDepth;
+          const zDepth = spr._eeZDepthBase + part.z * 0.001;
+          if (spr._eeZDepth !== zDepth || spr.depth !== zDepth) {
+            spr._eeZDepth = zDepth;
+            spr.depth = zDepth;
+          }
+          const glowSpr = beast.partGlows ? beast.partGlows[part.texture] : null;
+          if (glowSpr) {
+            glowSpr.x = worldX + effectDX;
+            glowSpr.y = worldY + effectDY;
+            glowSpr.rotation = angle;
+            glowSpr.scaleX = partScaleX;
+            glowSpr.scaleY = partScaleY;
+            const glowDepth = zDepth - 0.001;
+            if (glowSpr._eeZDepth !== glowDepth || glowSpr.depth !== glowDepth) {
+              glowSpr._eeZDepth = glowDepth;
+              glowSpr.depth = glowDepth;
+            }
+          }
+          if (beast.eye && beast.eyeParent === part.texture) {
+            beast.eye.x = worldX + effectDX;
+            beast.eye.y = worldY + effectDY;
+            beast.eye.rotation = angle;
+            beast.eye.scaleX = partScaleX;
+            beast.eye.scaleY = partScaleY;
+          }
+        }
+      }
+    }
     this._glitterCenterX = this._cameraX + screenWidth / 2;
     this._glitterCenterY = T - this._cameraY;
     this._updateBackground();
