@@ -7654,6 +7654,7 @@ _showwippopup() {
     const checkpointRotateActionActive = checkpoint.rotateActionActive !== undefined ? !!checkpoint.rotateActionActive: undefined;
 
     this._player.reset();
+    this._player._ignoreTeleportUntilClear = true;
     this._state.isFlying = false;
     this._state.isBall = false;
     this._state.isWave = false;
@@ -7755,6 +7756,7 @@ _showwippopup() {
       this._dualBallSpawnGravityLock = false;
       this._state2.reset();
       this._player2.reset();
+      this._player2._ignoreTeleportUntilClear = true;
       this._player2.setInvertedColors?.(true);
       this._enableDualMode();
       this._state2.isDead = false;
@@ -8211,6 +8213,12 @@ _showwippopup() {
         this._slideIn = false;
         this._deltaBuffer = 0;
         this._playerWorldX = 0;
+        this._player._lastCollisionWorldX = null;
+        this._player._lastCollisionWorldY = null;
+        if (this._player2) {
+          this._player2._lastCollisionWorldX = null;
+          this._player2._lastCollisionWorldY = null;
+        }
         this._cameraX = this._playerWorldX - centerX;
         this._cameraXRef._v = this._cameraX;
         const _0x490749 = this._cameraX - this._slideGroundX;
@@ -8766,6 +8774,7 @@ _showwippopup() {
             this._level.checkTouchMoveTriggers(playerX, this._state2.y);
         }
     }
+    this._level.beginGroupTransformBatch();
     this._level.stepMoveTriggers(deltaTime / 1000);
     this._level.stepSpawnTriggers(deltaTime / 1000, this._colorManager);
     this._level.checkAlphaTriggers(playerX);
@@ -8801,6 +8810,7 @@ _showwippopup() {
         }
     }
     this._level.stepFollowTriggers?.(deltaTime / 1000);
+    this._level.flushGroupTransformBatch();
     this._level.checkToggleTriggers?.(playerX);
     this._level.checkAnimationTriggers?.(playerX);
     if (this._level.checkTouchAnimationTriggers) {
@@ -8870,10 +8880,10 @@ _showwippopup() {
             this._level.checkTouchInstantCountTriggers(playerX, this._state2.y, this._colorManager);
         }
     }
+    this._level.updateVisibility(this._cameraX);
     this._level.checkPulseTriggers(playerX);
     this._level.stepPulseTriggers(deltaTime / 1000, this._colorManager);
     this._colorManager.step(deltaTime / 1000);
-    this._level.updateVisibility(this._cameraX);
     this._level.applyColorChannels(this._colorManager, true);
     this._bg.setTint(this._colorManager.getHex(fs));
     this._level.setGroundColor(this._colorManager.getHex(gs));

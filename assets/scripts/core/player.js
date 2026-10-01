@@ -5469,7 +5469,7 @@ if (this.p.isFlying || this.p.isUfo) {
     const _resetWorldY = Number(this.p?.y);
     this._lastCollisionWorldX = Number.isFinite(_resetWorldX) ? _resetWorldX : null;
     this._lastCollisionWorldY = Number.isFinite(_resetWorldY) ? _resetWorldY : null;
-    this._ignoreTeleportUntilClear = true;
+    this._ignoreTeleportUntilClear = false;
     this.setCubeVisible(true);
     this.setShipVisible(false);
     this.setBallVisible(false);

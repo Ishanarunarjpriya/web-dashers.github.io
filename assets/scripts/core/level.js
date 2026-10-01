@@ -2009,6 +2009,8 @@ window.LevelObject = class LevelObject {
   updateTriggerEditorVisuals() {
     const visible = !!window.isEditor;
     if (!this._editorTriggerVisuals) return;
+    if (!visible && this._editorTriggerVisualsHidden === this._editorTriggerVisuals.length) return;
+    this._editorTriggerVisualsHidden = visible ? -1 : this._editorTriggerVisuals.length;
     for (const visual of this._editorTriggerVisuals) {
       const saveObj = visual?.saveObj;
       const isTouchTrigger = saveObj && String(saveObj?._raw?.[11] ?? saveObj?._raw?.["11"] ?? "0") === "1";
@@ -3701,8 +3703,30 @@ window.LevelObject = class LevelObject {
     this._endPortalGameY = _0x1be4c3;
   }
   _isTriggerSaveObjectLive(uid) {
-    if (!Number.isInteger(uid) || !Array.isArray(window.levelObjects)) return true;
-    return window.levelObjects.some(obj => obj && Number.isInteger(obj._eeObjectId) && obj._eeObjectId === uid);
+    const objects = window.levelObjects;
+    if (!Number.isInteger(uid) || !Array.isArray(objects)) return true;
+    let cache = this._liveObjectIdCache;
+    if (!cache || cache.src !== objects || cache.len !== objects.length) {
+      const ids = new Set();
+      for (const obj of objects) {
+        if (obj && Number.isInteger(obj._eeObjectId)) ids.add(obj._eeObjectId);
+      }
+      cache = this._liveObjectIdCache = { src: objects, len: objects.length, ids };
+    }
+    if (cache.ids.has(uid)) return true;
+    const live = objects.some(obj => obj && Number.isInteger(obj._eeObjectId) && obj._eeObjectId === uid);
+    if (live) cache.ids.add(uid);
+    return live;
+  }
+
+  _isTriggerToggledOff(trig) {
+    const off = this._groupToggledOff;
+    const groups = trig?.groups;
+    if (!off || !Array.isArray(groups)) return false;
+    for (let i = 0; i < groups.length; i++) {
+      if (off[groups[i]]) return true;
+    }
+    return false;
   }
 
   checkColorTriggers(_0x2b00ce) {
@@ -4003,34 +4027,90 @@ window.LevelObject = class LevelObject {
   }
 
 
+  _dedupeGroupList(cacheKey, list) {
+    if (!list || !list.length) return null;
+    const cache = this[cacheKey] || (this[cacheKey] = new WeakMap());
+    let entry = cache.get(list);
+    if (!entry || entry.len !== list.length) {
+      entry = { len: list.length, items: [...new Set(list)].filter(Boolean) };
+      cache.set(list, entry);
+    }
+    return entry.items;
+  }
+
   _getUniqueGroupSprites(groupId) {
-    const sprites = this._groupSprites?.[groupId];
-    if (!sprites || !sprites.length) return [];
-    return [...new Set(sprites)].filter(spr => spr && spr.active);
+    const sprites = this._dedupeGroupList("_groupSpriteDedupe", this._groupSprites?.[groupId]);
+    if (!sprites) return [];
+    return sprites.filter(spr => spr.active);
   }
 
   _getAllGroupSprites(groupId) {
-    const sprites = this._groupSprites?.[groupId];
-    if (!sprites || !sprites.length) return [];
-    return [...new Set(sprites)].filter(Boolean);
+    const sprites = this._dedupeGroupList("_groupSpriteDedupe", this._groupSprites?.[groupId]);
+    return sprites ? sprites.slice() : [];
   }
 
   _getUniqueGroupColliders(groupId) {
-    const colliders = this._groupColliders?.[groupId];
-    if (!colliders || !colliders.length) return [];
-    return [...new Set(colliders)].filter(Boolean);
+    const colliders = this._dedupeGroupList("_groupColliderDedupe", this._groupColliders?.[groupId]);
+    return colliders ? colliders.slice() : [];
   }
 
   _getObjectGroupIds(obj) {
-    const groups = Array.isArray(obj?._eeGroups) ? obj._eeGroups : [];
-    return [...new Set(groups.map(gid => parseInt(gid, 10)).filter(gid => Number.isFinite(gid) && gid > 0))];
+    const groups = obj?._eeGroups;
+    if (!Array.isArray(groups) || !groups.length) return [];
+    if (obj._eeGroupIdsSrc === groups && obj._eeGroupIdsLen === groups.length) return obj._eeGroupIds;
+    const ids = [...new Set(groups.map(gid => parseInt(gid, 10)).filter(gid => Number.isFinite(gid) && gid > 0))];
+    obj._eeGroupIdsSrc = groups;
+    obj._eeGroupIdsLen = groups.length;
+    obj._eeGroupIds = ids;
+    return ids;
+  }
+
+  _getDirtyGroupSet() {
+    if (this._deferGroupTransforms) return this._pendingTransformGroups || (this._pendingTransformGroups = new Set());
+    return new Set();
+  }
+
+  beginGroupTransformBatch() {
+    this._deferGroupTransforms = true;
+    if (this._pendingTransformGroups) this._pendingTransformGroups.clear();
+  }
+
+  flushGroupTransformBatch() {
+    this._deferGroupTransforms = false;
+    const pending = this._pendingTransformGroups;
+    if (!pending || !pending.size) return;
+    this._pendingTransformGroups = null;
+    this._applyGroupTransforms(pending);
+  }
+
+  _applyGroupTransforms(groupIds) {
+    if (this._deferGroupTransforms && groupIds === this._pendingTransformGroups) return;
+    if (!groupIds.size) return;
+    const sprites = new Set();
+    const colliders = new Set();
+    for (const gid of groupIds) {
+      const groupSprites = this._dedupeGroupList("_groupSpriteDedupe", this._groupSprites?.[gid]);
+      if (groupSprites) for (const spr of groupSprites) sprites.add(spr);
+      const groupColliders = this._dedupeGroupList("_groupColliderDedupe", this._groupColliders?.[gid]);
+      if (groupColliders) for (const col of groupColliders) colliders.add(col);
+    }
+    this._groupCenterCache = new Map();
+    try {
+      for (const spr of sprites) this._applyGroupedSpriteTransform(spr);
+      for (const col of colliders) this._applyGroupedColliderTransform(col);
+    } finally {
+      this._groupCenterCache = null;
+    }
   }
 
 
   _getCombinedGroupOffset(obj) {
     const result = { x: 0, y: 0 };
-    for (const gid of this._getObjectGroupIds(obj)) {
-      const off = this._groupOffsets?.[gid];
+    const ids = this._getObjectGroupIds(obj);
+    const offsets = this._groupOffsets;
+    if (!offsets) return result;
+    for (let i = 0; i < ids.length; i++) {
+      const off = offsets[ids[i]];
       if (!off) continue;
       result.x += Number(off.x) || 0;
       result.y += Number(off.y) || 0;
@@ -4039,7 +4119,12 @@ window.LevelObject = class LevelObject {
   }
 
   _getGroupCenter(groupId) {
-    const sprites = this._getUniqueGroupSprites(groupId);
+    const cache = this._groupCenterCache;
+    if (cache) {
+      const cached = cache.get(groupId);
+      if (cached) return cached;
+    }
+    const sprites = this._dedupeGroupList("_groupSpriteDedupe", this._groupSprites?.[groupId]) || [];
     let cx = 0, cy = 0, n = 0;
     for (const cs of sprites) {
       if (!cs || !cs.active) continue;
@@ -4048,20 +4133,34 @@ window.LevelObject = class LevelObject {
       cy += (cs._eeInitialBaseY !== undefined ? cs._eeInitialBaseY : (cs._eeBaseY ?? cs.y)) + off.y;
       n++;
     }
-    return n > 0 ? { cx: cx / n, cy: cy / n } : { cx: 0, cy: 0 };
+    const center = n > 0 ? { cx: cx / n, cy: cy / n } : { cx: 0, cy: 0 };
+    if (cache) cache.set(groupId, center);
+    return center;
   }
 
   _applyGroupedSpriteTransform(spr) {
     if (!spr || !spr.active) return;
     const initialX = spr._eeInitialWorldX !== undefined ? spr._eeInitialWorldX : (spr._origWorldX ?? spr.x);
     const initialY = spr._eeInitialBaseY !== undefined ? spr._eeInitialBaseY : (spr._origBaseY ?? spr.y);
-    const moveOff = this._getCombinedGroupOffset(spr);
-    let finalX = initialX + moveOff.x;
-    let finalY = initialY + moveOff.y;
+    const ids = this._getObjectGroupIds(spr);
+    const offsets = this._groupOffsets;
+    let moveX = 0, moveY = 0;
+    if (offsets) {
+      for (let i = 0; i < ids.length; i++) {
+        const off = offsets[ids[i]];
+        if (!off) continue;
+        moveX += Number(off.x) || 0;
+        moveY += Number(off.y) || 0;
+      }
+    }
+    let finalX = initialX + moveX;
+    let finalY = initialY + moveY;
     let hasRotation = false;
     let finalRot = spr._eeInitialRotationRad !== undefined ? spr._eeInitialRotationRad : 0;
-    for (const gid of this._getObjectGroupIds(spr)) {
-      const rotData = this._groupRotations?.[gid];
+    const rotations = this._groupRotations;
+    for (let i = 0; rotations && i < ids.length; i++) {
+      const gid = ids[i];
+      const rotData = rotations[gid];
       if (!rotData || rotData.totalRad === 0) continue;
       hasRotation = true;
       if (!rotData.lockRotation) finalRot += rotData.totalRad;
@@ -4080,7 +4179,7 @@ window.LevelObject = class LevelObject {
     if (hasRotation) spr.rotation = finalRot;
     spr._eeWorldX = finalX;
     spr._eeBaseY = finalY;
-    this._refreshSpriteSection(spr);
+    if (spr._eeSectionIndex !== this._getSectionIndexForWorldX(finalX)) this._refreshSpriteSection(spr);
     if (spr._coinWorldX !== undefined) spr._coinWorldX = spr.x / 2;
     if (spr._coinWorldY !== undefined) spr._coinWorldY = (460 - spr.y) / 2;
   }
@@ -4090,13 +4189,25 @@ window.LevelObject = class LevelObject {
     const initialX = col._eeInitialBaseX !== undefined ? col._eeInitialBaseX : (col._origBaseX ?? col.x);
     const initialY = col._eeInitialBaseY !== undefined ? col._eeInitialBaseY : (col._origBaseY ?? col.y);
     const initialRotDeg = col._eeInitialRotationDegrees !== undefined ? col._eeInitialRotationDegrees : 0;
-    const moveOff = this._getCombinedGroupOffset(col);
-    let finalX = initialX + moveOff.x;
-    let finalY = initialY - moveOff.y;
+    const ids = this._getObjectGroupIds(col);
+    const offsets = this._groupOffsets;
+    let moveX = 0, moveY = 0;
+    if (offsets) {
+      for (let i = 0; i < ids.length; i++) {
+        const off = offsets[ids[i]];
+        if (!off) continue;
+        moveX += Number(off.x) || 0;
+        moveY += Number(off.y) || 0;
+      }
+    }
+    let finalX = initialX + moveX;
+    let finalY = initialY - moveY;
     let hasRotation = false;
     let finalRotDeg = initialRotDeg;
-    for (const gid of this._getObjectGroupIds(col)) {
-      const rotData = this._groupRotations?.[gid];
+    const rotations = this._groupRotations;
+    for (let i = 0; rotations && i < ids.length; i++) {
+      const gid = ids[i];
+      const rotData = rotations[gid];
       if (!rotData || rotData.totalRad === 0) continue;
       hasRotation = true;
       if (!rotData.lockRotation) finalRotDeg += rotData.totalRad * 180 / Math.PI;
@@ -4121,7 +4232,7 @@ window.LevelObject = class LevelObject {
       col._baseRotationDegrees = finalRotDeg;
       if (col._origRotationDegrees !== undefined) col._origRotationDegrees = finalRotDeg;
     }
-    this._refreshCollisionSection(col);
+    if (col._eeCollisionSectionIndex !== Math.max(0, Math.floor(finalX / 400))) this._refreshCollisionSection(col);
   }
 
   _ensureSpriteMoveBase(spr) {
@@ -4206,6 +4317,7 @@ window.LevelObject = class LevelObject {
   }
 
   stepMoveTriggers(dt) {
+    const dirtyGroups = this._getDirtyGroupSet();
     let i = 0;
     while (i < this._activeMoveTweens.length) {
       const anim = this._activeMoveTweens[i];
@@ -4242,15 +4354,7 @@ window.LevelObject = class LevelObject {
       const off = this._groupOffsets[trig.targetGroup];
       off.x += deltaX;
       off.y += deltaY;
-
-      const sprites = this._getUniqueGroupSprites(trig.targetGroup);
-      const colliders = this._getUniqueGroupColliders(trig.targetGroup);
-      for (const spr of sprites) {
-        this._applyGroupedSpriteMoveOffset(spr);
-      }
-      for (const col of colliders) {
-        this._applyGroupedColliderMoveOffset(col);
-      }
+      dirtyGroups.add(trig.targetGroup);
 
       if (progress >= 1) {
         this._activeMoveTweens.splice(i, 1);
@@ -4258,6 +4362,7 @@ window.LevelObject = class LevelObject {
         i++;
       }
     }
+    this._applyGroupTransforms(dirtyGroups);
   }
 
   resetMoveTriggers() {
@@ -4375,6 +4480,9 @@ window.LevelObject = class LevelObject {
     const randomizedDelay = randomDelay > 0
       ? Math.max(0, baseDelay + ((Math.random() * 2) - 1) * randomDelay)
       : baseDelay;
+    for (const pending of this._activeSpawnDelays) {
+      if (pending.targetGroup === targetGroup && Math.abs((pending.delay - pending.elapsed) - randomizedDelay) < 1e-6) return;
+    }
     this._activeSpawnDelays.push({
       targetGroup,
       delay: randomizedDelay,
@@ -4396,7 +4504,7 @@ window.LevelObject = class LevelObject {
     if (!Number.isFinite(targetGroup) || targetGroup <= 0) return;
 
     const spawnMatches = (list) => (Array.isArray(list) ? list : [])
-      .filter(trig => trig && trig.spawnTriggered && this._triggerHasGroup(trig, targetGroup) && this._isTriggerSaveObjectLive(trig.uid));
+      .filter(trig => trig && trig.spawnTriggered && this._triggerHasGroup(trig, targetGroup) && !this._isTriggerToggledOff(trig) && this._isTriggerSaveObjectLive(trig.uid));
 
     for (const trig of spawnMatches(this._colorTriggers)) {
       if (colorManager && typeof colorManager.triggerColor === "function") {
@@ -4564,6 +4672,7 @@ window.LevelObject = class LevelObject {
   }
 
   stepRotateTriggers(dt) {
+    const dirtyGroups = this._getDirtyGroupSet();
     let i = 0;
     while (i < this._activeRotateTweens.length) {
       const anim = this._activeRotateTweens[i];
@@ -4583,15 +4692,7 @@ window.LevelObject = class LevelObject {
       rotState.totalRad += deltaRot;
       rotState.centerGroupId = trig.centerGroup || 0;
       rotState.lockRotation = !!trig.lockRotation;
-
-      const sprites = this._getUniqueGroupSprites(trig.targetGroup);
-      const colliders = this._getUniqueGroupColliders(trig.targetGroup);
-      for (const spr of sprites) {
-        this._applyGroupedSpriteTransform(spr);
-      }
-      for (const col of colliders) {
-        this._applyGroupedColliderTransform(col);
-      }
+      dirtyGroups.add(trig.targetGroup);
 
       if (progress >= 1) {
         this._activeRotateTweens.splice(i, 1);
@@ -4599,6 +4700,7 @@ window.LevelObject = class LevelObject {
         i++;
       }
     }
+    this._applyGroupTransforms(dirtyGroups);
   }
 
   _executeStopTrigger(trig) {
@@ -4708,6 +4810,7 @@ window.LevelObject = class LevelObject {
 
   stepFollowPlayerYTriggers(dt) {
     if (!this._activeFollowPlayerYTweens || !this._activeFollowPlayerYTweens.length) return;
+    const dirtyGroups = this._getDirtyGroupSet();
     const pos = this._getMoveTriggerPlayerPosition();
     const currentPy = pos.playerY;
 
@@ -4751,14 +4854,7 @@ window.LevelObject = class LevelObject {
 
       off.y -= stepGD;
 
-      const sprites = this._getUniqueGroupSprites(trig.targetGroup);
-      const colliders = this._getUniqueGroupColliders(trig.targetGroup);
-      for (const spr of sprites) {
-        this._applyGroupedSpriteMoveOffset(spr);
-      }
-      for (const col of colliders) {
-        this._applyGroupedColliderMoveOffset(col);
-      }
+      dirtyGroups.add(trig.targetGroup);
 
       if (trig.duration > 0 && anim.elapsed >= trig.duration) {
         this._activeFollowPlayerYTweens.splice(i, 1);
@@ -4766,6 +4862,7 @@ window.LevelObject = class LevelObject {
         i++;
       }
     }
+    this._applyGroupTransforms(dirtyGroups);
   }
 
   resetFollowPlayerYTriggers() {
@@ -4822,6 +4919,7 @@ window.LevelObject = class LevelObject {
 
   stepFollowTriggers(dt) {
     if (!this._activeFollowTweens || !this._activeFollowTweens.length) return;
+    const dirtyGroups = this._getDirtyGroupSet();
 
     let i = 0;
     while (i < this._activeFollowTweens.length) {
@@ -4843,14 +4941,7 @@ window.LevelObject = class LevelObject {
       off.x += deltaX;
       off.y += deltaY;
 
-      const sprites = this._getUniqueGroupSprites(trig.targetGroup);
-      const colliders = this._getUniqueGroupColliders(trig.targetGroup);
-      for (const spr of sprites) {
-        this._applyGroupedSpriteMoveOffset(spr);
-      }
-      for (const col of colliders) {
-        this._applyGroupedColliderMoveOffset(col);
-      }
+      dirtyGroups.add(trig.targetGroup);
 
       if (trig.duration > 0 && anim.elapsed >= trig.duration) {
         this._activeFollowTweens.splice(i, 1);
@@ -4858,6 +4949,7 @@ window.LevelObject = class LevelObject {
         i++;
       }
     }
+    this._applyGroupTransforms(dirtyGroups);
   }
 
   resetFollowTriggers() {
@@ -5463,6 +5555,8 @@ window.LevelObject = class LevelObject {
   }
   stepPulseTriggers(dt, colorManager) {
     if (window.enableLDM) return;
+    const groupOps = new Map();
+    const channelOps = new Map();
     let i = 0;
     while (i < this._activePulses.length) {
       const pulse = this._activePulses[i];
@@ -5474,52 +5568,66 @@ window.LevelObject = class LevelObject {
       if (t < fadeIn) { intensity = fadeIn > 0 ? t / fadeIn : 1; }
       else if (t < fadeIn + hold) { intensity = 1; }
       else if (t < fadeIn + hold + fadeOut) { intensity = fadeOut > 0 ? 1 - (t - fadeIn - hold) / fadeOut : 0; }
+      const finished = pulse.elapsed >= pulse.totalDuration;
       if (trig.targetType === 1 && trig.targetGroup > 0) {
-        const sprites = this._groupSprites[trig.targetGroup];
-        if (sprites) {
+        if (this._groupSprites[trig.targetGroup]) {
           const pr = Math.round(trig.color.r * intensity);
           const pg = Math.round(trig.color.g * intensity);
           const pb = Math.round(trig.color.b * intensity);
-          const pulseHex = (pr << 16) | (pg << 8) | pb;
-          for (const spr of sprites) {
-            if (!spr || !spr.active) continue;
-            if (typeof spr.setTint === "function") {
-              if (intensity > 0.01) { spr.setTint(pulseHex); spr._eePulsed = true; }
-              else if (typeof spr.clearTint === "function") { spr.clearTint(); spr._eePulsed = false; }
-            }
-          }
+          const hex = (pr << 16) | (pg << 8) | pb;
+          groupOps.delete(trig.targetGroup);
+          groupOps.set(trig.targetGroup, finished ? -1 : (intensity > 0.01 ? hex : -1));
         }
       } else if (trig.targetType === 0 && trig.targetChannel > 0 && colorManager) {
+        let op = channelOps.get(trig.targetChannel);
+        if (!op) {
+          op = { hex: null, pulsed: false };
+          channelOps.set(trig.targetChannel, op);
+        }
         if (intensity > 0.01) {
           const baseColor = colorManager.getColor(trig.targetChannel);
-          const pulsed = {
-            r: Math.min(255, Math.round(baseColor.r + (trig.color.r - baseColor.r) * intensity)),
-            g: Math.min(255, Math.round(baseColor.g + (trig.color.g - baseColor.g) * intensity)),
-            b: Math.min(255, Math.round(baseColor.b + (trig.color.b - baseColor.b) * intensity)),
-          };
-          const pulseHex = (pulsed.r << 16) | (pulsed.g << 8) | pulsed.b;
-          const chSprites = this._colorChannelSprites[trig.targetChannel];
-          if (chSprites) {
-            for (const spr of chSprites) {
-              if (!spr || !spr.active) continue;
-              if (typeof spr.setTint === "function") {
-                spr.setTint(pulseHex); spr._eePulsed = true;
-              }
-            }
-          }
+          const r = Math.min(255, Math.round(baseColor.r + (trig.color.r - baseColor.r) * intensity));
+          const g = Math.min(255, Math.round(baseColor.g + (trig.color.g - baseColor.g) * intensity));
+          const b = Math.min(255, Math.round(baseColor.b + (trig.color.b - baseColor.b) * intensity));
+          op.hex = (r << 16) | (g << 8) | b;
+          op.pulsed = true;
         }
+        if (finished) op.pulsed = false;
+      } else if (finished && trig.targetType === 0 && trig.targetChannel > 0) {
+        let op = channelOps.get(trig.targetChannel);
+        if (!op) {
+          op = { hex: null, pulsed: false };
+          channelOps.set(trig.targetChannel, op);
+        }
+        op.pulsed = false;
       }
-      if (pulse.elapsed >= pulse.totalDuration) {
-        if (trig.targetType === 1 && trig.targetGroup > 0) {
-          const sprites = this._groupSprites[trig.targetGroup];
-          if (sprites) for (const spr of sprites) { if (spr && spr.active && typeof spr.clearTint === "function") { spr.clearTint(); spr._eePulsed = false; } }
-        }
-        if (trig.targetType === 0 && trig.targetChannel > 0) {
-          const chSprites = this._colorChannelSprites[trig.targetChannel];
-          if (chSprites) for (const spr of chSprites) { if (spr && spr.active) spr._eePulsed = false; }
-        }
+      if (finished) {
         this._activePulses.splice(i, 1);
       } else { i++; }
+    }
+    for (const [groupId, hex] of groupOps) {
+      const sprites = this._groupSprites[groupId];
+      if (!sprites) continue;
+      for (const spr of sprites) {
+        if (!spr || !spr.active) continue;
+        if (hex >= 0) {
+          if (typeof spr.setTint === "function") { spr.setTint(hex); spr._eePulsed = true; }
+        } else if (typeof spr.clearTint === "function") {
+          spr.clearTint();
+          spr._eePulsed = false;
+        }
+      }
+    }
+    for (const [channel, op] of channelOps) {
+      const chSprites = this._colorChannelSprites[channel];
+      if (!chSprites) continue;
+      for (const spr of chSprites) {
+        if (!spr || !spr.active) continue;
+        if (op.hex !== null && typeof spr.setTint === "function") {
+          if (!op.pulsed || !spr.parentContainer || spr.parentContainer.visible) spr.setTint(op.hex);
+        }
+        if (op.hex !== null || !op.pulsed) spr._eePulsed = op.pulsed;
+      }
     }
   }
   resetPulseTriggers() {
