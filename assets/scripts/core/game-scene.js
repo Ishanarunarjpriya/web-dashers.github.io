@@ -386,6 +386,18 @@ class MacroBot {
 }
 
 
+const ORB_PARTICLE_COLORS = {
+  36: 0xfffb57,
+  84: 0x58ffff,
+  141: 0xff52f0,
+  444: 0xff00d2,
+  1022: 0x63ff5f,
+  1330: 0xffffff,
+  1333: 0xff6326,
+  1594: 0x6cff6b,
+  1704: 0x04ff04,
+  1751: 0xff00d2
+};
 class GameScene extends Phaser.Scene {
   constructor() {
     super({
@@ -8047,27 +8059,23 @@ _showwippopup() {
 
     let rawPercent = (this._playerWorldX / this._level.endXPos) * 100;
     rawPercent = Math.min(100, Math.max(0, rawPercent));
-    let displayValue;
-    if (this._levelWon) {
-      const p = this._interpolatedPercent || 0;
-      if (window.percentageDecimals) {
-        displayValue = p.toFixed(2) + "%";
-      } else {
-        displayValue = Math.floor(p) + "%";
-      }
-    } else if (window.percentageDecimals) {
-        displayValue = rawPercent.toFixed(2) + "%";
+    const shownPercent = this._levelWon ? (this._interpolatedPercent || 0) : rawPercent;
+    if (window.percentageDecimals) {
+      const key = 1e9 + Math.round(shownPercent * 100);
+      if (!this._labelTextCurrent(this._percentageLabel, key)) this._setLabelText(this._percentageLabel, key, shownPercent.toFixed(2) + "%");
     } else {
-        displayValue = Math.floor(rawPercent) + "%";
+      const key = Math.floor(shownPercent);
+      if (!this._labelTextCurrent(this._percentageLabel, key)) this._setLabelText(this._percentageLabel, key, key + "%");
     }
-    this._percentageLabel.setText(displayValue);
     this._percentageLabel.setVisible(window.showPercentage && !this._menuActive);
     this._startPosGui.setVisible(window.startPosSwitcher && !this._menuActive);
     this._noclipIndicator.setVisible(window.noClip && !this._menuActive);
     this._accuracyIndicator.setVisible(window.noClip && window.noClipAccuracy && !this._menuActive);
     this._deathsIndicator.setVisible(window.noClip && window.noClipAccuracy && !this._menuActive);
-    this._accuracyIndicator.setText(`${this._player.noclipStats.accuracy.toFixed(2)}%`);
-    this._deathsIndicator.setText(`${this._player.noclipStats.deaths} Deaths`);
+    const noclipStats = this._player.noclipStats;
+    const accuracyKey = Math.round(noclipStats.accuracy * 100);
+    if (!this._labelTextCurrent(this._accuracyIndicator, accuracyKey)) this._setLabelText(this._accuracyIndicator, accuracyKey, `${noclipStats.accuracy.toFixed(2)}%`);
+    if (!this._labelTextCurrent(this._deathsIndicator, noclipStats.deaths)) this._setLabelText(this._deathsIndicator, noclipStats.deaths, `${noclipStats.deaths} Deaths`);
 
     this._cpsIndicator.setVisible(window.showCPS && !this._menuActive);
     if (this._clickHistory && this._clickHistory.length > 0) {
@@ -8075,9 +8083,10 @@ _showwippopup() {
       let expired = 0;
       while (expired < this._clickHistory.length && now - this._clickHistory[expired] > 1000) expired++;
       if (expired) this._clickHistory.splice(0, expired);
-      this._cpsIndicator.setText(`${this._clickHistory.length} CPS`);
-    } else {
-      this._cpsIndicator.setText("0 CPS");
+      const clicks = this._clickHistory.length;
+      if (!this._labelTextCurrent(this._cpsIndicator, clicks)) this._setLabelText(this._cpsIndicator, clicks, `${clicks} CPS`);
+    } else if (!this._labelTextCurrent(this._cpsIndicator, 0)) {
+      this._setLabelText(this._cpsIndicator, 0, "0 CPS");
     }
     if (this._state.upKeyDown && !this._levelWon && !this._state.isDead){
       if (this._cpsIndicator.tint !== 0x00ff00) {
@@ -8239,24 +8248,24 @@ _showwippopup() {
       }
       return;
     }
-    this._applyJumpInput = () => {
-      const jumpHeld = this._spaceKey.isDown || this._upKey.isDown || this._wKey.isDown || this._lKey.isDown;
-      if (!this._updateLogPopup && jumpHeld && !this._spaceWasDown) {
-        this._pushButton();
-      } else if (!jumpHeld && this._spaceWasDown) {
-        this._releaseButton();
-      }
-      this._spaceWasDown = jumpHeld;
-    };
+    if (!this._applyJumpInput) {
+      this._applyJumpInput = () => {
+        const jumpHeld = this._spaceKey.isDown || this._upKey.isDown || this._wKey.isDown || this._lKey.isDown;
+        if (!this._updateLogPopup && jumpHeld && !this._spaceWasDown) {
+          this._pushButton();
+        } else if (!jumpHeld && this._spaceWasDown) {
+          this._releaseButton();
+        }
+        this._spaceWasDown = jumpHeld;
+      };
+    }
 
-    const objectsUnderPointer = this.input.manager.hitTest(
+    const fromClick = this.input.activePointer.isDown;
+    const cancelInput = fromClick && this.input.manager.hitTest(
       this.input.activePointer,
       this._startPosGui.list,
       this.cameras.main
-    );
-    const isOverUI = objectsUnderPointer.length > 0;
-    const fromClick = this.input.activePointer.isDown;
-    const cancelInput = isOverUI && fromClick;
+    ).length > 0;
 
     if (!!this.input.activePointer.isDown && !this._state.upKeyDown && !this._state.isDead) {
       this._state.upKeyDown = true;
@@ -8416,18 +8425,7 @@ _showwippopup() {
       if (this._level && this._level._orbSprites && this._level.container) {
         try {
         let _drawn = 0;
-        const _orbTypeColorMap = {
-          36: 0xfffb57,
-          84: 0x58ffff,
-          141: 0xff52f0,
-          444: 0xff00d2,
-          1022: 0x63ff5f,
-          1330: 0xffffff,
-          1333: 0xff6326,
-          1594: 0x6cff6b,
-          1704: 0x04ff04,
-          1751: 0xff00d2
-        };
+        const _orbTypeColorMap = ORB_PARTICLE_COLORS;
         for (let _oSpr of this._level._orbSprites) {
           if (_drawn >= 4) break;
           if (!_oSpr || !_oSpr.visible || !_oSpr.active || !_oSpr.scene) continue;
@@ -8468,12 +8466,11 @@ _showwippopup() {
       if (this._macroBot?.playing) {
         this._macroBot.step(this._physicsFrame);
       }
-      const _dualInputState = {
-        upKeyDown: this._state.upKeyDown,
-        upKeyPressed: this._state.upKeyPressed,
-        queuedHold: this._state.queuedHold,
-        orbActivationConsumedForPress: !!this._state._orbActivationConsumedForPress
-      };
+      const _dualInputState = this._dualInputScratch || (this._dualInputScratch = {});
+      _dualInputState.upKeyDown = this._state.upKeyDown;
+      _dualInputState.upKeyPressed = this._state.upKeyPressed;
+      _dualInputState.queuedHold = this._state.queuedHold;
+      _dualInputState.orbActivationConsumedForPress = !!this._state._orbActivationConsumedForPress;
       const _primaryGravityBefore = !!this._state.gravityFlipped;
       const _primarySharedBefore = this._getDualSharedSignature(this._state);
       this._player.updateJump(verticalDelta);
@@ -8551,14 +8548,12 @@ _showwippopup() {
         if (!this._player._hitboxTrail) this._player._hitboxTrail = [];
         if (!this._player.p.isDead) {
           const _trailSize = this._player.p.isMini ? 18 : 30;
-          this._player._hitboxTrail.push({ x: this._playerWorldX, y: this._player.p.y, rotation: this._player._rotation, size: _trailSize, isWave: this._player.p.isWave });
-          if (this._player._hitboxTrail.length > 180) this._player._hitboxTrail.shift();
+          this._pushHitboxTrail(this._player._hitboxTrail, this._playerWorldX, this._player.p.y, this._player._rotation, _trailSize, this._player.p.isWave);
         }
         if (this._isDual && !this._player2.p.isDead) {
           if (!this._player2._hitboxTrail) this._player2._hitboxTrail = [];
           const _trailSize2 = this._player2.p.isMini ? 18 : 30;
-          this._player2._hitboxTrail.push({ x: this._playerWorldX, y: this._player2.p.y, rotation: this._player2._rotation, size: _trailSize2, isWave: this._player2.p.isWave });
-          if (this._player2._hitboxTrail.length > 180) this._player2._hitboxTrail.shift();
+          this._pushHitboxTrail(this._player2._hitboxTrail, this._playerWorldX, this._player2.p.y, this._player2._rotation, _trailSize2, this._player2.p.isWave);
         }
       }
 
@@ -8619,12 +8614,15 @@ _showwippopup() {
     this._level.topContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
     this._level.topContainer.y = this._cameraY + (this._level.shakeOffsetY || 0);
     let playerX = this._playerWorldX;
-    const applyColorTrigger = (colorTrigger) => {
-      this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration);
-      if (colorTrigger.tintGround) {
-        this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration);
-      }
-    };
+    if (!this._applyColorTriggerFn) {
+      this._applyColorTriggerFn = (colorTrigger) => {
+        this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration);
+        if (colorTrigger.tintGround) {
+          this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration);
+        }
+      };
+    }
+    const applyColorTrigger = this._applyColorTriggerFn;
     for (let colorTrigger of this._level.checkColorTriggers(playerX)) {
       applyColorTrigger(colorTrigger);
     }
@@ -8796,7 +8794,7 @@ _showwippopup() {
         let rigOffY = 0;
         let rigRot = 0;
         if (anchorSpr && anchorSpr._eeGroups && anchorSpr._eeGroups.length && this._level._getCombinedGroupOffset) {
-          const groupMove = this._level._getCombinedGroupOffset(anchorSpr);
+          const groupMove = this._level._getCombinedGroupOffset(anchorSpr, this._beastOffsetScratch || (this._beastOffsetScratch = { x: 0, y: 0 }));
           rigOffX = Number(groupMove.x) || 0;
           rigOffY = Number(groupMove.y) || 0;
           for (const gid of anchorSpr._eeGroups) {
@@ -8944,6 +8942,23 @@ _applyMirrorEffect() {
       }
     }
     this._bg.setFlipX(isMirrored);
+  }
+  _labelTextCurrent(label, key) {
+    return !label || (label._eeTextKey === key && label.text === label._eeTextValue);
+  }
+  _setLabelText(label, key, text) {
+    label.setText(text);
+    label._eeTextKey = key;
+    label._eeTextValue = label.text;
+  }
+  _pushHitboxTrail(trail, x, y, rotation, size, isWave) {
+    const entry = trail.length >= 180 ? trail.shift() : {};
+    entry.x = x;
+    entry.y = y;
+    entry.rotation = rotation;
+    entry.size = size;
+    entry.isWave = isWave;
+    trail.push(entry);
   }
   _getDualSharedSignature(state) {
     if (!state) return 0;

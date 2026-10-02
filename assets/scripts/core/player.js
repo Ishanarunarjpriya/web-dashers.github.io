@@ -103,6 +103,7 @@ class StreakManager {
     }
     const _0x1817b7 = _0x2acf4c * this._fadeDelta;
     let _0x56ab0b = 0;
+    const pool = this._ptPool || (this._ptPool = []);
     for (let _0x3ca060 = 0; _0x3ca060 < this._pts.length; _0x3ca060++) {
       this._pts[_0x3ca060].state -= _0x1817b7;
       if (this._pts[_0x3ca060].state > 0) {
@@ -110,6 +111,8 @@ class StreakManager {
           this._pts[_0x56ab0b] = this._pts[_0x3ca060];
         }
         _0x56ab0b++;
+      } else {
+        pool.push(this._pts[_0x3ca060]);
       }
     }
     this._pts.length = _0x56ab0b;
@@ -122,6 +125,7 @@ class StreakManager {
         const _0x4c247a = this._posR.y - _0x2748e4.y;
         const _0x1f9fea = _0x3a1a00 * _0x3a1a00 + _0x4c247a * _0x4c247a;
         if (this._maxSeg > 0 && Math.sqrt(_0x1f9fea) > this._maxSeg) {
+          for (let _i = 0; _i < this._pts.length; _i++) pool.push(this._pts[_i]);
           this._pts.length = 0;
         } else if (_0x1f9fea < this._minSegSq) {
           _0x3d12ca = false;
@@ -135,11 +139,11 @@ class StreakManager {
         }
       }
       if (_0x3d12ca) {
-        this._pts.push({
-          x: this._posR.x,
-          y: this._posR.y,
-          state: 1
-        });
+        const _pt = pool.pop() || { x: 0, y: 0, state: 1 };
+        _pt.x = this._posR.x;
+        _pt.y = this._posR.y;
+        _pt.state = 1;
+        this._pts.push(_pt);
       }
     }
     this._gfx.clear();
@@ -157,6 +161,7 @@ class StreakManager {
 }
 class WaveTrail {
   constructor(scene, color, glowColor) {
+    this._scene = scene;
     this._color = color;
     this._glowColor = glowColor;
     this._pts = [];
@@ -191,24 +196,42 @@ class WaveTrail {
   stop()  { this._active = false; }
   reset() { this._pts = []; this._posInit = false; this._gfx.clear(); this._glowGfx.clear(); }
 
-  _intersect(p1, p2, p3, p4) {
-    const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
-    const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+  _intersectInto(xs, ys, idx, p1x, p1y, p2x, p2y, p3x, p3y, p4x, p4y) {
+    const d1x = p2x - p1x, d1y = p2y - p1y;
+    const d2x = p4x - p3x, d2y = p4y - p3y;
     const denom = d1x * d2y - d1y * d2x;
-    if (Math.abs(denom) < 1e-6) return { x: p2.x, y: p2.y };
-    const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+    if (Math.abs(denom) < 1e-6) {
+      xs[idx] = p2x;
+      ys[idx] = p2y;
+      return;
+    }
+    const t = ((p3x - p1x) * d2y - (p3y - p1y) * d2x) / denom;
     const tc = Math.max(-3, Math.min(3, t));
-    return { x: p1.x + d1x * tc, y: p1.y + d1y * tc };
+    xs[idx] = p1x + d1x * tc;
+    ys[idx] = p1y + d1y * tc;
+  }
+
+  _edgeBuffers(n) {
+    let buf = this._edgeBuf;
+    if (!buf || buf.size < n) {
+      const size = Math.max(n, buf ? buf.size * 2 : 64);
+      buf = this._edgeBuf = {
+        size,
+        ux: new Float64Array(size), uy: new Float64Array(size),
+        lx: new Float64Array(size), ly: new Float64Array(size),
+        nx: new Float64Array(size), ny: new Float64Array(size)
+      };
+    }
+    return buf;
   }
 
   _buildEdges(pts, halfW) {
     const n = pts.length;
-    const upper = new Array(n);
-    const lower = new Array(n);
+    const buf = this._edgeBuffers(n);
+    const { ux, uy, lx, ly } = buf;
+    const segNx = buf.nx;
+    const segNy = buf.ny;
 
-    // precompute per-segment normals
-    const segNx = new Array(n - 1);
-    const segNy = new Array(n - 1);
     for (let i = 0; i < n - 1; i++) {
       const dx = pts[i + 1].x - pts[i].x;
       const dy = pts[i + 1].y - pts[i].y;
@@ -226,43 +249,41 @@ class WaveTrail {
       } else if (i === n - 1) {
         nx = segNx[n - 2]; ny = segNy[n - 2];
       } else {
-        // miter: intersect the two offset edge lines for a sharp corner
         const n1x = segNx[i - 1], n1y = segNy[i - 1];
         const n2x = segNx[i],     n2y = segNy[i];
+        const prev = pts[i - 1];
+        const next = pts[i + 1];
 
-        // upper edge intersection
-        const u1 = { x: pts[i - 1].x + n1x * halfW, y: pts[i - 1].y + n1y * halfW };
-        const u2 = { x: p.x          + n1x * halfW, y: p.y          + n1y * halfW };
-        const u3 = { x: p.x          + n2x * halfW, y: p.y          + n2y * halfW };
-        const u4 = { x: pts[i + 1].x + n2x * halfW, y: pts[i + 1].y + n2y * halfW };
-        const mu = this._intersect(u1, u2, u3, u4);
+        this._intersectInto(ux, uy, i,
+          prev.x + n1x * halfW, prev.y + n1y * halfW,
+          p.x + n1x * halfW, p.y + n1y * halfW,
+          p.x + n2x * halfW, p.y + n2y * halfW,
+          next.x + n2x * halfW, next.y + n2y * halfW);
 
-        // lower edge intersection
-        const l1 = { x: pts[i - 1].x - n1x * halfW, y: pts[i - 1].y - n1y * halfW };
-        const l2 = { x: p.x          - n1x * halfW, y: p.y          - n1y * halfW };
-        const l3 = { x: p.x          - n2x * halfW, y: p.y          - n2y * halfW };
-        const l4 = { x: pts[i + 1].x - n2x * halfW, y: pts[i + 1].y - n2y * halfW };
-        const ml = this._intersect(l1, l2, l3, l4);
-
-        upper[i] = mu;
-        lower[i] = ml;
+        this._intersectInto(lx, ly, i,
+          prev.x - n1x * halfW, prev.y - n1y * halfW,
+          p.x - n1x * halfW, p.y - n1y * halfW,
+          p.x - n2x * halfW, p.y - n2y * halfW,
+          next.x - n2x * halfW, next.y - n2y * halfW);
         continue;
       }
 
-      upper[i] = { x: p.x + nx * halfW, y: p.y + ny * halfW };
-      lower[i] = { x: p.x - nx * halfW, y: p.y - ny * halfW };
+      ux[i] = p.x + nx * halfW;
+      uy[i] = p.y + ny * halfW;
+      lx[i] = p.x - nx * halfW;
+      ly[i] = p.y - ny * halfW;
     }
-    return { upper, lower };
+    return buf;
   }
 
   _drawRibbon(gfx, pts, halfW, color, baseAlpha, antialias = false) {
     const n = pts.length;
     if (n < 2) return;
 
-    const { upper, lower } = this._buildEdges(pts, halfW);
     if (antialias) {
       this._drawRibbon(gfx, pts, halfW + 0.5, color, baseAlpha * 0.5, false);
     }
+    const { ux, uy, lx, ly } = this._buildEdges(pts, halfW);
 
     for (let i = 0; i < n - 1; i++) {
       const alpha = Math.max(0, (1 - (pts[i].age + pts[i+1].age) * 0.5)) * baseAlpha;
@@ -271,14 +292,14 @@ class WaveTrail {
       gfx.fillStyle(color, alpha);
       
       gfx.fillTriangle(
-        upper[i].x, upper[i].y,
-        upper[i+1].x, upper[i+1].y,
-        lower[i].x, lower[i].y
+        ux[i], uy[i],
+        ux[i+1], uy[i+1],
+        lx[i], ly[i]
       );
       gfx.fillTriangle(
-        upper[i+1].x, upper[i+1].y,
-        lower[i+1].x, lower[i+1].y,
-        lower[i].x, lower[i].y
+        ux[i+1], uy[i+1],
+        lx[i+1], ly[i+1],
+        lx[i], ly[i]
       );
     }
   }
@@ -288,11 +309,26 @@ class WaveTrail {
     const decay = (delta / 1000) / this._maxAge;
 
     let alive = 0;
+    const pool = this._ptPool || (this._ptPool = []);
     for (let i = 0; i < this._pts.length; i++) {
-      this._pts[i].age += decay;
-      if (this._pts[i].age < 1) this._pts[alive++] = this._pts[i];
+      const pt = this._pts[i];
+      pt.age += decay;
+      if (pt.age < 1) this._pts[alive++] = pt;
+      else pool.push(pt);
     }
     this._pts.length = alive;
+
+    const cameraX = this._scene ? this._scene._cameraX : undefined;
+    if (Number.isFinite(cameraX)) {
+      const cutoff = cameraX - 200;
+      let drop = 0;
+      while (this._pts.length - drop > 2 && this._pts[drop + 1].x < cutoff) drop++;
+      if (drop) {
+        for (let i = 0; i < drop; i++) pool.push(this._pts[i]);
+        for (let i = drop; i < this._pts.length; i++) this._pts[i - drop] = this._pts[i];
+        this._pts.length -= drop;
+      }
+    }
 
     if (this._active) {
       const n = this._pts.length;
@@ -302,7 +338,13 @@ class WaveTrail {
         const dx = this._pos.x - last.x, dy = this._pos.y - last.y;
         if (dx*dx + dy*dy < this._minSegSq) add = false;
       }
-      if (add) this._pts.push({ x: this._pos.x, y: this._pos.y, age: 0 });
+      if (add) {
+        const pt = pool.pop() || { x: 0, y: 0, age: 0 };
+        pt.x = this._pos.x;
+        pt.y = this._pos.y;
+        pt.age = 0;
+        this._pts.push(pt);
+      }
     }
 
     this._gfx.clear();
