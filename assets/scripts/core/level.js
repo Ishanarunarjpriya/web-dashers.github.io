@@ -121,6 +121,13 @@ function parseObject(objectString) {
     objectData[key] = value;
   }
   let objectId = parseInt(objectData[1] || "0", 10);
+  const readScale = (raw) => {
+    const value = parseFloat(raw);
+    return Number.isFinite(value) && value !== 0 ? value : null;
+  };
+  const uniformScale = readScale(objectData[32]) ?? 1;
+  const objectScaleX = readScale(objectData[128]) ?? uniformScale;
+  const objectScaleY = readScale(objectData[129]) ?? uniformScale;
   let objectColor1 = parseInt(objectData[21] || "0", 10);
   let objectColor2 = parseInt(objectData[22] || "0", 10);
   const legacyColorId = LEGACY_19_COLOR_CHANNELS[parseInt(objectData[19] || "0", 10)];
@@ -149,7 +156,9 @@ function parseObject(objectString) {
       flipX: objectData[4] === "1",
       flipY: objectData[5] === "1",
       rot: parseFloat(objectData[6] || "0"),
-      scale: parseFloat(objectData[32] || "1"),
+      scale: objectData[32] !== undefined ? uniformScale : (objectScaleX + objectScaleY) / 2,
+      scaleX: objectScaleX,
+      scaleY: objectScaleY,
       editorLayer: parseInt(objectData[20] || "0", 10),
       zLayer: parseInt(objectData[24] || "0", 10),
       zOrder: parseInt(objectData[25] || "0", 10),
@@ -439,8 +448,10 @@ function _createSlopeCollider(levelObj, objectDef, worldX, worldY) {
   if (_isDecorationSlopeId(levelObj.id)) return null;
   const _scaleRaw = Number(levelObj.scale);
   const _scale = Number.isFinite(_scaleRaw) && _scaleRaw > 0 ? _scaleRaw : 1;
-  const hw0 = (slopeData.gw * a * _scale) / 2;
-  const hh0 = (slopeData.gh * a * _scale) / 2;
+  const _scaleX = Math.abs(Number(levelObj.scaleX)) || _scale;
+  const _scaleY = Math.abs(Number(levelObj.scaleY)) || _scale;
+  const hw0 = (slopeData.gw * a * _scaleX) / 2;
+  const hh0 = (slopeData.gh * a * _scaleY) / 2;
   let vRight = { x: hw0, y: -hh0 };
   let vLo = { x: -hw0, y: -hh0 };
   let vHi = { x: hw0, y: hh0 };
@@ -1756,6 +1767,10 @@ window.LevelObject = class LevelObject {
         dy: realHeight / 2 - (sourceY + frameHeight / 2)
       };
     }(scene, frameName);
+    const objScaleX = Number.isFinite(Number(objectData.scaleX)) ? Number(objectData.scaleX) : (Number(objectData.scale) || 1);
+    const objScaleY = Number.isFinite(Number(objectData.scaleY)) ? Number(objectData.scaleY) : (Number(objectData.scale) || 1);
+    offsetX *= objScaleX;
+    offsetY *= objScaleY;
     if (objectData.flipX) {
       sprite.setFlipX(true);
       offsetX = -offsetX;
@@ -1777,8 +1792,10 @@ window.LevelObject = class LevelObject {
     }
     sprite.x += offsetX;
     sprite.y += offsetY;
-    if (objectData.scale !== 1) {
-      sprite.setScale(objectData.scale);
+    sprite._eeObjScaleX = objScaleX;
+    sprite._eeObjScaleY = objScaleY;
+    if (objScaleX !== 1 || objScaleY !== 1) {
+      sprite.setScale(objScaleX, objScaleY);
     }
     if (colorData) {
       const blackDefault = colorData.black === true || colorData.tint === 0;
@@ -2142,7 +2159,11 @@ window.LevelObject = class LevelObject {
     }
 
     const scale = Number.isFinite(Number(levelObj.scale)) ? Number(levelObj.scale) : 1;
-    textSprite.setScale(scale * (levelObj.flipX ? -1 : 1), scale * (levelObj.flipY ? -1 : 1));
+    const textScaleX = Number.isFinite(Number(levelObj.scaleX)) ? Number(levelObj.scaleX) : scale;
+    const textScaleY = Number.isFinite(Number(levelObj.scaleY)) ? Number(levelObj.scaleY) : scale;
+    textSprite._eeObjScaleX = textScaleX * (levelObj.flipX ? -1 : 1);
+    textSprite._eeObjScaleY = textScaleY * (levelObj.flipY ? -1 : 1);
+    textSprite.setScale(textSprite._eeObjScaleX, textSprite._eeObjScaleY);
     textSprite.setAngle(levelObj.rot || 0);
 
     const depthBase = { "-5": -12, "-3": -9, "-1": -6, 0: 0, 1: 3, 3: 6, 5: 9, 7: 10.5, 9: 12, 11: 13.5 };
@@ -2940,13 +2961,15 @@ window.LevelObject = class LevelObject {
           continue;
         }
 
-        let childDx = childDef.dx || 0;
-        let childDy = childDef.dy || 0;
+        const parentScaleX = Number.isFinite(Number(levelObj.scaleX)) ? Number(levelObj.scaleX) : (Number(levelObj.scale) || 1);
+        const parentScaleY = Number.isFinite(Number(levelObj.scaleY)) ? Number(levelObj.scaleY) : (Number(levelObj.scale) || 1);
+        let childDx = (childDef.dx || 0) * parentScaleX;
+        let childDy = (childDef.dy || 0) * parentScaleY;
         const autoDx = perspChildDx ? perspChildDx[childIndex] : undefined;
 
         if (childDef.localDx !== undefined || childDef.localDy !== undefined || autoDx !== undefined) {
-          let localDx = autoDx !== undefined ? autoDx : (childDef.localDx || 0);
-          let localDy = childDef.localDy || 0;
+          let localDx = (autoDx !== undefined ? autoDx : (childDef.localDx || 0)) * parentScaleX;
+          let localDy = (childDef.localDy || 0) * parentScaleY;
 
           if (levelObj.flipX) {
             localDx = -localDx;
@@ -6035,12 +6058,20 @@ window.LevelObject = class LevelObject {
           visMinSection.x = visMinSection._eeWorldX;
           visMinSection.y = visMinSection._eeBaseY;
           if (!visMinSection._eeAudioScale) {
-            visMinSection.setScale(1);
+            this._setEffectScale(visMinSection, 1);
           }
           visMinSection.setAlpha(this._getGroupOpacityForSprite(visMinSection));
         }
       }
     }
+  }
+  _setEffectScale(spr, multiplier) {
+    const baseUniform = Number(spr._eeBaseScale);
+    const baseX = baseUniform > 0 ? baseUniform : (spr._eeObjScaleX ?? 1);
+    const baseY = baseUniform > 0 ? baseUniform : (spr._eeObjScaleY ?? 1);
+    const targetX = baseX * multiplier;
+    const targetY = baseY * multiplier;
+    if (spr.scaleX !== targetX || spr.scaleY !== targetY) spr.setScale(targetX, targetY);
   }
   _getGroupOpacityForSprite(spr) {
     const groups = spr && spr._eeGroups;
@@ -6093,7 +6124,7 @@ window.LevelObject = class LevelObject {
               effectSprite.y = effectSprite._eeBaseY;
               effectSprite.x = effectSprite._eeWorldX;
               if (!effectSprite._eeAudioScale) {
-                effectSprite.setScale(1);
+                this._setEffectScale(effectSprite, 1);
               }
             }
             effectSprite.setAlpha(this._getGroupOpacityForSprite(effectSprite));
@@ -6115,7 +6146,7 @@ window.LevelObject = class LevelObject {
               effectSprite.y = effectSprite._eeBaseY;
               effectSprite.x = effectSprite._eeWorldX;
               if (!effectSprite._eeAudioScale) {
-                effectSprite.setScale(1);
+                this._setEffectScale(effectSprite, 1);
               }
             }
             effectSprite.setAlpha(this._getGroupOpacityForSprite(effectSprite));
@@ -6165,8 +6196,8 @@ window.LevelObject = class LevelObject {
           if (effectSprite.y !== _0x50e6d9) {
             effectSprite.y = _0x50e6d9;
           }
-          if (!effectSprite._eeAudioScale && effectSprite.scaleX !== _0x127ace) {
-            effectSprite.setScale(_0x127ace);
+          if (!effectSprite._eeAudioScale) {
+            this._setEffectScale(effectSprite, _0x127ace);
           }
         }
         const _eeFinalAlpha = _0x2128bf * this._getGroupOpacityForSprite(effectSprite);

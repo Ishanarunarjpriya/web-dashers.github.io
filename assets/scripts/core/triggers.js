@@ -127,36 +127,10 @@ function hsvToRgb(h, s, v) {
   else { r = c; b = x; }
   return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
 }
-const LBG_PRESETS = {
-  gd: { sat: 0, val: 20, mul: 1, fade: "value" },
-  old: { sat: -20, val: 20, mul: 1, fade: "sum" },
-  bg: { sat: 0, val: 0, mul: 1, fade: "value" },
-  dim: { sat: 0, val: 0, mul: 0.65, fade: "value" }
-};
-window.lbgDebug = { ...LBG_PRESETS.gd };
-window.setLbg = (mode) => {
-  const preset = typeof mode === "string" ? LBG_PRESETS[mode] : mode;
-  if (!preset) {
-    console.log("lbg presets:", Object.keys(LBG_PRESETS).join(", "), "or setLbg({ sat, val, mul, fade })");
-    return window.lbgDebug;
-  }
-  window.lbgDebug = { ...window.lbgDebug, ...preset };
-  console.log("lbg:", JSON.stringify(window.lbgDebug));
-  return window.lbgDebug;
-};
 function lightBgColor(bg, p1) {
-  const cfg = window.lbgDebug || LBG_PRESETS.gd;
   const hsv = rgbToHsv(bg.r, bg.g, bg.b);
-  const shifted = hsvToRgb(hsv.h, hsv.s + cfg.sat, hsv.v + cfg.val);
-  const mul = Number.isFinite(cfg.mul) ? cfg.mul : 1;
-  const target = {
-    r: Math.min(255, Math.round(shifted.r * mul)),
-    g: Math.min(255, Math.round(shifted.g * mul)),
-    b: Math.min(255, Math.round(shifted.b * mul))
-  };
-  const t = cfg.fade === "sum"
-    ? Math.min(1, (bg.r + bg.g + bg.b) / 150)
-    : Math.max(0, Math.min(1, hsv.v / 20));
+  const target = hsvToRgb(hsv.h, hsv.s, hsv.v + 20);
+  const t = Math.max(0, Math.min(1, hsv.v / 20));
   if (t >= 1) return target;
   return {
     r: Math.round(target.r * t + p1.r * (1 - t)),
