@@ -2698,7 +2698,7 @@ window.LevelObject = class LevelObject {
         if (!this._colorChannelSprites[ch]) this._colorChannelSprites[ch] = [];
         this._colorChannelSprites[ch].push(spr);
         if (this._channelBlending && this._channelBlending[ch]) {
-          spr.setBlendMode(Phaser.BlendModes.ADD);
+          spr.setBlendMode(window.S ?? S);
           spr._eeChannelAdditive = true;
         }
         if (forceParentColor && spr._SawColor === undefined) {
@@ -5744,12 +5744,8 @@ window.LevelObject = class LevelObject {
       const finished = pulse.elapsed >= pulse.totalDuration;
       if (trig.targetType === 1 && trig.targetGroup > 0) {
         if (this._groupSprites[trig.targetGroup]) {
-          const pr = Math.round(trig.color.r * intensity);
-          const pg = Math.round(trig.color.g * intensity);
-          const pb = Math.round(trig.color.b * intensity);
-          const hex = (pr << 16) | (pg << 8) | pb;
           groupOps.delete(trig.targetGroup);
-          groupOps.set(trig.targetGroup, finished ? -1 : (intensity > 0.01 ? hex : -1));
+          groupOps.set(trig.targetGroup, finished || intensity <= 0.01 ? null : { trig, intensity: Math.min(1, intensity) });
         }
       } else if (trig.targetType === 0 && trig.targetChannel > 0 && colorManager) {
         let op = channelOps.get(trig.targetChannel);
@@ -5779,17 +5775,40 @@ window.LevelObject = class LevelObject {
       } else { i++; }
     }
     if (groupOps.size) this._colorDirty = true;
-    for (const [groupId, hex] of groupOps) {
+    const pulseBaseByChannel = new Map();
+    for (const [groupId, op] of groupOps) {
       const sprites = this._groupSprites[groupId];
       if (!sprites) continue;
       for (const spr of sprites) {
-        if (!spr || !spr.active) continue;
-        if (hex >= 0) {
-          if (typeof spr.setTint === "function") { spr.setTint(hex); spr._eePulsed = true; }
-        } else if (typeof spr.clearTint === "function") {
-          spr.clearTint();
+        if (!spr || !spr.active || spr._cantColor || typeof spr.setTint !== "function") continue;
+        const ch = spr._eeColorChannel;
+        if (!op) {
+          if (!spr._eePulsed) continue;
           spr._eePulsed = false;
+          if (ch && colorManager) this._applyChannelTint(spr, ch, colorManager.getHex(ch), colorManager);
+          else if (spr._isBlack) spr.setTint(0);
+          else spr.clearTint();
+          continue;
         }
+        let base;
+        if (ch && colorManager) {
+          base = pulseBaseByChannel.get(ch);
+          if (!base) {
+            base = colorManager.getColor(ch);
+            pulseBaseByChannel.set(ch, base);
+          }
+        } else {
+          base = spr._isBlack ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 };
+        }
+        const { trig, intensity } = op;
+        const target = trig.hsv
+          ? applyChannelHsv(trig.copySource > 0 && colorManager ? colorManager.getColor(trig.copySource) : base, trig.hsv)
+          : trig.color;
+        const r = Math.round(base.r + (target.r - base.r) * intensity);
+        const g = Math.round(base.g + (target.g - base.g) * intensity);
+        const b = Math.round(base.b + (target.b - base.b) * intensity);
+        spr.setTint((r << 16) | (g << 8) | b);
+        spr._eePulsed = true;
       }
     }
     const canLimitToVisible = this._visMinSec >= 0 && this._visMaxSec >= this._visMinSec;
