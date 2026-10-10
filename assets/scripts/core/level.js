@@ -775,9 +775,8 @@ window.LevelObject = class LevelObject {
     this._sectionContainers = [];
     this._flatDepth = false;
     this._flatContainers = null;
-    this._flatSectionCount = 0;
-    this._flatSorted = false;
     this._flatNeedsSort = false;
+    this._spawnOrderCounter = 0;
     this._collisionSections = [];
     this._nearbyBuffer = [];
     this._visMinSec = -1;
@@ -2483,9 +2482,9 @@ window.LevelObject = class LevelObject {
         touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
         targetGroup: parseInt(_raw[51] ?? 0, 10),
         speed: Math.max(0, parseFloat(_raw[90] ?? 1)),
-        delay: Math.max(0, parseFloat(_raw[92] ?? 0)),
-        offset: parseFloat(_raw[105] ?? 0) * 2,
-        maxSpeed: Math.max(0, parseFloat(_raw[91] ?? 0)) * 2,
+        delay: Math.max(0, parseFloat(_raw[91] ?? 0)),
+        offset: parseFloat(_raw[92] ?? 0) * 2,
+        maxSpeed: Math.max(0, parseFloat(_raw[105] ?? 0)) * 2,
         duration: Math.max(0, parseFloat(_raw[10] ?? 0))
       });
     }
@@ -3717,10 +3716,6 @@ window.LevelObject = class LevelObject {
         if (sc.additive && sc.additive.list && sc.additive.list.length > 1) sc.additive.sort("depth");
       }
     }
-    if (this._flatContainers) {
-      this._sortFlatContainers();
-      this._flatSorted = true;
-    }
 
     this.endXPos = Math.max(screenWidth + 1200, this._lastObjectX + 680);
 
@@ -3936,35 +3931,40 @@ window.LevelObject = class LevelObject {
   }
   _sortFlatContainers() {
     const fc = this._flatContainers;
-    if (!fc) return;
-    if (fc.normal.list.length > 1) fc.normal.sort("depth");
-    if (fc.additive.list.length > 1) fc.additive.sort("depth");
     this._flatNeedsSort = false;
+    if (!fc) return;
+    const byDepth = (a, b) => (a.depth - b.depth) || ((a._eeSpawnOrder || 0) - (b._eeSpawnOrder || 0));
+    if (fc.normal.list.length > 1) fc.normal.list.sort(byDepth);
+    if (fc.additive.list.length > 1) fc.additive.list.sort(byDepth);
   }
-  _isSectionInView(sectionIndex) {
-    return this._visMinSec === undefined || this._visMinSec < 0 ||
-      (sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec);
+  _isFlatSectionShown(sectionIndex) {
+    return this._visMinSec >= 0 && sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec;
   }
-  _setSpriteCulled(spr, culled) {
-    if (!spr) return;
-    spr._eeCulled = culled;
-    const camId = this._scene?.cameras?.main?.id || 1;
-    spr.cameraFilter = culled ? camId : 0;
+  _placeFlatSprite(spr, shown) {
+    const layer = spr._eeLayer !== undefined ? spr._eeLayer : 1;
+    if (layer === 2) return;
+    let target;
+    if (shown) {
+      const fc = this._getFlatContainers();
+      target = layer === 0 ? fc.additive : fc.normal;
+    } else {
+      const home = this._ensureSectionContainer(spr._eeSectionIndex);
+      target = layer === 0 ? home.additive : home.normal;
+    }
+    if (spr.parentContainer === target) return;
+    target.add(spr);
+    if (shown) this._flatNeedsSort = true;
   }
   _isSpriteHidden(spr) {
     return !!(spr && (spr._eeCulled || (spr.parentContainer && !spr.parentContainer.visible)));
   }
   _ensureSectionContainer(sectionIndex) {
-    if (this._flatDepth) {
-      if (sectionIndex + 1 > this._flatSectionCount) this._flatSectionCount = sectionIndex + 1;
-      return this._getFlatContainers();
-    }
     if (!this._sectionContainers[sectionIndex]) {
       const sectionContainer = {
         additive: this._scene.add.container(0, 0),
         normal: this._scene.add.container(0, 0)
       };
-      const sectionVisible = this._visMinSec === undefined || this._visMinSec < 0 || (sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec);
+      const sectionVisible = !this._flatDepth && (this._visMinSec === undefined || this._visMinSec < 0 || (sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec));
       sectionContainer.additive.visible = sectionVisible;
       sectionContainer.normal.visible = sectionVisible;
       this.additiveContainer.add(sectionContainer.additive);
@@ -3978,6 +3978,7 @@ window.LevelObject = class LevelObject {
     this._sections[_0x4ac40a] ||= [];
     this._sections[_0x4ac40a].push(sliderWidth);
     sliderWidth._eeSectionIndex = _0x4ac40a;
+    sliderWidth._eeSpawnOrder = this._spawnOrderCounter++;
     if (sliderWidth._eeZDepth !== undefined) {
       sliderWidth.depth = sliderWidth._eeZDepth;
     }
@@ -3994,9 +3995,8 @@ window.LevelObject = class LevelObject {
     } else {
       _0x2157d3.normal.add(sliderWidth);
     }
-    if (this._flatDepth) {
-      this._setSpriteCulled(sliderWidth, !this._isSectionInView(_0x4ac40a));
-      if (this._flatSorted) this._flatNeedsSort = true;
+    if (this._flatDepth && this._isFlatSectionShown(_0x4ac40a)) {
+      this._placeFlatSprite(sliderWidth, true);
     }
   }
   _refreshSpriteSection(sprite) {
@@ -4026,8 +4026,8 @@ window.LevelObject = class LevelObject {
     sprite._eeSectionIndex = nextSection;
     this._colorDirty = true;
     if (this._flatDepth) {
-      if (nextSection + 1 > this._flatSectionCount) this._flatSectionCount = nextSection + 1;
-      this._setSpriteCulled(sprite, (sprite._eeLayer ?? 1) !== 2 && !this._isSectionInView(nextSection));
+      this._placeFlatSprite(sprite, this._isFlatSectionShown(nextSection));
+      return;
     }
 
     const layer = sprite._eeLayer !== undefined ? sprite._eeLayer : 1;
@@ -4080,7 +4080,7 @@ window.LevelObject = class LevelObject {
       if (!section) return;
       for (let i = 0; i < section.length; i++) {
         const spr = section[i];
-        if (spr && (spr._eeLayer ?? 1) !== 2) this._setSpriteCulled(spr, !_0x488507);
+        if (spr) this._placeFlatSprite(spr, _0x488507);
       }
       return;
     }
@@ -4134,7 +4134,7 @@ window.LevelObject = class LevelObject {
       try { if (this._glowSprites) for (const g of this._glowSprites) g.setVisible(false); } catch(e) {}
     }
     if (this._flatNeedsSort) this._sortFlatContainers();
-    const _0x1dce22 = (this._flatDepth ? this._flatSectionCount : this._sectionContainers.length) - 1;
+    const _0x1dce22 = this._sectionContainers.length - 1;
     if (_0x1dce22 < 0) {
       return;
     }
@@ -4164,6 +4164,7 @@ window.LevelObject = class LevelObject {
       }
       this._visMinSec = particleScale;
       this._visMaxSec = sliderHeight;
+      if (this._flatNeedsSort) this._sortFlatContainers();
       return;
     }
     if (particleScale !== _0x1800fc || sliderHeight !== _0xc31046) {
@@ -4189,6 +4190,7 @@ window.LevelObject = class LevelObject {
       }
       this._visMinSec = particleScale;
       this._visMaxSec = sliderHeight;
+      if (this._flatNeedsSort) this._sortFlatContainers();
     }
   }
   updateObjectDebugIds() {
