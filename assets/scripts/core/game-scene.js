@@ -6472,28 +6472,28 @@ _showwippopup() {
       return;
     }
     const xPos = screenWidth / 2;
-    const popupHeight = 320;
-    const popupWidth = 336;
+    const popupHeight = 420;
+    const popupWidth = 480;
     this._updateLogPopup = this.add.container(0, 0).setScrollFactor(0).setDepth(1000);
     const background = this.add.rectangle(xPos, popupHeight, screenWidth, screenHeight, 0, 100 / 255);
     background.setInteractive();
     this._updateLogPopup.add(background);
-    
+
     const bounceContainer = this.add.container(xPos, popupHeight).setScale(0);
     this._updateLogPopup.add(bounceContainer);
     const cornerRadius = this.textures.get("GJ_square02").source[0].width * 0.325;
-    const popupBg = this._drawScale9(0, 0, 480, popupWidth, "GJ_square02", cornerRadius, 16777215, 1);
+    const popupBg = this._drawScale9(0, 0, popupWidth, popupHeight, "GJ_square02", cornerRadius, 16777215, 1);
     bounceContainer.add(popupBg);
-    const closeBtn = this.add.image(-240 + 20, -148, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    const closeBtn = this.add.image(-(popupWidth / 2) + 20, -(popupHeight / 2) + 20, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
     bounceContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._closeUpdateLogPopup());
-    const title = this.add.bitmapText(0, -124, "bigFont", "BETA (EXPECT BUGS)", 33).setOrigin(0.5, 0.55).setTint(0xff6666);
+    const title = this.add.bitmapText(0, -(popupHeight / 2) + 40, "bigFont", "BETA (EXPECT BUGS)", 33).setOrigin(0.5, 0.55).setTint(0xff6666);
     bounceContainer.add(title);
-    const scrollAreaW = 420;
-    const scrollAreaH = 230;
+    const scrollAreaW = popupWidth - 40;
+    const scrollAreaH = popupHeight - 100;
     const scrollAreaX = 0;
-    const scrollAreaY = 20;
+    const scrollAreaY = -(popupHeight / 2) + 60 + scrollAreaH / 2;
     const scrollFrameBg = this.add.graphics();
     scrollFrameBg.fillStyle(0x000000, 0.18);
     scrollFrameBg.fillRoundedRect(scrollAreaX - scrollAreaW / 2, scrollAreaY - scrollAreaH / 2, scrollAreaW, scrollAreaH, 8);
@@ -6508,21 +6508,14 @@ _showwippopup() {
     */
     const updateEntries = [
       { text: "Update Log", scale: 1, font: "goldFont" },
-      { text: "Performance & Rendering", scale: 0.75, color: 0xff9944 },
-      { text: "- Flat Depth System: Optimized rendering for low-end devices using shared containers instead of per-section\n- LDM Culling: Off-screen sprites hidden via camera filters instead of destroying containers\n- Sprite culling: Objects outside visible range are culled for better performance\n- FPS counter: Fixed initialization order; respects showFPS setting at startup", scale: 0.6 },
-      { text: "Color Channels", scale: 0.75, color: 0xff9944 },
-      { text: "- Additive blending per color channel\n- Initial channel state support (_initialCopies, _initialOpacity)\n- Alpha fix: Correct RGB without forcing opaque alpha\n- Glow suppression for objects with raw[96] === \"1\"", scale: 0.6 },
-      { text: "Player & Physics", scale: 0.75, color: 0xff9944 },
-      { text: "- GD Cube Slopes: Geometry Dash-style slope collision for cube mode\n- Slope back-wall hit detection for accurate wall collisions\n- Slope flat cap landing for proper edge transitions\n- Rotation fix: Slope angle now displays correctly\n- Wave mode fix: Cube no longer triggers rotation on launch\n- Collision tracking: Prevents duplicate collision events", scale: 0.6 },
-      { text: "Triggers & Effects", scale: 0.75, color: 0xff9944 },
-      { text: "- Trigger engine fixes: spawn, move, stop, follow, toggle, animation, shake, on-death, touch, pickup, count triggers\n- Shake triggers: Screen shake with applyShakeToOffsets()\n- Death shake: Automatic shake on player death (2.4 strength)\n- Checkpoint triggers: Proper reset and re-evaluation at checkpoints\n- Macro bot indicator: Hides during menu/pause/level complete", scale: 0.6 },
-      { text: "Beast Animations", scale: 0.75, color: 0xff9944 },
-      { text: "- Animated GJBeasts 01-05 with descriptor JSON support\n- Sync on level load for beast animation data\n- Beast tint fix and optimization\n- Collision safety: Prevents beasts from being crushed", scale: 0.6 },
-      { text: "Input & UI", scale: 0.75, color: 0xff9944 },
-      { text: "- Jump input deduplication: Handler defined once per scene lifecycle\n- Click cancel fix: UI clicks now correctly cancel jump input\n- Settings sync: Earlier initialization order\n- Song name display: Fixed incorrect variable usage\n- Percentage labels: Optimized updates to avoid unnecessary calls", scale: 0.6 },
-      { text: "Misc", scale: 0.75, color: 0xff9944 },
-      { text: "- Teleport ignore: Prevents teleport glitches on checkpoint respawn\n- Dual player death: Both players reset collision state on checkpoint\n- On-death triggers: Added triggerOnDeath() call\n- Hitbox trail refactored into helper function\n- All containers now include shake offset for synchronized screen shake", scale: 0.6 },
-      { text: "- Ishanarunarjpriya", scale: 0.55, color: 0xaaddff }
+      { text: "- Performance & Rendering: Flat Depth System, LDM Culling, Sprite culling, FPS counter", scale: 0.6 },
+      { text: "- Color Channels: Additive blending, initial state support, alpha fix, glow suppression", scale: 0.6 },
+      { text: "- Player & Physics: GD Cube Slopes, back-wall detection, flat cap landing, rotation fix", scale: 0.6 },
+      { text: "- Triggers & Effects: Engine fixes, shake triggers, death shake, checkpoint triggers", scale: 0.6 },
+      { text: "- Beast Animations: GJBeasts 01-05, tint fix, collision safety", scale: 0.6 },
+      { text: "- Input & UI: Jump deduplication, click cancel, settings sync, song name fix", scale: 0.6 },
+      { text: "- Misc: Teleport ignore, dual player death, on-death triggers, hitbox trail refactor", scale: 0.6 },
+      { text: "- Ishanarunarjpriya", scale: 0.5, color: 0xaaddff }
     ]; 
     let yPos = 0;
     const lineItems = [];
