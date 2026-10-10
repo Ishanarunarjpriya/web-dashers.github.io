@@ -6508,9 +6508,21 @@ _showwippopup() {
     */
     const updateEntries = [
       { text: "Update Log", scale: 1, font: "goldFont" },
-      { text: "Sorry for the 10 hour downtime\ni forgot to change the proxy\nurl because i changed the\nsubdomain - rohanis0000", scale: 0.7, color: 0xaaddff },
-      { text: "To anyone who is wondering\nwhy online features don't work,\nthe worker is constantly being\nused and its request limit\nis hit daily in a short time\ndue to many users using\nthe online levels feature.\nThis has hopefully been\nfixed now with this update.\n- rohanis0000", scale: 0.7, color: 0xaaddff },
-      { text: "Added 2 new proxies to fall back\nto when ones request limit is\n hit to allow you to still\nbe able to use online features.", scale: 0.65 }
+      { text: "Performance & Rendering", scale: 0.75, color: 0xff9944 },
+      { text: "- Flat Depth System: Optimized rendering for low-end devices using shared containers instead of per-section\n- LDM Culling: Off-screen sprites hidden via camera filters instead of destroying containers\n- Sprite culling: Objects outside visible range are culled for better performance\n- FPS counter: Fixed initialization order; respects showFPS setting at startup", scale: 0.6 },
+      { text: "Color Channels", scale: 0.75, color: 0xff9944 },
+      { text: "- Additive blending per color channel\n- Initial channel state support (_initialCopies, _initialOpacity)\n- Alpha fix: Correct RGB without forcing opaque alpha\n- Glow suppression for objects with raw[96] === \"1\"", scale: 0.6 },
+      { text: "Player & Physics", scale: 0.75, color: 0xff9944 },
+      { text: "- GD Cube Slopes: Geometry Dash-style slope collision for cube mode\n- Slope back-wall hit detection for accurate wall collisions\n- Slope flat cap landing for proper edge transitions\n- Rotation fix: Slope angle now displays correctly\n- Wave mode fix: Cube no longer triggers rotation on launch\n- Collision tracking: Prevents duplicate collision events", scale: 0.6 },
+      { text: "Triggers & Effects", scale: 0.75, color: 0xff9944 },
+      { text: "- Trigger engine fixes: spawn, move, stop, follow, toggle, animation, shake, on-death, touch, pickup, count triggers\n- Shake triggers: Screen shake with applyShakeToOffsets()\n- Death shake: Automatic shake on player death (2.4 strength)\n- Checkpoint triggers: Proper reset and re-evaluation at checkpoints\n- Macro bot indicator: Hides during menu/pause/level complete", scale: 0.6 },
+      { text: "Beast Animations", scale: 0.75, color: 0xff9944 },
+      { text: "- Animated GJBeasts 01-05 with descriptor JSON support\n- Sync on level load for beast animation data\n- Beast tint fix and optimization\n- Collision safety: Prevents beasts from being crushed", scale: 0.6 },
+      { text: "Input & UI", scale: 0.75, color: 0xff9944 },
+      { text: "- Jump input deduplication: Handler defined once per scene lifecycle\n- Click cancel fix: UI clicks now correctly cancel jump input\n- Settings sync: Earlier initialization order\n- Song name display: Fixed incorrect variable usage\n- Percentage labels: Optimized updates to avoid unnecessary calls", scale: 0.6 },
+      { text: "Misc", scale: 0.75, color: 0xff9944 },
+      { text: "- Teleport ignore: Prevents teleport glitches on checkpoint respawn\n- Dual player death: Both players reset collision state on checkpoint\n- On-death triggers: Added triggerOnDeath() call\n- Hitbox trail refactored into helper function\n- All containers now include shake offset for synchronized screen shake", scale: 0.6 },
+      { text: "- Ishanarunarjpriya", scale: 0.55, color: 0xaaddff }
     ]; 
     let yPos = 0;
     const lineItems = [];
