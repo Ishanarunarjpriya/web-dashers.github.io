@@ -361,7 +361,7 @@ class ColorManager {
   }
   getHex(index) {
     let color = this.getColor(index);
-   return 0xFF000000 | (color.r << 16) | (color.g << 8) | color.b;
+    return (color.r << 16) | (color.g << 8) | color.b;
   }
 }
 

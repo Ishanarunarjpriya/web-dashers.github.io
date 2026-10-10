@@ -773,6 +773,11 @@ window.LevelObject = class LevelObject {
     this._groupColliders = {};
     this._sections = [];
     this._sectionContainers = [];
+    this._flatDepth = false;
+    this._flatContainers = null;
+    this._flatSectionCount = 0;
+    this._flatSorted = false;
+    this._flatNeedsSort = false;
     this._collisionSections = [];
     this._nearbyBuffer = [];
     this._visMinSec = -1;
@@ -1069,6 +1074,7 @@ window.LevelObject = class LevelObject {
     this._userCoinSlotCount = 0;
     this._sourceLevelObjects = levelObjects;
     this._setUpSettings(settingslist);
+    this._flatDepth = !window.enableLDM && !window.isEditor;
     this._spawnLevelObjects(levelObjects);
     this.checkToggleTriggers?.(0);
     this.checkPickupTriggers?.(0);
@@ -1862,6 +1868,7 @@ window.LevelObject = class LevelObject {
     }
   }
   _hasGlow(objectDef = null, objectData = null) {
+    if (objectData && objectData._raw && String(objectData._raw[96] ?? objectData._raw["96"] ?? "0") === "1") return false;
     const source = objectDef || objectData || {};
     if (!source) return false;
     return !!(
@@ -3710,6 +3717,10 @@ window.LevelObject = class LevelObject {
         if (sc.additive && sc.additive.list && sc.additive.list.length > 1) sc.additive.sort("depth");
       }
     }
+    if (this._flatContainers) {
+      this._sortFlatContainers();
+      this._flatSorted = true;
+    }
 
     this.endXPos = Math.max(screenWidth + 1200, this._lastObjectX + 680);
 
@@ -3912,7 +3923,42 @@ window.LevelObject = class LevelObject {
   _getSectionIndexForWorldX(worldX) {
     return Math.max(0, Math.floor((Number(worldX) || 0) / 400));
   }
+  _getFlatContainers() {
+    if (!this._flatContainers) {
+      this._flatContainers = {
+        additive: this._scene.add.container(0, 0),
+        normal: this._scene.add.container(0, 0)
+      };
+      this.additiveContainer.add(this._flatContainers.additive);
+      this.container.add(this._flatContainers.normal);
+    }
+    return this._flatContainers;
+  }
+  _sortFlatContainers() {
+    const fc = this._flatContainers;
+    if (!fc) return;
+    if (fc.normal.list.length > 1) fc.normal.sort("depth");
+    if (fc.additive.list.length > 1) fc.additive.sort("depth");
+    this._flatNeedsSort = false;
+  }
+  _isSectionInView(sectionIndex) {
+    return this._visMinSec === undefined || this._visMinSec < 0 ||
+      (sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec);
+  }
+  _setSpriteCulled(spr, culled) {
+    if (!spr) return;
+    spr._eeCulled = culled;
+    const camId = this._scene?.cameras?.main?.id || 1;
+    spr.cameraFilter = culled ? camId : 0;
+  }
+  _isSpriteHidden(spr) {
+    return !!(spr && (spr._eeCulled || (spr.parentContainer && !spr.parentContainer.visible)));
+  }
   _ensureSectionContainer(sectionIndex) {
+    if (this._flatDepth) {
+      if (sectionIndex + 1 > this._flatSectionCount) this._flatSectionCount = sectionIndex + 1;
+      return this._getFlatContainers();
+    }
     if (!this._sectionContainers[sectionIndex]) {
       const sectionContainer = {
         additive: this._scene.add.container(0, 0),
@@ -3948,6 +3994,10 @@ window.LevelObject = class LevelObject {
     } else {
       _0x2157d3.normal.add(sliderWidth);
     }
+    if (this._flatDepth) {
+      this._setSpriteCulled(sliderWidth, !this._isSectionInView(_0x4ac40a));
+      if (this._flatSorted) this._flatNeedsSort = true;
+    }
   }
   _refreshSpriteSection(sprite) {
     if (!sprite || sprite._eeWorldX === undefined) return;
@@ -3975,6 +4025,10 @@ window.LevelObject = class LevelObject {
     if (!this._sections[nextSection].includes(sprite)) this._sections[nextSection].push(sprite);
     sprite._eeSectionIndex = nextSection;
     this._colorDirty = true;
+    if (this._flatDepth) {
+      if (nextSection + 1 > this._flatSectionCount) this._flatSectionCount = nextSection + 1;
+      this._setSpriteCulled(sprite, (sprite._eeLayer ?? 1) !== 2 && !this._isSectionInView(nextSection));
+    }
 
     const layer = sprite._eeLayer !== undefined ? sprite._eeLayer : 1;
     if (layer === 2) {
@@ -4021,6 +4075,15 @@ window.LevelObject = class LevelObject {
     _0x3dce4b._eeCollisionSectionIndex = _0x5cad3c;
   }
   _setSectionVisible(_0x2b0fa1, _0x488507) {
+    if (this._flatDepth) {
+      const section = this._sections[_0x2b0fa1];
+      if (!section) return;
+      for (let i = 0; i < section.length; i++) {
+        const spr = section[i];
+        if (spr && (spr._eeLayer ?? 1) !== 2) this._setSpriteCulled(spr, !_0x488507);
+      }
+      return;
+    }
     const _0x141e9c = this._sectionContainers[_0x2b0fa1];
     if (_0x141e9c) {
       _0x141e9c.additive.visible = _0x488507;
@@ -4070,7 +4133,8 @@ window.LevelObject = class LevelObject {
       } catch (e) {}
       try { if (this._glowSprites) for (const g of this._glowSprites) g.setVisible(false); } catch(e) {}
     }
-    const _0x1dce22 = this._sectionContainers.length - 1;
+    if (this._flatNeedsSort) this._sortFlatContainers();
+    const _0x1dce22 = (this._flatDepth ? this._flatSectionCount : this._sectionContainers.length) - 1;
     if (_0x1dce22 < 0) {
       return;
     }
@@ -5852,7 +5916,7 @@ window.LevelObject = class LevelObject {
       const stamp = this._colorIndexStamp;
       this._forEachVisibleColorSprite((spr) => {
         if (!spr || spr._eeTintStamp !== stamp || !spr.active) return;
-        if (spr.parentContainer && !spr.parentContainer.visible) return;
+        if (this._isSpriteHidden(spr)) return;
         const chans = spr._eeTintChannels;
         for (let i = 0; i < chans.length; i++) {
           const op = visibleOps.get(chans[i]);
@@ -5869,7 +5933,7 @@ window.LevelObject = class LevelObject {
       for (const spr of chSprites) {
         if (!spr || !spr.active) continue;
         if (op.hex !== null && typeof spr.setTint === "function") {
-          if (!op.pulsed || !spr.parentContainer || spr.parentContainer.visible) spr.setTint(op.hex);
+          if (!op.pulsed || !this._isSpriteHidden(spr)) spr.setTint(op.hex);
         }
         if (op.hex !== null || !op.pulsed) spr._eePulsed = op.pulsed;
       }
@@ -5912,7 +5976,7 @@ window.LevelObject = class LevelObject {
       const hex = colorManager.getHex(parseInt(chId, 10));
       for (const spr of sprites) {
         if (!spr || !spr.active) continue;
-        if (onlyVisible && spr.parentContainer && !spr.parentContainer.visible) continue;
+        if (onlyVisible && this._isSpriteHidden(spr)) continue;
         this._applyChannelTint(spr, chId, hex, colorManager);
         this._applyChannelAlpha(spr, colorManager);
       }
@@ -6021,7 +6085,7 @@ window.LevelObject = class LevelObject {
     const hexByChannel = {};
     const tintSprite = (spr) => {
       if (!spr || spr._eeTintStamp !== stamp || !spr.active) return;
-      if (spr.parentContainer && !spr.parentContainer.visible) return;
+      if (this._isSpriteHidden(spr)) return;
       const chans = spr._eeTintChannels;
       for (let i = 0; i < chans.length; i++) {
         const chId = chans[i];

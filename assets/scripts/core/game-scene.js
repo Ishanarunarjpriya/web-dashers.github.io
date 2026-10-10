@@ -8406,7 +8406,7 @@ _showwippopup() {
       window._animTimer += deltaTime;
       for (let _as of window._animatedSprites) {
         if (!_as || !_as.active || !_as.visible) continue;
-        if (_as.parentContainer && !_as.parentContainer.visible) continue;
+        if (_as._eeCulled || (_as.parentContainer && !_as.parentContainer.visible)) continue;
         if (window._animTimer - (_as._lastAnimSwap || 0) >= _as._animInterval) {
           _as._lastAnimSwap = window._animTimer;
           _as._animIdx = (_as._animIdx + 1) % _as._animFrames.length;
@@ -8425,7 +8425,7 @@ _showwippopup() {
       const sawTimer = (window._animTimer || 0) / 1000;
       for (let _saw of this._level._sawSprites) {
         if (!_saw || !_saw.active || !_saw.visible) continue;
-        if (_saw.parentContainer && !_saw.parentContainer.visible) continue;
+        if (_saw._eeCulled || (_saw.parentContainer && !_saw.parentContainer.visible)) continue;
         const baseSpeed = _saw._Sawrotationspeed ?? 0.0034;
         let sawRotationSpeed = baseSpeed;
         if (_saw._SawRandom1 !== undefined) {
