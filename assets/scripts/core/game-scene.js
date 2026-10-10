@@ -6472,28 +6472,29 @@ _showwippopup() {
       return;
     }
     const xPos = screenWidth / 2;
-    const popupHeight = 420;
-    const popupWidth = 480;
+    const popupY = screenHeight / 2;
+    const popupW = 480;
+    const popupH = 420;
     this._updateLogPopup = this.add.container(0, 0).setScrollFactor(0).setDepth(1000);
-    const background = this.add.rectangle(xPos, popupHeight, screenWidth, screenHeight, 0, 100 / 255);
+    const background = this.add.rectangle(xPos, popupY, screenWidth, screenHeight, 0, 100 / 255);
     background.setInteractive();
     this._updateLogPopup.add(background);
 
-    const bounceContainer = this.add.container(xPos, popupHeight).setScale(0);
+    const bounceContainer = this.add.container(xPos, popupY).setScale(0);
     this._updateLogPopup.add(bounceContainer);
     const cornerRadius = this.textures.get("GJ_square02").source[0].width * 0.325;
-    const popupBg = this._drawScale9(0, 0, popupWidth, popupHeight, "GJ_square02", cornerRadius, 16777215, 1);
+    const popupBg = this._drawScale9(0, 0, popupW, popupH, "GJ_square02", cornerRadius, 16777215, 1);
     bounceContainer.add(popupBg);
-    const closeBtn = this.add.image(-(popupWidth / 2) + 20, -(popupHeight / 2) + 20, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
+    const closeBtn = this.add.image(-(popupW / 2) + 20, -(popupH / 2) + 20, "GJ_WebSheet", "GJ_closeBtn_001.png").setScale(0.8).setInteractive();
     bounceContainer.add(closeBtn);
     this._expandHitArea(closeBtn, 2);
     this._makeBouncyButton(closeBtn, 0.8, () => this._closeUpdateLogPopup());
-    const title = this.add.bitmapText(0, -(popupHeight / 2) + 40, "bigFont", "BETA (EXPECT BUGS)", 33).setOrigin(0.5, 0.55).setTint(0xff6666);
+    const title = this.add.bitmapText(0, -(popupH / 2) + 40, "bigFont", "Update Log", 36).setOrigin(0.5, 0.55);
     bounceContainer.add(title);
-    const scrollAreaW = popupWidth - 40;
-    const scrollAreaH = popupHeight - 100;
+    const scrollAreaW = popupW - 40;
+    const scrollAreaH = popupH - 100;
     const scrollAreaX = 0;
-    const scrollAreaY = -(popupHeight / 2) + 60 + scrollAreaH / 2;
+    const scrollAreaY = 10;
     const scrollFrameBg = this.add.graphics();
     scrollFrameBg.fillStyle(0x000000, 0.18);
     scrollFrameBg.fillRoundedRect(scrollAreaX - scrollAreaW / 2, scrollAreaY - scrollAreaH / 2, scrollAreaW, scrollAreaH, 8);
@@ -6507,23 +6508,36 @@ _showwippopup() {
       0xFF008E - pink dev entries
     */
     const updateEntries = [
-      { text: "Update Log", scale: 1, font: "goldFont" },
-      { text: "- Performance & Rendering: Flat Depth System, LDM Culling, Sprite culling, FPS counter", scale: 0.6 },
-      { text: "- Color Channels: Additive blending, initial state support, alpha fix, glow suppression", scale: 0.6 },
-      { text: "- Player & Physics: GD Cube Slopes, back-wall detection, flat cap landing, rotation fix", scale: 0.6 },
-      { text: "- Triggers & Effects: Engine fixes, shake triggers, death shake, checkpoint triggers", scale: 0.6 },
-      { text: "- Beast Animations: GJBeasts 01-05, tint fix, collision safety", scale: 0.6 },
-      { text: "- Input & UI: Jump deduplication, click cancel, settings sync, song name fix", scale: 0.6 },
-      { text: "- Misc: Teleport ignore, dual player death, on-death triggers, hitbox trail refactor", scale: 0.6 },
+      { text: "What's new!", scale: 1, font: "goldFont" },
+      { text: "- Levels look much closer to real GD: colors, glow, see-through objects and layering are fixed", scale: 0.6 },
+      { text: "- Color triggers work properly now, including copied colors, pulses and fades", scale: 0.6 },
+      { text: "- Slopes feel more like GD: no more getting pulled onto them, and the cube spins the right way", scale: 0.6 },
+      { text: "- Smoother on big levels, plus an FPS counter (turn on LDM if your device struggles)", scale: 0.6 },
+      { text: "- Beasts are animated and colored correctly", scale: 0.6 },
+      { text: "- Lots of trigger fixes, like shake, checkpoints and on-death triggers", scale: 0.6 },
+      { text: "- Jumps and clicks register more reliably, and your settings stay in sync", scale: 0.6 },
+      { text: "- Plus a bunch of smaller bug fixes", scale: 0.6 },
       { text: "- Ishanarunarjpriya", scale: 0.5, color: 0xaaddff }
     ]; 
     let yPos = 0;
     const lineItems = [];
+    const textMaxW = scrollAreaW - 24;
     updateEntries.forEach(entry => {
-      const txt = this.add.bitmapText(0, yPos, entry.font || "bigFont", entry.text, 32)
-        .setOrigin(0.5, 0)
-        .setCenterAlign()
-        .setScale(entry.scale || 0.65);
+      const scale = entry.scale || 0.65;
+      const isBullet = entry.text.startsWith("-");
+      const txt = this.add.bitmapText(isBullet ? -textMaxW / 2 : 0, yPos, entry.font || "bigFont", entry.text, 32)
+        .setOrigin(isBullet ? 0 : 0.5, 0)
+        .setScale(scale)
+        .setMaxWidth(textMaxW / scale);
+      if (isBullet) txt.setLeftAlign();
+      else txt.setCenterAlign();
+      let wrapWidth = textMaxW / scale;
+      for (let i = 0; i < 8; i++) {
+        const shownWidth = txt.getTextBounds(false).global.width;
+        if (shownWidth <= textMaxW) break;
+        wrapWidth *= (textMaxW / shownWidth) * 0.97;
+        txt.setMaxWidth(wrapWidth);
+      }
       if (entry.color != null) txt.setTint(entry.color);
       contentContainer.add(txt);
       lineItems.push(txt);
@@ -6539,7 +6553,7 @@ _showwippopup() {
       const wx = xPos + bounceContainer.x - xPos;
       const s = bounceContainer.scaleX;
       const bwx = xPos;
-      const bwy = popupHeight;
+      const bwy = popupY;
       maskShape.clear();
       maskShape.fillStyle(0xffffff, 1);
       maskShape.fillRect(
