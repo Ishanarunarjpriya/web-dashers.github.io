@@ -1392,7 +1392,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "87": {
-    "can_color": true,
+        "can_color": true,
     "default_base_color_channel": 1005,
     "frame": "d_cogwheel_03_001.png",
     "glow_frame": "d_cogwheel_03_glow_001.png",
@@ -1997,6 +1997,7 @@ window.allobjects = function() {
     "default_z_order": 10
   },
   "137": {
+    "blend": "additive",
     "type": "deco",
     "frame": "d_wheel_01_001.png",
     "gridW": 1.350000023841858,
@@ -2212,6 +2213,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "154": {
+    "blend": "additive",
     "can_color": true,
     "children": [
       {
@@ -2249,6 +2251,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "155": {
+    "blend": "additive",
     "can_color": true,
     "default_base_color_channel": 1005,
     "frame": "d_spikewheel_02_001.png",
@@ -3424,7 +3427,8 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "222": {
-    "can_color": true,
+    "blend": "additive",
+        "can_color": true,
     "children": [
       {
         "frame": "d_roundCloud_01_001.png",
@@ -3461,8 +3465,9 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "223": {
+    "blend": "additive",
     "can_color": true,
-    "default_base_color_channel": 1005,
+        "default_base_color_channel": 1005,
     "frame": "d_roundCloud_02_001.png",
     "glow_frame": "d_roundCloud_02_glow_001.png",
     "gridH": 2.116666555404663,
@@ -3476,8 +3481,9 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "224": {
+    "blend": "additive",
     "can_color": true,
-    "default_base_color_channel": 1005,
+        "default_base_color_channel": 1005,
     "frame": "d_roundCloud_03_001.png",
     "glow_frame": "d_roundCloud_03_glow_001.png",
     "gridH": 1.1666666269302368,
@@ -3644,6 +3650,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "236": {
+    "blend": "additive",
     "can_color": true,
     "default_base_color_channel": 1006,
     "frame": "d_circle_01_001.png",

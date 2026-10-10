@@ -8317,6 +8317,14 @@ _showwippopup() {
           volume: 0.65 * this._sfxVolume
         });
         this._deathSoundPlayed = true;
+        if (this._level && window.disableShake !== true) {
+          this._level._shakeState = {
+            strength: 2.4,
+            endTime: (this.time?.now ?? 0) + 100,
+            interval: 0,
+            lastStepTime: -Infinity
+          };
+        }
         this._totalDeaths++;
         localStorage.setItem("gd_totalDeaths", this._totalDeaths);
       }
@@ -8359,6 +8367,17 @@ _showwippopup() {
           this._player2._hitboxGraphics.clear();
         }
       }
+      this._level.applyShakeToOffsets?.(this.time.now);
+      this._level.updateGroundTiles?.(this._cameraY);
+      this._updateBackground();
+      const deathShakeX = this._level.shakeOffsetX || 0;
+      const deathShakeY = this._level.shakeOffsetY || 0;
+      this._level.additiveContainer.x = -this._cameraX + deathShakeX;
+      this._level.additiveContainer.y = this._cameraY + deathShakeY;
+      this._level.container.x = -this._cameraX + deathShakeX;
+      this._level.container.y = this._cameraY + deathShakeY;
+      this._level.topContainer.x = -this._cameraX + deathShakeX;
+      this._level.topContainer.y = this._cameraY + deathShakeY;
       this._deathTimer += deltaTime;
       let _0x237728 = this._hadNewBest ? 1400 : 1000;
       if (this._deathTimer > _0x237728) {

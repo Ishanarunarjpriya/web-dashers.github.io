@@ -94,6 +94,52 @@ class TriggerStepper {
     }
   }
 }
+function channelHexToRgb(value) {
+  const n = typeof value === "number" ? value : parseInt(String(value ?? "").replace(/^#/, ""), 16);
+  if (!Number.isFinite(n)) return { r: 255, g: 255, b: 255 };
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function rgbToHsv(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const diff = max - min;
+  let h = 0;
+  if (diff !== 0) {
+    if (max === r) h = 60 * (((g - b) / diff) % 6);
+    else if (max === g) h = 60 * ((b - r) / diff + 2);
+    else h = 60 * ((r - g) / diff + 4);
+    if (h < 0) h += 360;
+  }
+  return { h, s: max === 0 ? 0 : (diff / max) * 100, v: (max / 255) * 100 };
+}
+function hsvToRgb(h, s, v) {
+  const sat = Math.max(0, Math.min(100, s)) / 100;
+  const val = Math.max(0, Math.min(100, v)) / 100;
+  const c = val * sat;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = val - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
+}
+function lightBgColor(bg, p1) {
+  const hsv = rgbToHsv(bg.r, bg.g, bg.b);
+  const target = hsvToRgb(hsv.h, hsv.s - 20, hsv.v + 20);
+  const sum = bg.r + bg.g + bg.b;
+  if (sum >= 150) return target;
+  const t = sum / 150;
+  return {
+    r: Math.round(target.r * t + p1.r * (1 - t)),
+    g: Math.round(target.g * t + p1.g * (1 - t)),
+    b: Math.round(target.b * t + p1.b * (1 - t))
+  };
+}
+
 class ColorManager {
   constructor() {
     this._initialColors = {};
@@ -162,7 +208,15 @@ class ColorManager {
     }
   }
   getColor(index) {
-    return this._colors[index] || {
+    const id = Number(index);
+    if (id === 1010 && !this.hasColor(index)) return { r: 0, g: 0, b: 0 };
+    if (id === 1011 && !this.hasColor(index)) return { r: 255, g: 255, b: 255 };
+    const color = this._colors[index];
+    if (color) return color;
+    if (id === 1005) return channelHexToRgb(window.mainColor);
+    if (id === 1006) return channelHexToRgb(window.secondaryColor);
+    if (id === 1007) return lightBgColor(this.getColor(fs), channelHexToRgb(window.mainColor));
+    return {
       r: 255,
       g: 255,
       b: 255

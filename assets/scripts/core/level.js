@@ -89,6 +89,17 @@ function _encodeTextObjectString(value) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
  
+const LEGACY_19_COLOR_CHANNELS = {
+  1: 1005,
+  2: 1006,
+  3: 1,
+  4: 2,
+  5: 1007,
+  6: 3,
+  7: 4,
+  8: 1003
+};
+
 function parseObject(objectString) {
   let objectParts = objectString.split(",");
   let objectData = {};
@@ -98,6 +109,13 @@ function parseObject(objectString) {
     objectData[key] = value;
   }
   let objectId = parseInt(objectData[1] || "0", 10);
+  let objectColor1 = parseInt(objectData[21] || "0", 10);
+  let objectColor2 = parseInt(objectData[22] || "0", 10);
+  const legacyColorId = LEGACY_19_COLOR_CHANNELS[parseInt(objectData[19] || "0", 10)];
+  if (legacyColorId !== undefined) {
+    objectColor1 = legacyColorId;
+    objectColor2 = 0;
+  }
   const rawGroupValues = [];
   const addRawGroups = (rawValue) => {
     String(rawValue ?? "")
@@ -125,8 +143,8 @@ function parseObject(objectString) {
       zOrder: parseInt(objectData[25] || "0", 10),
       editorLayer2: parseInt(objectData[61] || "0", 10),
       groups: groupString,
-      color1: parseInt(objectData[21] || "0", 10),
-      color2: parseInt(objectData[22] || "0", 10),
+      color1: objectColor1,
+      color2: objectColor2,
       text: _decodeTextObjectString(objectData[31] ?? objectData["31"] ?? ""),
       gameMode: parseInt(objectData['kA2'] ?? '0', 10),
       miniMode: parseInt(objectData['kA3'] ?? '0', 10),
@@ -1250,7 +1268,7 @@ window.LevelObject = class LevelObject {
             g: parseInt(colorProps[2] || "255", 10),
             b: parseInt(colorProps[3] || "255", 10)
           };
-          this._channelBlending[channelId] = colorProps[15] === "1";
+          this._channelBlending[channelId] = colorProps[5] === "1";
         }
       }
     }
@@ -1267,14 +1285,32 @@ window.LevelObject = class LevelObject {
         b: parseInt(cp[3] || "255", 10)
       };
     };
-    if (!this._initialColors[1000] && settingsMap["kS29"]) {
-      let col = parseColorEntry(settingsMap["kS29"]);
-      if (col) this._initialColors[1000] = col;
+    const legacyHeaderChannels = {
+      kS29: 1000,
+      kS30: 1001,
+      kS31: 1002,
+      kS32: 1004,
+      kS33: 1,
+      kS34: 2,
+      kS35: 3,
+      kS36: 4,
+      kS37: 1003
+    };
+    for (const headerKey in legacyHeaderChannels) {
+      const channelId = legacyHeaderChannels[headerKey];
+      if (this._initialColors[channelId] || !settingsMap[headerKey]) continue;
+      const col = parseColorEntry(settingsMap[headerKey]);
+      if (col) {
+        this._initialColors[channelId] = col;
+        const entryProps = {};
+        const legacyParts = settingsMap[headerKey].split("_");
+        for (let propIndex = 0; propIndex + 1 < legacyParts.length; propIndex += 2) {
+          entryProps[parseInt(legacyParts[propIndex], 10)] = legacyParts[propIndex + 1];
+        }
+        this._channelBlending[channelId] = entryProps[5] === "1";
+      }
     }
-    if (!this._initialColors[1001] && settingsMap["kS30"]) {
-      let col = parseColorEntry(settingsMap["kS30"]);
-      if (col) this._initialColors[1001] = col;
-    }
+    if (!settingsMap["kS38"] && settingsMap["kS29"]) this._channelBlending[1002] = true;
   }
   _buildGround() {
     if (window.isEditor) return; // not dealing with ts rn
@@ -2675,7 +2711,8 @@ window.LevelObject = class LevelObject {
       sprite._eeWorldX = worldX;
       sprite._eeBaseY = baseY;
       sprite._eeZDepth = objZDepth;
-      sprite._eeOrigAlpha = 1;
+      sprite._eeOrigAlpha = objectDef?.alpha ?? 1;
+      if (sprite._eeOrigAlpha !== 1) sprite.setAlpha(sprite._eeOrigAlpha);
       if (isSawObjectId) {
         sprite._isSaw = true;
         const isDecorativeSaw = objectDef?.type === decoType && frameName?.includes("sawblade");
@@ -2907,23 +2944,34 @@ window.LevelObject = class LevelObject {
             this._audioScaleSprites.push(childSprite);
           }
 
-          const bortalstuff = childDef.portalGuide ? { ...childDef, _portalFront: true } : childDef;
+          const childVisualSource = { ...childDef };
+          if (childDef.portalGuide) {
+            childVisualSource._portalFront = true;
+          }
+          if (childVisualSource.blend === undefined) {
+            childVisualSource.blend = objectDef && objectDef.blend;
+          }
           if (objectId === 15 || objectId === 16 || objectId === 17) {
             childSprite._rodballchild = true;
             childSprite._Rodobjectid = objectId;
           }
-          if ((childDef.z !== undefined ? childDef.z : -1) < 0) {
+          const childZ = childDef.z !== undefined ? childDef.z : -1;
+          if (childZ < 0) {
             childSprite._eeLayer = 1;
             childSprite._eeBehindParent = true;
+            if (childVisualSource.blend === "additive") {
+              childSprite.setBlendMode(S);
+            }
           } else {
-            this._addVisualSprite(childSprite, bortalstuff);
+            this._addVisualSprite(childSprite, childVisualSource);
           }
 
           childSprite._eeWorldX = childWorldX;
           childSprite._eeBaseY = childBaseY;
           const guidelayer = childDef.portalGuide ? 0 : ((childDef.z !== undefined ? childDef.z : -1));
           childSprite._eeZDepth = objZDepth + guidelayer;
-          childSprite._eeOrigAlpha = 1;
+          childSprite._eeOrigAlpha = objectDef?.alpha ?? 1;
+          if (childSprite._eeOrigAlpha !== 1) childSprite.setAlpha(childSprite._eeOrigAlpha);
           if (isSawObjectId) {
             childSprite._isSaw = true;
               if (sprite._Sawrotationspeed !== undefined) {
@@ -5900,6 +5948,8 @@ window.LevelObject = class LevelObject {
     }
     if (spr && spr._eeIsGlowSprite) {
       op *= this._getGlowAlphaMultiplier();
+    } else if (spr && spr._eeOrigAlpha !== undefined && spr._eeOrigAlpha !== 1) {
+      op *= spr._eeOrigAlpha;
     }
     return op;
   }

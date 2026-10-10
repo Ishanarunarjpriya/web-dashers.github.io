@@ -3353,6 +3353,18 @@ class LevelEditor {
         };
     }
 
+    const initial = this._level && this._level._initialColors && this._level._initialColors[channelId];
+
+    if (initial) {
+        return { r: initial.r, g: initial.g, b: initial.b };
+    }
+
+    const resolved = this._colorManager && this._colorManager.getColor && this._colorManager.getColor(channelId);
+
+    if (resolved) {
+        return { r: resolved.r, g: resolved.g, b: resolved.b };
+    }
+
     return fallback;
   }
 
