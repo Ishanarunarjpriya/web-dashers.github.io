@@ -15603,6 +15603,7 @@ window.allobjects = function() {
     "animInterval": 75
   },
   "925": {
+    "blend": "additive",
     "can_color": true,
     "children": [
       {
@@ -15637,6 +15638,7 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "926": {
+    "blend": "additive",
     "can_color": true,
     "children": [
       {

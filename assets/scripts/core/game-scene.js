@@ -481,6 +481,16 @@ class GameScene extends Phaser.Scene {
         this._colorManager.setInitialColor(parseInt(chId, 10), col);
       }
     }
+    if (this._level._initialCopies) {
+      for (let chId in this._level._initialCopies) {
+        this._colorManager.setInitialCopy(parseInt(chId, 10), this._level._initialCopies[chId]);
+      }
+    }
+    if (this._level._initialOpacity) {
+      for (let chId in this._level._initialOpacity) {
+        this._colorManager.setInitialOpacity(parseInt(chId, 10), this._level._initialOpacity[chId]);
+      }
+    }
     this._level.createEndPortal(this);
     this._glitterCenterX = 0;
     this._glitterCenterY = T;
@@ -8635,9 +8645,9 @@ _showwippopup() {
     let playerX = this._playerWorldX;
     if (!this._applyColorTriggerFn) {
       this._applyColorTriggerFn = (colorTrigger) => {
-        this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration);
+        this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration, colorTrigger.copy, colorTrigger.opacity);
         if (colorTrigger.tintGround) {
-          this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration);
+          this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration, colorTrigger.copy);
         }
       };
     }

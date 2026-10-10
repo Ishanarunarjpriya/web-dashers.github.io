@@ -1449,9 +1449,9 @@ class LevelEditor {
 
     const playerX = this._playerWorldX;
     const applyColorTrigger = (colorTrigger) => {
-        this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration);
+        this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration, colorTrigger.copy, colorTrigger.opacity);
         if (colorTrigger.tintGround) {
-            this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration);
+            this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration, colorTrigger.copy);
         }
     };
     for (let colorTrigger of this._level.checkColorTriggers(playerX)) {

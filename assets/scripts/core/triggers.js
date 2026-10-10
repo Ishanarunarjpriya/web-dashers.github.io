@@ -127,12 +127,37 @@ function hsvToRgb(h, s, v) {
   else { r = c; b = x; }
   return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
 }
+const LBG_PRESETS = {
+  gd: { sat: 0, val: 20, mul: 1, fade: "value" },
+  old: { sat: -20, val: 20, mul: 1, fade: "sum" },
+  bg: { sat: 0, val: 0, mul: 1, fade: "value" },
+  dim: { sat: 0, val: 0, mul: 0.65, fade: "value" }
+};
+window.lbgDebug = { ...LBG_PRESETS.gd };
+window.setLbg = (mode) => {
+  const preset = typeof mode === "string" ? LBG_PRESETS[mode] : mode;
+  if (!preset) {
+    console.log("lbg presets:", Object.keys(LBG_PRESETS).join(", "), "or setLbg({ sat, val, mul, fade })");
+    return window.lbgDebug;
+  }
+  window.lbgDebug = { ...window.lbgDebug, ...preset };
+  console.log("lbg:", JSON.stringify(window.lbgDebug));
+  return window.lbgDebug;
+};
 function lightBgColor(bg, p1) {
+  const cfg = window.lbgDebug || LBG_PRESETS.gd;
   const hsv = rgbToHsv(bg.r, bg.g, bg.b);
-  const target = hsvToRgb(hsv.h, hsv.s - 20, hsv.v + 20);
-  const sum = bg.r + bg.g + bg.b;
-  if (sum >= 150) return target;
-  const t = sum / 150;
+  const shifted = hsvToRgb(hsv.h, hsv.s + cfg.sat, hsv.v + cfg.val);
+  const mul = Number.isFinite(cfg.mul) ? cfg.mul : 1;
+  const target = {
+    r: Math.min(255, Math.round(shifted.r * mul)),
+    g: Math.min(255, Math.round(shifted.g * mul)),
+    b: Math.min(255, Math.round(shifted.b * mul))
+  };
+  const t = cfg.fade === "sum"
+    ? Math.min(1, (bg.r + bg.g + bg.b) / 150)
+    : Math.max(0, Math.min(1, hsv.v / 20));
+  if (t >= 1) return target;
   return {
     r: Math.round(target.r * t + p1.r * (1 - t)),
     g: Math.round(target.g * t + p1.g * (1 - t)),
@@ -140,14 +165,51 @@ function lightBgColor(bg, p1) {
   };
 }
 
+function parseChannelHsv(value) {
+  if (!value) return null;
+  const parts = String(value).split("a");
+  const num = (i, fallback) => {
+    const n = parseFloat(parts[i]);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    h: num(0, 0),
+    s: num(1, 1),
+    v: num(2, 1),
+    sAdd: parts[3] === "1",
+    vAdd: parts[4] === "1"
+  };
+}
+function applyChannelHsv(color, hsv) {
+  if (!hsv) return { r: color.r, g: color.g, b: color.b };
+  const base = rgbToHsv(color.r, color.g, color.b);
+  let h = (base.h + hsv.h) % 360;
+  if (h < 0) h += 360;
+  const s = hsv.sAdd ? base.s / 100 + hsv.s : (base.s / 100) * hsv.s;
+  const v = hsv.vAdd ? base.v / 100 + hsv.v : (base.v / 100) * hsv.v;
+  return hsvToRgb(h, s * 100, v * 100);
+}
+
 class ColorManager {
   constructor() {
     this._initialColors = {};
+    this._initialCopies = {};
+    this._initialOpacity = {};
     this.reset();
+  }
+  setInitialOpacity(channelId, opacity) {
+    if (!Number.isFinite(opacity)) return;
+    this._initialOpacity[channelId] = opacity;
+    this._opacity[channelId] = opacity;
   }
   setInitialColor(channelId, color) {
     this._initialColors[channelId] = { ...color };
     this._colors[channelId] = { ...color };
+  }
+  setInitialCopy(channelId, copy) {
+    if (!copy || !(copy.source > 0)) return;
+    this._initialCopies[channelId] = { ...copy };
+    this._copies[channelId] = { ...copy };
   }
   reset() {
     this._colors = {
@@ -180,24 +242,110 @@ class ColorManager {
     for (let chId in this._initialColors) {
       this._colors[chId] = { ...this._initialColors[chId] };
     }
+    this._copies = {};
+    for (let chId in this._initialCopies) {
+      this._copies[chId] = { ...this._initialCopies[chId] };
+    }
+    this._opacity = { ...this._initialOpacity };
+    this._opacityActions = {};
+    this._pulses = [];
     this._coloredChannels = new Set();
     this._actions = {};
   }
-  triggerColor(index, newColor, duration) {
+  startPulse(channel, pulse) {
+    const fadeIn = Math.max(0, pulse.fadeIn || 0);
+    const hold = Math.max(0, pulse.hold || 0);
+    const fadeOut = Math.max(0, pulse.fadeOut || 0);
+    this._pulses.push({
+      channel: Number(channel),
+      color: pulse.color,
+      hsv: pulse.hsv || null,
+      copySource: pulse.copySource > 0 ? Number(pulse.copySource) : 0,
+      fadeIn,
+      hold,
+      fadeOut,
+      total: Math.max(0.01, fadeIn + hold + fadeOut),
+      elapsed: 0
+    });
+  }
+  clearPulses() {
+    this._pulses = [];
+  }
+  _applyPulses(index, color, depth) {
+    const id = Number(index);
+    let out = color;
+    for (let i = 0; i < this._pulses.length; i++) {
+      const p = this._pulses[i];
+      if (p.channel !== id) continue;
+      const t = p.elapsed;
+      let intensity;
+      if (t < p.fadeIn) intensity = t / p.fadeIn;
+      else if (t < p.fadeIn + p.hold) intensity = 1;
+      else intensity = p.fadeOut > 0 ? 1 - (t - p.fadeIn - p.hold) / p.fadeOut : 0;
+      if (intensity <= 0) continue;
+      if (intensity > 1) intensity = 1;
+      const target = p.hsv
+        ? applyChannelHsv(p.copySource > 0 && depth < 8 ? this.getColor(p.copySource, depth + 1) : out, p.hsv)
+        : p.color;
+      out = {
+        r: Math.round(out.r + (target.r - out.r) * intensity),
+        g: Math.round(out.g + (target.g - out.g) * intensity),
+        b: Math.round(out.b + (target.b - out.b) * intensity)
+      };
+    }
+    return out;
+  }
+  _resolveCopy(copy, depth) {
+    return applyChannelHsv(this.getColor(copy.source, depth + 1), copy.hsv);
+  }
+  triggerColor(index, newColor, duration, copy = null, opacity = undefined) {
     this._coloredChannels.add(String(index));
+    if (Number.isFinite(opacity)) {
+      const to = Math.max(0, Math.min(1, opacity));
+      if (duration <= 0) {
+        this._opacity[index] = to;
+        delete this._opacityActions[index];
+      } else {
+        this._opacityActions[index] = { from: this.getOpacity(index), to, duration, elapsed: 0 };
+      }
+    }
     let oldColor = {
-      ...this.getColor(index)
+      ...this._getBaseColor(index)
     };
-    this._actions[index] = new TriggerStepper(oldColor, newColor, duration);
+    const hasCopy = copy && copy.source > 0 && Number(copy.source) !== Number(index);
+    if (hasCopy) {
+      this._copies[index] = { ...copy };
+    } else {
+      delete this._copies[index];
+    }
+    const target = hasCopy ? this._resolveCopy(copy, 0) : newColor;
+    const action = new TriggerStepper(oldColor, target, duration);
+    action.copy = hasCopy ? this._copies[index] : null;
+    this._actions[index] = action;
     if (duration <= 0) {
       this._colors[index] = {
-        ...newColor
+        ...target
       };
     }
   }
   step(timeMillis) {
+    if (this._pulses.length) {
+      for (let i = this._pulses.length - 1; i >= 0; i--) {
+        const p = this._pulses[i];
+        p.elapsed += timeMillis;
+        if (p.elapsed >= p.total) this._pulses.splice(i, 1);
+      }
+    }
+    for (let opIndex in this._opacityActions) {
+      const op = this._opacityActions[opIndex];
+      op.elapsed += timeMillis;
+      const t = Math.min(op.elapsed / op.duration, 1);
+      this._opacity[opIndex] = op.from + (op.to - op.from) * t;
+      if (t >= 1) delete this._opacityActions[opIndex];
+    }
     for (let actionIndex in this._actions) {
       let action = this._actions[actionIndex];
+      if (action.copy) action.to = this._resolveCopy(action.copy, 0);
       action.step(timeMillis);
       this._colors[actionIndex] = {
         ...action.current
@@ -207,10 +355,18 @@ class ColorManager {
       }
     }
   }
-  getColor(index) {
+  getColor(index, depth = 0) {
+    const base = this._getBaseColor(index, depth);
+    return this._pulses.length ? this._applyPulses(index, base, depth) : base;
+  }
+  _getBaseColor(index, depth = 0) {
     const id = Number(index);
     if (id === 1010 && !this.hasColor(index)) return { r: 0, g: 0, b: 0 };
     if (id === 1011 && !this.hasColor(index)) return { r: 255, g: 255, b: 255 };
+    const copy = this._copies[index];
+    if (copy && depth < 8 && !(this._actions[index] && !this._actions[index].done)) {
+      return this._resolveCopy(copy, depth);
+    }
     const color = this._colors[index];
     if (color) return color;
     if (id === 1005) return channelHexToRgb(window.mainColor);
@@ -221,6 +377,10 @@ class ColorManager {
       g: 255,
       b: 255
     };
+  }
+  getOpacity(index) {
+    const op = this._opacity[index];
+    return op === undefined ? 1 : op;
   }
   hasColor(index) {
     return this._coloredChannels.has(String(index));

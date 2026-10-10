@@ -89,6 +89,18 @@ function _encodeTextObjectString(value) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
  
+const LEGACY_COLOR_TRIGGER_CHANNELS = {
+  105: 1004,
+  221: 1,
+  717: 2,
+  718: 3,
+  743: 4,
+  744: 1003,
+  899: 1,
+  900: 1009,
+  915: 1002
+};
+
 const LEGACY_19_COLOR_CHANNELS = {
   1: 1005,
   2: 1006,
@@ -978,7 +990,7 @@ window.LevelObject = class LevelObject {
     for (let trigger of triggers) {
       if (trigger.touchTriggered || !this._isTriggerSaveObjectLive(trigger.uid)) continue;
       if (trigger.x <= targetX) {
-        colorManager.triggerColor(trigger.index, trigger.color, 0);
+        colorManager.triggerColor(trigger.index, trigger.color, 0, trigger.copy, trigger.opacity);
       } else {
         break;
       }
@@ -1045,8 +1057,8 @@ window.LevelObject = class LevelObject {
     this._userCoinCompleted = window.isEditor ? new Set() : this._loadUserCoinProgress();
     this._userCoinSlotCount = 0;
     this._sourceLevelObjects = levelObjects;
-    this._spawnLevelObjects(levelObjects);
     this._setUpSettings(settingslist);
+    this._spawnLevelObjects(levelObjects);
     this.checkToggleTriggers?.(0);
     this.checkPickupTriggers?.(0);
     this.checkCountTriggers?.(0);
@@ -1240,7 +1252,9 @@ window.LevelObject = class LevelObject {
   }
   _setUpSettings(settingsStr) {
     this._initialColors = {};
-    this._channelBlending = {};
+    this._initialCopies = {};
+    this._initialOpacity = {};
+    this._channelBlending = { 1007: true };
     this._backgroundId = null;
     this._groundId = null;
     if (!settingsStr) return;
@@ -1262,6 +1276,10 @@ window.LevelObject = class LevelObject {
           colorProps[parseInt(props[j], 10)] = props[j + 1];
         }
         let channelId = parseInt(colorProps[6], 10);
+        if (channelId === 1005 || channelId === 1006) {
+          this._channelBlending[channelId] = colorProps[5] === "1";
+          continue;
+        }
         if (!isNaN(channelId)) {
           this._initialColors[channelId] = {
             r: parseInt(colorProps[1] || "255", 10),
@@ -1269,6 +1287,17 @@ window.LevelObject = class LevelObject {
             b: parseInt(colorProps[3] || "255", 10)
           };
           this._channelBlending[channelId] = colorProps[5] === "1";
+          const channelOpacity = parseFloat(colorProps[7]);
+          if (Number.isFinite(channelOpacity) && channelOpacity !== 1) {
+            this._initialOpacity[channelId] = Math.max(0, Math.min(1, channelOpacity));
+          }
+          const copySource = parseInt(colorProps[9] || "0", 10);
+          if (copySource > 0 && copySource !== channelId) {
+            this._initialCopies[channelId] = {
+              source: copySource,
+              hsv: parseChannelHsv(colorProps[10])
+            };
+          }
         }
       }
     }
@@ -1777,6 +1806,31 @@ window.LevelObject = class LevelObject {
         sprite._eeLayer = 1;
       }
     }
+  }
+  _getPerspChildOffsets(scene, objectDef) {
+    const cache = this._perspOffsetCache || (this._perspOffsetCache = new Map());
+    if (cache.has(objectDef)) return cache.get(objectDef);
+    let result = null;
+    const children = objectDef.children || [];
+    const perspIndexes = [];
+    children.forEach((childDef, index) => {
+      if (childDef && /^persp_/.test(childDef.frame || "") && childDef.localDx === undefined) perspIndexes.push(index);
+    });
+    if (perspIndexes.length === 2) {
+      const widthOf = (frameName) => {
+        const info = frameName && frameName !== "none" ? getAtlasFrame(scene, frameName) : null;
+        const frame = info ? scene.textures.get(info.atlas).get(info.frame) : null;
+        return frame ? frame.realWidth : 0;
+      };
+      const leftWidth = widthOf(children[perspIndexes[0]].frame);
+      const rightWidth = widthOf(children[perspIndexes[1]].frame);
+      const parentWidth = widthOf(objectDef.frame);
+      if (leftWidth > 0 && rightWidth > 0 && (!parentWidth || Math.abs(leftWidth + rightWidth - parentWidth) <= 2)) {
+        result = { [perspIndexes[0]]: -leftWidth / 2, [perspIndexes[1]]: rightWidth / 2 };
+      }
+    }
+    cache.set(objectDef, result);
+    return result;
   }
   _getGlowFrameName(frameName, objectData = null, objectDef = null) {
     const glowSource = objectDef || objectData || {};
@@ -2304,9 +2358,10 @@ window.LevelObject = class LevelObject {
       });
     }
 
-    if ([105, 744, 899, 900, 915].includes(levelObj.id)) {
+    if (LEGACY_COLOR_TRIGGER_CHANNELS[levelObj.id] !== undefined) {
       const _raw = levelObj._raw;
-      const targetChannel = parseInt(_raw[23] ?? 0, 10);
+      const targetChannel = parseInt(_raw[23] ?? LEGACY_COLOR_TRIGGER_CHANNELS[levelObj.id], 10) || LEGACY_COLOR_TRIGGER_CHANNELS[levelObj.id];
+      const copySource = parseInt(_raw[50] ?? 0, 10);
       if (targetChannel > 0) {
         this._colorTriggers.push({
           ...triggerBase,
@@ -2322,7 +2377,8 @@ window.LevelObject = class LevelObject {
           },
           duration: parseFloat(_raw[10] ?? 0),
           tintGround: _raw[14] === "1",
-          opacity: parseFloat(_raw[35] ?? 1)
+          opacity: parseFloat(_raw[35] ?? 1),
+          copy: copySource > 0 ? { source: copySource, hsv: parseChannelHsv(_raw[49]) } : null
         });
       }
     }
@@ -2360,7 +2416,9 @@ window.LevelObject = class LevelObject {
         },
         fadeIn: parseFloat(_raw[45] ?? 0),
         hold: parseFloat(_raw[46] ?? 0),
-        fadeOut: parseFloat(_raw[47] ?? 0)
+        fadeOut: parseFloat(_raw[47] ?? 0),
+        hsv: String(_raw[48] ?? "0") === "1" ? parseChannelHsv(_raw[49]) : null,
+        copySource: parseInt(_raw[50] ?? 0, 10) || 0
       });
     }
 
@@ -2629,6 +2687,8 @@ window.LevelObject = class LevelObject {
     if (col1 === 0 && (objectDef.type === solidType || objectDef.type === hazardType)) col1 = 1;
 
     const col2 = levelObj.color2 || (objectDef.default_detail_color_channel !== undefined ? objectDef.default_detail_color_channel : -1);
+    const hasDetailChannel = Number(objectDef.default_detail_color_channel) > 0 && Number(col2) > 0;
+    const isDetailChild = (childDef) => hasDetailChannel && childDef && childDef.black !== true && childDef.tint !== undefined && childDef.tint !== 0;
     const canColor = objectDef.can_color !== false;
 
     const registerColor = (spr, ch, forceParentColor = false) => {
@@ -2871,7 +2931,10 @@ window.LevelObject = class LevelObject {
     }
 
     if (objectDef.children) {
+      const perspChildDx = this._getPerspChildOffsets(scene, objectDef);
+      let childIndex = -1;
       for (const childDef of objectDef.children) {
+        childIndex++;
         const isEditorGuideChild = !!(window.isEditor && (childDef.portalGuide || childDef.orbGuide));
         if (isEditorGuideChild) {
           continue;
@@ -2879,9 +2942,10 @@ window.LevelObject = class LevelObject {
 
         let childDx = childDef.dx || 0;
         let childDy = childDef.dy || 0;
+        const autoDx = perspChildDx ? perspChildDx[childIndex] : undefined;
 
-        if (childDef.localDx !== undefined || childDef.localDy !== undefined) {
-          let localDx = childDef.localDx || 0;
+        if (childDef.localDx !== undefined || childDef.localDy !== undefined || autoDx !== undefined) {
+          let localDx = autoDx !== undefined ? autoDx : (childDef.localDx || 0);
           let localDy = childDef.localDy || 0;
 
           if (levelObj.flipX) {
@@ -2982,7 +3046,8 @@ window.LevelObject = class LevelObject {
             childSprite._Sawoffset = childSprite.rotation - (sprite.rotation || 0);
             issawsprite(childSprite);
           }
-          registerColor(childSprite, col1, !!isSawObjectId);
+          const childColorChannel = isDetailChild(childDef) ? Number(col2) : col1;
+          registerColor(childSprite, childColorChannel, !!isSawObjectId);
           this._addToSection(childSprite);
           registerToGroups(childSprite, childWorldX, childBaseY);
           registerObjectSprite(childSprite);
@@ -3015,7 +3080,7 @@ window.LevelObject = class LevelObject {
                 childGlowSprite._Sawoffset = childGlowSprite.rotation - (sprite.rotation || 0);
                 issawsprite(childGlowSprite);
               }
-              registerColor(childGlowSprite, col1);
+              registerColor(childGlowSprite, childColorChannel);
               registerToGroups(childGlowSprite, childWorldX, childBaseY);
               registerObjectSprite(childGlowSprite);
             }
@@ -4548,6 +4613,11 @@ window.LevelObject = class LevelObject {
   _startPulseTrigger(trig) {
     if (window.enableLDM) return;
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
+    const pulseCm = this._scene && this._scene._colorManager;
+    if (trig.targetType === 0 && trig.targetChannel > 0 && pulseCm && typeof pulseCm.startPulse === "function") {
+      pulseCm.startPulse(trig.targetChannel, trig);
+      return;
+    }
     const totalDur = trig.fadeIn + trig.hold + trig.fadeOut;
     this._activePulses.push({ trig, elapsed: 0, totalDuration: totalDur > 0 ? totalDur : 0.01 });
   }
@@ -4589,7 +4659,7 @@ window.LevelObject = class LevelObject {
 
     for (const trig of spawnMatches(this._colorTriggers)) {
       if (colorManager && typeof colorManager.triggerColor === "function") {
-        colorManager.triggerColor(trig.index, trig.color, trig.duration);
+        colorManager.triggerColor(trig.index, trig.color, trig.duration, trig.copy, trig.opacity);
       }
     }
     for (const trig of spawnMatches(this._enterEffectTriggers)) {
@@ -5777,6 +5847,7 @@ window.LevelObject = class LevelObject {
 
   resetPulseTriggers() {
     this._colorDirty = true;
+    this._scene?._colorManager?.clearPulses?.();
     this._pulseTriggerIdx = 0;
     this._activePulses = [];
     for (const gid in this._groupSprites || {}) {
@@ -5801,8 +5872,20 @@ window.LevelObject = class LevelObject {
         if (!spr || !spr.active) continue;
         if (onlyVisible && spr.parentContainer && !spr.parentContainer.visible) continue;
         this._applyChannelTint(spr, chId, hex, colorManager);
+        this._applyChannelAlpha(spr, colorManager);
       }
     }
+  }
+
+  _applyChannelAlpha(spr, colorManager) {
+    if (!spr || spr._eeActive || spr._eeAudioScale || spr._beastManaged) return;
+    const ch = spr._eeColorChannel;
+    if (!ch || !colorManager || typeof colorManager.getOpacity !== "function") return;
+    const chOp = colorManager.getOpacity(ch);
+    if (chOp === 1 && !spr._eeChannelAlphaApplied) return;
+    spr._eeChannelAlphaApplied = true;
+    const alpha = this._getGroupOpacityForSprite(spr);
+    if (spr.alpha !== alpha) spr.alpha = alpha;
   }
 
   _applyChannelTint(spr, chId, hex, colorManager) {
@@ -5865,15 +5948,18 @@ window.LevelObject = class LevelObject {
     if (this._colorAppliedMin !== this._visMinSec || this._colorAppliedMax !== this._visMaxSec) dirty = true;
     const lastHex = this._colorLastHex || (this._colorLastHex = {});
     const lastHas = this._colorLastHas || (this._colorLastHas = {});
+    const lastOp = this._colorLastOp || (this._colorLastOp = {});
     const canCheckHas = typeof colorManager.hasColor === "function";
     const watch = this._colorWatchChannels;
     for (let i = 0; i < watch.length; i++) {
       const chId = watch[i];
       const hex = colorManager.getHex(parseInt(chId, 10));
       const has = canCheckHas ? colorManager.hasColor(chId) : false;
-      if (lastHex[chId] !== hex || lastHas[chId] !== has) {
+      const op = colorManager.getOpacity ? colorManager.getOpacity(chId) : 1;
+      if (lastHex[chId] !== hex || lastHas[chId] !== has || lastOp[chId] !== op) {
         lastHex[chId] = hex;
         lastHas[chId] = has;
+        lastOp[chId] = op;
         dirty = true;
       }
     }
@@ -5901,6 +5987,7 @@ window.LevelObject = class LevelObject {
         if (hex === undefined) hex = hexByChannel[chId] = colorManager.getHex(parseInt(chId, 10));
         this._applyChannelTint(spr, chId, hex, colorManager);
       }
+      this._applyChannelAlpha(spr, colorManager);
     };
     this._forEachVisibleColorSprite(tintSprite);
   }
@@ -5945,6 +6032,10 @@ window.LevelObject = class LevelObject {
         const g = opacities[groups[i]];
         if (g !== undefined && g < op) op = g;
       }
+    }
+    const chCm = spr && spr._eeColorChannel && this._scene && this._scene._colorManager;
+    if (chCm && typeof chCm.getOpacity === "function") {
+      op *= chCm.getOpacity(spr._eeColorChannel);
     }
     if (spr && spr._eeIsGlowSprite) {
       op *= this._getGlowAlphaMultiplier();
