@@ -311,7 +311,7 @@ window.allobjects = function() {
     "gridH": 0,
     "blend": "additive",
     "can_color": true,
-    "default_base_color_channel": 1,
+    "default_base_color_channel": 1005,
     "default_detail_color_channel": 1,
     "default_z_layer": 3,
     "default_z_order": 9
@@ -323,7 +323,7 @@ window.allobjects = function() {
     "gridH": 0,
     "blend": "additive",
     "can_color": true,
-    "default_base_color_channel": 1,
+    "default_base_color_channel": 1005,
     "default_detail_color_channel": 1,
     "default_z_layer": 3,
     "default_z_order": 9
@@ -334,7 +334,8 @@ window.allobjects = function() {
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 327424,
+    "can_color": true,
+    "default_base_color_channel": 1005,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
@@ -345,7 +346,8 @@ window.allobjects = function() {
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 327424,
+    "can_color": true,
+    "default_base_color_channel": 1005,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
