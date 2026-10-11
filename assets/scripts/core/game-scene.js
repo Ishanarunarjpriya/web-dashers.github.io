@@ -8410,6 +8410,7 @@ _showwippopup() {
       this._level.container.y = this._cameraY + deathShakeY;
       this._level.topContainer.x = -this._cameraX + deathShakeX;
       this._level.topContainer.y = this._cameraY + deathShakeY;
+      this._applyMirrorEffect();
       this._deathTimer += deltaTime;
       let _0x237728 = this._hadNewBest ? 1400 : 1000;
       if (this._deathTimer > _0x237728) {
@@ -8976,7 +8977,7 @@ _applyMirrorEffect() {
     if (isMirrored) {
       for (const c of containers) {
         c.scaleX = -1;
-        c.x = this._cameraX + screenWidth;
+        c.x = this._cameraX + screenWidth - (this._level.shakeOffsetX || 0);
       }
       for (const tile of this._level._groundTiles) {
         tile.x = screenWidth - tile.x - this._level._tileW;
