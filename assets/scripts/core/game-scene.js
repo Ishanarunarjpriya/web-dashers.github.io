@@ -7415,6 +7415,7 @@ _showwippopup() {
     this._endCamTween = null;
     this._spaceWasDown = false;
     this._physicsFrame = 0;
+    this._pendingMusicOffset = null;
   }
   _restartLevel() {
     this._attempts++;
@@ -7575,7 +7576,7 @@ _showwippopup() {
 
     this._practiceBypassPending = false;
     this._audio.reset();
-    this._audio.startMusic(musicOffset);
+    this._pendingMusicOffset = musicOffset;
     this._paused = false;
     if (this._pauseContainer) {
       this._pauseContainer.destroy();
@@ -8419,6 +8420,11 @@ _showwippopup() {
         }
       }
       return;
+    }
+    if (this._pendingMusicOffset != null) {
+      const pendingOffset = this._pendingMusicOffset;
+      this._pendingMusicOffset = null;
+      this._audio.startMusic(pendingOffset);
     }
     this._playTime += deltaTime / 1000;
     this._audio.update(deltaTime / 1000);

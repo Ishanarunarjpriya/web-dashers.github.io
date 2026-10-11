@@ -3940,18 +3940,19 @@ window.LevelObject = class LevelObject {
   _isFlatSectionShown(sectionIndex) {
     return this._visMinSec >= 0 && sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec;
   }
-  _placeFlatSprite(spr, shown) {
+  _getFlatTarget(spr, shown) {
     const layer = spr._eeLayer !== undefined ? spr._eeLayer : 1;
-    if (layer === 2) return;
-    let target;
+    if (layer === 2) return null;
     if (shown) {
       const fc = this._getFlatContainers();
-      target = layer === 0 ? fc.additive : fc.normal;
-    } else {
-      const home = this._ensureSectionContainer(spr._eeSectionIndex);
-      target = layer === 0 ? home.additive : home.normal;
+      return layer === 0 ? fc.additive : fc.normal;
     }
-    if (spr.parentContainer === target) return;
+    const home = this._ensureSectionContainer(spr._eeSectionIndex);
+    return layer === 0 ? home.additive : home.normal;
+  }
+  _placeFlatSprite(spr, shown) {
+    const target = this._getFlatTarget(spr, shown);
+    if (!target || spr.parentContainer === target) return;
     target.add(spr);
     if (shown) this._flatNeedsSort = true;
   }
@@ -4078,10 +4079,35 @@ window.LevelObject = class LevelObject {
     if (this._flatDepth) {
       const section = this._sections[_0x2b0fa1];
       if (!section) return;
+      const moving = new Set();
+      const sources = new Set();
       for (let i = 0; i < section.length; i++) {
         const spr = section[i];
-        if (spr) this._placeFlatSprite(spr, _0x488507);
+        if (!spr) continue;
+        const target = this._getFlatTarget(spr, _0x488507);
+        if (!target || spr.parentContainer === target) continue;
+        moving.add(spr);
+        if (spr.parentContainer) sources.add(spr.parentContainer);
       }
+      if (!moving.size) return;
+      for (const src of sources) {
+        const list = src.list;
+        let w = 0;
+        for (let r = 0; r < list.length; r++) {
+          if (!moving.has(list[r])) list[w++] = list[r];
+        }
+        list.length = w;
+      }
+      for (const spr of moving) {
+        const target = this._getFlatTarget(spr, _0x488507);
+        const src = spr.parentContainer;
+        if (src) spr.off(Phaser.GameObjects.Events.DESTROY, src.onChildDestroyed, src);
+        else spr.removeFromDisplayList();
+        spr.once(Phaser.GameObjects.Events.DESTROY, target.onChildDestroyed, target);
+        spr.parentContainer = target;
+        target.list.push(spr);
+      }
+      if (_0x488507) this._flatNeedsSort = true;
       return;
     }
     const _0x141e9c = this._sectionContainers[_0x2b0fa1];
@@ -6104,7 +6130,7 @@ window.LevelObject = class LevelObject {
     this._activeEnterEffect = 0;
     this._activeExitEffect = 0;
     for (let _0x17a21d = 0; _0x17a21d < this._sections.length; _0x17a21d++) {
-      this._setSectionVisible(_0x17a21d, true);
+      if (!this._flatDepth) this._setSectionVisible(_0x17a21d, true);
       const _0x14a035 = this._sections[_0x17a21d];
       if (_0x14a035) {
         for (let _0x13e116 = 0; _0x13e116 < _0x14a035.length; _0x13e116++) {
