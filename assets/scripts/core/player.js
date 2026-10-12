@@ -4717,16 +4717,16 @@ if (this.p.isFlying || this.p.isUfo) {
                 if (_padId === 35) { _padVel = 9.6 * _grav; }
                 else if (_padId === 140) { _padVel = 6.72 * _grav; }
                 else if (_padId === 1332) { _padVel = 12 * _grav; }
-                else if (_padId === 67) { _padVel = 10.0 * _grav; _padFlip = true; }
-                if (this.p.isMini) {
+                else if (_padId === 67) { _padVel = 7.68 * _grav; _padFlip = true; }
+                if (this.p.isMini && _padId !== 67) {
                   _padVel *= 0.8;
                 }
               } else {
                 if (_padId === 35) { _padVel = 16 * _grav; }
                 else if (_padId === 140) { _padVel = 10.4 * _grav; }
                 else if (_padId === 1332) { _padVel = 20 * _grav; }
-                else if (_padId === 67) { _padVel = 15.0 * _grav; _padFlip = true; }
-                if (!this.p.isUfo && !this.p.isSpider && !this.p.isRobot && this.p.isMini) {
+                else if (_padId === 67) { _padVel = 12.8 * _grav; _padFlip = true; }
+                if (!this.p.isUfo && !this.p.isSpider && !this.p.isRobot && this.p.isMini && _padId !== 67) {
                   _padVel *= 0.8;
                 }
               }

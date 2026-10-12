@@ -242,6 +242,8 @@ window.allobjects = function() {
     ]
   },
   "15": {
+    "can_color": true,
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "rod_01_001.png",
     "gridW": 0,
@@ -250,9 +252,10 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "rod_ball_01_001.png",
+        "can_color": true,
+        "color_channel": 1005,
         "localDy": -62,
         "blend": "additive",
-        "tint": 327424,
         "z": 1,
         "audioScale": true
       }
@@ -263,6 +266,8 @@ window.allobjects = function() {
     "editorOffsetY": 6,
   },
   "16": {
+    "can_color": true,
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "rod_02_001.png",
     "gridW": 0,
@@ -271,9 +276,10 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "rod_ball_01_001.png",
+        "can_color": true,
+        "color_channel": 1005,
         "localDy": -46.5,
         "blend": "additive",
-        "tint": 327424,
         "z": 1,
         "audioScale": true
       }
@@ -284,6 +290,8 @@ window.allobjects = function() {
     "editorOffsetY": -1.8,
   },
   "17": {
+    "can_color": true,
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "rod_03_001.png",
     "gridW": 0,
@@ -292,9 +300,10 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "rod_ball_01_001.png",
+        "can_color": true,
+        "color_channel": 1005,
         "localDy": -32.5,
         "blend": "additive",
-        "tint": 327424,
         "z": 1,
         "audioScale": true
       }
@@ -1953,6 +1962,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "132": {
+    "audioPulse": true,
     "type": "deco",
     "frame": "d_arrow_01_001.png",
     "gridW": 0,
@@ -6263,6 +6273,7 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "460": {
+    "audioPulse": true,
     "can_color": true,
     "default_base_color_channel": 1006,
     "frame": "d_arrow_02_001.png",
@@ -6909,6 +6920,7 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "494": {
+    "audioPulse": true,
     "can_color": true,
     "default_base_color_channel": 1005,
     "frame": "d_arrow_03_001.png",
@@ -66732,6 +66744,7 @@ window.allobjects = function() {
     "default_z_order": -5
   },
   "3630": {
+    "audioPulse": true,
     "can_color": true,
     "default_base_color_channel": 1,
     "frame": "d_arrow_01_001.png",
@@ -66746,6 +66759,7 @@ window.allobjects = function() {
     "default_z_order": -5
   },
   "3631": {
+    "audioPulse": true,
     "can_color": true,
     "default_base_color_channel": 1,
     "frame": "d_arrow_02_001.png",
@@ -66760,6 +66774,7 @@ window.allobjects = function() {
     "default_z_order": -5
   },
   "3632": {
+    "audioPulse": true,
     "can_color": true,
     "default_base_color_channel": 1,
     "frame": "d_arrow_03_001.png",

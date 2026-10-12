@@ -345,7 +345,7 @@ class ColorManager {
     if (color) return color;
     if (id === 1005) return channelHexToRgb(window.mainColor);
     if (id === 1006) return channelHexToRgb(window.secondaryColor);
-    if (id === 1007) return lightBgColor(this.getColor(fs), channelHexToRgb(window.mainColor));
+    if (id === 1007) return lightBgColor(this.getColor(fs), channelHexToRgb(window.secondaryColor));
     return {
       r: 255,
       g: 255,

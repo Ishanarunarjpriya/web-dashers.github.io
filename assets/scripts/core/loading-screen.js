@@ -228,7 +228,7 @@ class BootScene extends Phaser.Scene {
       this.add.bitmapText(cx, cy + 187, "goldFont", msg, 30).setOrigin(0.5);
       const robtopLogo = this.add.image(cx, cy - 120, "GJ_LaunchSheet", "RobTopLogoBig_001.png").setOrigin(0.5).setScale(0.8);
       const gjLogo = this.add.image(cx, cy, "ishyLogo").setOrigin(0.5).setScale(0.63);
-      const Logo = this.add.image(1015, 610, "Phaserlogo").setScale(0.115).setInteractive();
+      const Logo = this.add.image(W - 123, 610, "Phaserlogo").setScale(0.115).setInteractive();
       this.children.bringToTop(robtopLogo);
       this.children.bringToTop(gjLogo);
       this.children.bringToTop(Logo);

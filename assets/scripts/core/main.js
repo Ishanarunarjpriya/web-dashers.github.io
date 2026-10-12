@@ -38,6 +38,7 @@ if (window.gameCache) {
     }, 3000);
   }
 }
+l(getDynamicScreenWidth());
 const phaserConfig = {
   type: Phaser.AUTO,
   width: screenWidth,

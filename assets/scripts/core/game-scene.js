@@ -3915,6 +3915,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     }
     this.scale.on("enterfullscreen", () => this._onFullscreenChange(true));
     this.scale.on("leavefullscreen", () => this._onFullscreenChange(false));
+    this._pendingScreenResize = true;
 
     this._buildHUD();
     this._createStartPosGui();
@@ -3936,6 +3937,11 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       window.gdresize = true;
       window.addEventListener("resize", () => {
         this.scale.refresh();
+        clearTimeout(window._gdResizeTimer);
+        window._gdResizeTimer = setTimeout(() => {
+          const scene = this.scene.isActive() ? this : this.game.scene.getScene("GameScene");
+          if (scene && scene.sys.isActive()) scene._applyScreenResize();
+        }, 150);
       });
     }
     if (this.game.registry.get("fadeInFromBlack")) {
@@ -5571,7 +5577,7 @@ _buildSettingsPopup() {
         showObjectIds: window.showObjectIds,
         showCPS: window.showCPS,
         speedHack: window.speedHack,
-        macroBot: window.macroBot,
+        macroBot: !!window.macroBot,
         practiceMusicSync: window.practiceMusicSync,
         showGlow: window.showGlow,
         showEditorGlow: window.showEditorGlow,
@@ -6514,11 +6520,15 @@ _showwippopup() {
       { text: "- Levels look much closer to real GD: colors, glow, see-through objects and layering are fixed", scale: 0.6 },
       { text: "- Color triggers work properly now, including copied colors, pulses and fades", scale: 0.6 },
       { text: "- Slopes feel more like GD: no more getting pulled onto them, and the cube spins the right way", scale: 0.6 },
-      { text: "- Smoother on big levels, plus an FPS counter (turn on LDM if your device struggles)", scale: 0.6 },
+      { text: "- Widescreen support: the game now fills your screen, from 16:10 up to ultrawide", scale: 0.6 },
+      { text: "- No more freeze after dying, so the music stays in sync when you respawn", scale: 0.6 },
+      { text: "- Blue pads launch you like in GD, so Electrodynamix and Electroman play right", scale: 0.6 },
+      { text: "- Arrows, orbs and rod balls pulse to the music more smoothly", scale: 0.6 },
+      { text: "- More decorations use your icon colors, like in GD", scale: 0.6 },
+      { text: "- Smoother on big levels (turn on LDM if your device struggles)", scale: 0.6 },
       { text: "- Beasts are animated and colored correctly", scale: 0.6 },
       { text: "- Lots of trigger fixes, like shake, checkpoints and on-death triggers", scale: 0.6 },
-      { text: "- Jumps and clicks register more reliably, and your settings stay in sync", scale: 0.6 },
-      { text: "- Plus a bunch of smaller bug fixes", scale: 0.6 },
+      { text: "- Plus a bunch of smaller bug fixes, like dying in mirror mode", scale: 0.6 },
       { text: "- Ishanarunarjpriya", scale: 0.5, color: 0xaaddff }
     ]; 
     let yPos = 0;
@@ -7155,6 +7165,7 @@ _showwippopup() {
     this._player2.setRobotVisible(false);
     this._levelAttempts = 1;
     this._levelJumps = 0;
+    this._level._setRodframe?.(1);
     this._attempts++;
     localStorage.setItem("gd_totalAttempts", this._attempts);
     this._attemptsLabel.setText("Attempt " + this._levelAttempts);
@@ -7334,7 +7345,7 @@ _showwippopup() {
       this._menuInfoBtn.x = screenWidth - 30 - 3;
     }
     if (this._copyrightText) {
-      this._copyrightText.x = screenWidth - 850;
+      this._copyrightText.x = 288;
     }
     if (this._tryMeImg) {
       this._tryMeImg.x = _0x1e5db8 + 260;
@@ -7361,14 +7372,6 @@ _showwippopup() {
       this._iconBtn.x = (screenWidth / 2) - this._playBtn.width / 2 - 100 - (this._iconBtn.width * this._iconBtn.scaleX) / 2;
       this.tweens.killTweensOf(this._iconBtn, "y");
       this._iconBtn.y = 320;
-      this.tweens.add({
-        targets: this._iconBtn,
-        y: 324,
-        duration: 750,
-        ease: "Quad.InOut",
-        yoyo: true,
-        repeat: -1
-      });
     }
     if (this._creatorBtn) {
       this._creatorBtn.x = (screenWidth / 2) + this._playBtn.width / 2 + 100 + (this._creatorBtn.width * this._creatorBtn.scaleX) / 2;
@@ -7465,36 +7468,6 @@ _showwippopup() {
       playerSpeed = SpeedPortal.FOUR_TIMES;
     }
     this._level.resetObjects();
-    this._level._setRodframe?.(this._levelAttempts);
-    try {
-      if (this._level && Array.isArray(this._level._sawSprites)) {
-        const groups = new Map();
-        for (const s of this._level._sawSprites) {
-          if (!s) continue;
-          const id = s._eeObjectId ?? null;
-          if (!groups.has(id)) groups.set(id, []);
-          groups.get(id).push(s);
-        }
-        for (const [id, arr] of groups.entries()) {
-          if (!arr || !arr.length) continue;
-          const sample = arr[0];
-          const base = Math.abs(sample._Sawrotationspeed) || 0.0034;
-          const sign = (Math.random() < 0.5) ? -1 : 1;
-          const newSpeed = sign * (base + (Math.random() * base * 0.2 - base * 0.1));
-          const newPhase = Math.random() * Math.PI * 2;
-          const newAmp = sample._SawRandom2 ?? (base * 0.12);
-          const baseAngle = Math.random() * Math.PI * 2;
-          for (const spr of arr) {
-            if (!spr) continue;
-            spr._Sawrotationspeed = newSpeed;
-            spr._SawRandom1 = newPhase;
-            spr._SawRandom2 = newAmp;
-            const offset = typeof spr._Sawoffset === "number" ? spr._Sawoffset : 0;
-            spr.rotation = baseAngle + offset;
-          }
-        }
-      }
-    } catch (e) { }
     this._level.shiftGroundTiles(this._cameraX - _0x2ba78a);
     this._level.resetGroundState();
     this._level.resetColorTriggers();
@@ -7892,16 +7865,31 @@ _showwippopup() {
     this._level._updateGlowVisibility?.();
   }
   _onFullscreenChange(_0x310c5b) {
-    if (!_0x310c5b) {
-      l(1138);
-    }
     this.time.delayedCall(200, () => this._applyScreenResize());
   }
-  _applyScreenResize() {
-    if (this.scale.isFullscreen) {
-      const _0x5bc34b = window.innerWidth / window.innerHeight;
-      l(Math.round(screenHeight * _0x5bc34b));
+  _hasBlockingOverlay() {
+    if (this._levelSelectOverlay) return true;
+    const list = this.children.list;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (c.visible && c.depth >= 150) return true;
     }
+    return false;
+  }
+  _applyScreenResize() {
+    const nextWidth = getDynamicScreenWidth();
+    if (nextWidth === screenWidth && this.scale.width === screenWidth) {
+      this._pendingScreenResize = false;
+      this.scale.refresh();
+      return;
+    }
+    if (window.isEditor || this._hasBlockingOverlay()) {
+      this._pendingScreenResize = true;
+      this.scale.refresh();
+      return;
+    }
+    this._pendingScreenResize = false;
+    l(nextWidth);
     this.scale.setGameSize(screenWidth, screenHeight);
     this.scale.refresh();
     this._bg.setSize(screenWidth, screenHeight);
@@ -8043,6 +8031,9 @@ _showwippopup() {
     return _0xd8019e * 60;
   }
   update(_0x54fa47, deltaTime) {
+    if (this._pendingScreenResize && !window.isEditor && !this._hasBlockingOverlay()) {
+      this._applyScreenResize();
+    }
     if (window.isEditor) {
         if (this._editorPlaytestActive && !this._editorPlaytestPaused) {
             this._levelEditor._updateEditorPlaytest(deltaTime);

@@ -96,9 +96,14 @@ const screenHeight = 640;
 const a = 60;
 const o = 180;
 let centerX = screenWidth / 2 - 150;
-function l(screenWidth) {
-  this.screenWidth = screenWidth;
+function l(newWidth) {
+  screenWidth = newWidth;
   centerX = screenWidth / 2 - 150;
+}
+function getDynamicScreenWidth() {
+  const w = window.innerWidth || 1138;
+  const h = window.innerHeight || 640;
+  return Math.round(Math.min(1494, Math.max(1024, screenHeight * (w / h))));
 }
 const u = 1 / 240;
 const SpeedPortal = {

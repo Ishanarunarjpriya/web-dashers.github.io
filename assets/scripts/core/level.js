@@ -690,6 +690,7 @@ window.LevelObject = class LevelObject {
     this._audioScaleSprites = [];
     this._editorTriggerVisuals = [];
     this._orbSprites = [];
+    this._audioPulseSprites = [];
     this._coinSprites = [];
     this._secretCoinRunCollected = new Set();
     this._secretCoinCompleted = new Set();
@@ -1296,6 +1297,7 @@ window.LevelObject = class LevelObject {
           this._channelBlending[channelId] = colorProps[5] === "1";
           continue;
         }
+        if (channelId === 1007) continue;
         if (!isNaN(channelId)) {
           this._initialColors[channelId] = {
             r: parseInt(colorProps[1] || "255", 10),
@@ -1355,7 +1357,8 @@ window.LevelObject = class LevelObject {
         this._channelBlending[channelId] = entryProps[5] === "1";
       }
     }
-    if (!settingsMap["kS38"] && settingsMap["kS29"]) this._channelBlending[1002] = true;
+    this._legacyColorLevel = !settingsMap["kS38"] && !!settingsMap["kS29"];
+    if (this._legacyColorLevel) this._channelBlending[1002] = true;
   }
   _buildGround() {
     if (window.isEditor) return; // not dealing with ts rn
@@ -1409,6 +1412,7 @@ window.LevelObject = class LevelObject {
       }
     }
     this._maxGroundWorldX = startX + (tileCount - 1) * this._tileW;
+    this._groundShift = ((startX % this._tileW) + this._tileW) % this._tileW;
     const floorLineFrame = scene.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
     const floorLineWidth = floorLineFrame ? floorLineFrame.width : 888;
     const floorLineScale = (screenWidth + SHAKE_MAX_OFFSET * 2) / floorLineWidth;
@@ -1504,7 +1508,7 @@ window.LevelObject = class LevelObject {
         this._ground2Tiles.push(newGround2Tile);
       }
       let newCeilingTile = scene.add.image(0, groundY, "groundSquare_" + window._groundId + "_001.png");
-      newCeilingTile.setOrigin(0, 1).setFlipY(true).setTint(((newCeilingTile = this._groundTiles[0]) == null ? undefined : newCeilingTile.tintTopLeft) || 17578).setDepth(20).setVisible(false);
+      newCeilingTile.setOrigin(0, 1).setFlipY(true).setTint(((newTile = this._groundTiles[0]) == null ? undefined : newTile.tintTopLeft) || 17578).setDepth(20).setVisible(false);
       newCeilingTile._worldX = newTileX;
       this._ceilingTiles.push(newCeilingTile);
       if (scene.textures.exists(ground2TexKey)) {
@@ -1531,7 +1535,7 @@ window.LevelObject = class LevelObject {
     const tileWidth = this._tileW;
     let leftTileIndex;
     let rightTileIndex;
-    let maxWorldX = this._maxGroundWorldX || -Infinity;
+    let maxWorldX = -Infinity;
     const ceilingActive = !this._flyGroundActive && this._flyCeilingY !== null;
     if (this._flyVisualOnly && this._flyCeilingY !== null) {
       leftTileIndex = b(0) + cameraY;
@@ -1555,15 +1559,17 @@ window.LevelObject = class LevelObject {
     }
     const ground2TexKey = "groundSquare_" + (window._groundId || "00") + "_2_001.png";
     const hasGround2 = this._scene.textures.exists(ground2TexKey);
-    for (let i = 0; i < this._groundTiles.length; i++) {
+    const tileCount = this._groundTiles.length;
+    const groundShift = this._groundShift || 0;
+    const firstColumn = Math.floor((cameraX - SHAKE_MAX_OFFSET - groundShift) / tileWidth);
+    for (let i = 0; i < tileCount; i++) {
       let groundTile = this._groundTiles[i];
       let ceilingTile = this._ceilingTiles[i];
-      if (groundTile._worldX + tileWidth <= cameraX - SHAKE_MAX_OFFSET) {
-        groundTile._worldX = maxWorldX + tileWidth;
-        ceilingTile._worldX = groundTile._worldX;
-        maxWorldX = groundTile._worldX;
-        this._maxGroundWorldX = maxWorldX;
-      }
+      const column = firstColumn + ((((i - firstColumn) % tileCount) + tileCount) % tileCount);
+      groundTile._worldX = column * tileWidth + groundShift;
+      ceilingTile._worldX = groundTile._worldX;
+      if (groundTile._worldX > maxWorldX) maxWorldX = groundTile._worldX;
+      this._maxGroundWorldX = maxWorldX;
       let tileScreenX = groundTile._worldX - cameraX + shakeX;
       groundTile.x = tileScreenX;
       groundTile.y = leftTileIndex + shakeY;
@@ -1609,6 +1615,7 @@ window.LevelObject = class LevelObject {
       if (this._ceiling2Tiles?.[i]) this._ceiling2Tiles[i]._worldX += shiftAmount;
     }
     this._maxGroundWorldX += shiftAmount;
+    this._groundShift = ((((this._groundShift || 0) + shiftAmount) % this._tileW) + this._tileW) % this._tileW;
   }
   resetGroundTiles(cameraX) {
     const tileWidth = this._tileW;
@@ -1619,6 +1626,7 @@ window.LevelObject = class LevelObject {
       if (this._ceiling2Tiles?.[i]) this._ceiling2Tiles[i]._worldX = cameraX + i * tileWidth;
     }
     this._maxGroundWorldX = cameraX + (this._groundTiles.length - 1) * tileWidth;
+    this._groundShift = ((cameraX % tileWidth) + tileWidth) % tileWidth;
     this.resetGroundState();
   }
   resetGroundState() {
@@ -2711,7 +2719,8 @@ window.LevelObject = class LevelObject {
     const objZDepth = (depthBase[zLayer] !== undefined ? depthBase[zLayer] : 0) + zOrd * 0.01;
 
     let col1 = levelObj.color1 || (objectDef.default_base_color_channel !== undefined ? objectDef.default_base_color_channel : 0);
-    if (col1 === 0 && (objectDef.type === solidType || objectDef.type === hazardType)) col1 = 1;
+    if (!levelObj.color1 && !this._legacyColorLevel && objectDef.modern_base_color_channel !== undefined) col1 = objectDef.modern_base_color_channel;
+    if (col1 === 0 && (objectDef.type === solidType || objectDef.type === hazardType)) col1 = 1004;
 
     const col2 = levelObj.color2 || (objectDef.default_detail_color_channel !== undefined ? objectDef.default_detail_color_channel : -1);
     const hasDetailChannel = Number(objectDef.default_detail_color_channel) > 0 && Number(col2) > 0;
@@ -2853,6 +2862,11 @@ window.LevelObject = class LevelObject {
           orbGlow._orbId = levelObj.id;
           this._orbSprites.push(orbGlow);
         }
+      }
+
+      if (objectDef && objectDef.audioPulse) {
+        this._audioPulseSprites.push(sprite);
+        if (orbGlow) this._audioPulseSprites.push(orbGlow);
       }
 
       if (objectDef && objectDef.type === coinType) {
@@ -3034,6 +3048,7 @@ window.LevelObject = class LevelObject {
             childSprite.setScale(0.1);
             childSprite.setAlpha(0.9);
             childSprite._eeAudioScale = true;
+            if (childDef.can_color === true) childSprite._eeAudioTintable = true;
             this._audioScaleSprites.push(childSprite);
           }
 
@@ -3075,7 +3090,7 @@ window.LevelObject = class LevelObject {
             childSprite._Sawoffset = childSprite.rotation - (sprite.rotation || 0);
             issawsprite(childSprite);
           }
-          const childColorChannel = isDetailChild(childDef) ? Number(col2) : col1;
+          const childColorChannel = childDef.color_channel !== undefined ? childDef.color_channel : (isDetailChild(childDef) ? Number(col2) : col1);
           registerColor(childSprite, childColorChannel, !!isSawObjectId);
           this._addToSection(childSprite);
           registerToGroups(childSprite, childWorldX, childBaseY);
@@ -3951,6 +3966,7 @@ window.LevelObject = class LevelObject {
     return layer === 0 ? home.additive : home.normal;
   }
   _placeFlatSprite(spr, shown) {
+    if (!spr.scene) return;
     const target = this._getFlatTarget(spr, shown);
     if (!target || spr.parentContainer === target) return;
     target.add(spr);
@@ -4083,7 +4099,7 @@ window.LevelObject = class LevelObject {
       const sources = new Set();
       for (let i = 0; i < section.length; i++) {
         const spr = section[i];
-        if (!spr) continue;
+        if (!spr || !spr.scene) continue;
         const target = this._getFlatTarget(spr, _0x488507);
         if (!target || spr.parentContainer === target) continue;
         moving.add(spr);
@@ -4176,11 +4192,9 @@ window.LevelObject = class LevelObject {
       particleScale = _0x1dce22 + 1;
       sliderHeight = -1;
     } else {
-      const rightEdgeX = _0xa5f1e1 + screenWidth;
-      const centerSection = Math.max(0, Math.floor(rightEdgeX / 400));
-      const rangeRadius = cd;
-      particleScale = Math.max(0, centerSection - rangeRadius);
-      sliderHeight = Math.min(_0x1dce22, centerSection + rangeRadius);
+      const margin = cd === 2 ? 100 : 0;
+      particleScale = Math.max(0, Math.floor((_0xa5f1e1 - margin) / 400));
+      sliderHeight = Math.min(_0x1dce22, Math.floor((_0xa5f1e1 + screenWidth + margin) / 400));
     }
     const _0x1800fc = this._visMinSec;
     const _0xc31046 = this._visMaxSec;
@@ -6025,7 +6039,7 @@ window.LevelObject = class LevelObject {
   _applyChannelTint(spr, chId, hex, colorManager) {
     if (spr._cantColor) return;
     if (spr._eePulsed) return;
-    if (spr._eeAudioScale) return;
+    if (spr._eeAudioScale && !spr._eeAudioTintable) return;
     if (spr._isSaw && spr._SawColor !== undefined) {
       spr.setTint(colorManager.getHex(spr._SawColor));
       return;
@@ -6161,8 +6175,10 @@ window.LevelObject = class LevelObject {
     const baseUniform = Number(spr._eeBaseScale);
     const baseX = baseUniform > 0 ? baseUniform : (spr._eeObjScaleX ?? 1);
     const baseY = baseUniform > 0 ? baseUniform : (spr._eeObjScaleY ?? 1);
-    const targetX = baseX * multiplier;
-    const targetY = baseY * multiplier;
+    const pulse = spr._eePulseMult || 1;
+    spr._eeEffectMult = multiplier;
+    const targetX = baseX * multiplier * pulse;
+    const targetY = baseY * multiplier * pulse;
     if (spr.scaleX !== targetX || spr.scaleY !== targetY) spr.setScale(targetX, targetY);
   }
   _getGroupOpacityForSprite(spr) {
@@ -6321,7 +6337,10 @@ window.LevelObject = class LevelObject {
   updateAudioScale(_0x337bf7, cameraX = -Infinity, viewportWidth = Infinity) {
     const _meterValue = Number.isFinite(Number(_0x337bf7)) ? Number(_0x337bf7) : 0;
     const _maxaudioScale = 1.5; //added this cuz god DAMN whe the game lags they get big.
-    const _targetAudioScale = Math.min(_maxaudioScale, Math.max(0, _meterValue));
+    const _pulseTarget = Math.min(1.2, Math.max(0, _meterValue));
+    this._pulseMeter = this._pulseMeter === undefined ? _pulseTarget : this._pulseMeter + (_pulseTarget - this._pulseMeter) * (_pulseTarget > this._pulseMeter ? 0.5 : 0.3);
+    const _smoothMeter = this._pulseMeter;
+    const _targetAudioScale = Math.round(Math.min(_maxaudioScale, Math.max(0, _smoothMeter * 0.8)) * 1000) / 1000;
     const _minVisibleX = cameraX - 200;
     const _maxVisibleX = cameraX + viewportWidth + 200;
     for (let _0x24afdb of this._audioScaleSprites) {
@@ -6333,10 +6352,20 @@ window.LevelObject = class LevelObject {
         _0x24afdb._eeLastAudioScale = _targetAudioScale;
       }
     }
+    const _pulse = Math.round((0.82 + _smoothMeter * 0.25) * 1000) / 1000;
+    for (const spr of this._audioPulseSprites) {
+      if (!spr || !spr.active) continue;
+      const _worldX = spr._eeWorldX;
+      if (Number.isFinite(_worldX) && (_worldX < _minVisibleX || _worldX > _maxVisibleX)) continue;
+      if (spr._eePulseMult === _pulse) continue;
+      spr._eePulseMult = _pulse;
+      const effect = spr._eeEffectMult ?? 1;
+      spr.setScale((spr._eeObjScaleX ?? 1) * effect * _pulse, (spr._eeObjScaleY ?? 1) * effect * _pulse);
+    }
     const _now = Date.now();
     const _clickMult = window.orbClickScale || 2.0;
     const _shrinkMs = window.orbClickShrinkTime || 250;
-    const _pulseMult = Math.min(2.0, 1 + _meterValue * 0.2);
+    const _pulseMult = Math.min(2.0, 1 + _smoothMeter * 0.2);
     for (let _0xOrbSpr of this._orbSprites) {
       if (!_0xOrbSpr || !_0xOrbSpr.active) continue;
       const _worldX = _0xOrbSpr._eeWorldX;
