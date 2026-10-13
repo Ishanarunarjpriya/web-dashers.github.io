@@ -33491,25 +33491,33 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_gradient_02_001.png",
-        "localDy": 0,
+        "localDx": -20,
+        "localDy": -20,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_02_001.png",
-        "localDy": 0,
+        "localDx": 20,
+        "localDy": -20,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_02_001.png",
-        "localDy": 0,
+        "localDx": 20,
+        "localDy": 20,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_02_001.png",
-        "localDy": 0,
+        "localDx": -20,
+        "localDy": 20,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
@@ -33531,25 +33539,33 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_gradient_b_02_001.png",
-        "localDy": 0,
+        "localDx": -10,
+        "localDy": -10,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_b_02_001.png",
-        "localDy": 0,
+        "localDx": 10,
+        "localDy": -10,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_b_02_001.png",
-        "localDy": 0,
+        "localDx": 10,
+        "localDy": 10,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_b_02_001.png",
-        "localDy": 0,
+        "localDx": -10,
+        "localDy": 10,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
@@ -33571,25 +33587,33 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_gradient_c_02_001.png",
-        "localDy": 0,
+        "localDx": -29.5,
+        "localDy": -29.5,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_c_02_001.png",
-        "localDy": 0,
+        "localDx": 29.5,
+        "localDy": -29.5,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_c_02_001.png",
-        "localDy": 0,
+        "localDx": 29.5,
+        "localDy": 29.5,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_gradient_c_02_001.png",
-        "localDy": 0,
+        "localDx": -29.5,
+        "localDy": 29.5,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
