@@ -4665,12 +4665,13 @@ if (this.p.isFlying || this.p.isUfo) {
             this._orbpadHitEffect(gameObj);
             const _padId = gameObj.padId;
             if (_padId === 67) {
-              const physicsFrame = this._scene?._physicsFrame ?? 0;
-              const sinceLast = physicsFrame - (this.p._lastBluePadFrame ?? -Infinity);
-              if (sinceLast >= 0 && sinceLast < 5) {
-                continue;
+              const physicsTick = this._scene?._physicsTick;
+              if (Number.isFinite(physicsTick)) {
+                if (physicsTick - (this.p._lastBluePadTick ?? -Infinity) < 5) {
+                  continue;
+                }
+                this.p._lastBluePadTick = physicsTick;
               }
-              this.p._lastBluePadFrame = physicsFrame;
             }
             const _grav = 2;
             const _fm = this.flipMod();

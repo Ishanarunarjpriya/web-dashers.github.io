@@ -8510,6 +8510,7 @@ _showwippopup() {
     for (let i = 0; i < subSteps; i++) {
       this._state.lastY = this._state.y;
       this._physicsFrame++;
+      this._physicsTick = (this._physicsTick || 0) + 1;
       this._applyJumpInput();
       if (this._macroBot?.playing) {
         this._macroBot.step(this._physicsFrame);

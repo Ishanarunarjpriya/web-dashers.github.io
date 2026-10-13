@@ -1324,6 +1324,7 @@ class LevelEditor {
         for (let i = 0; i < subSteps; i++) {
             this._state.lastY = this._state.y;
             this._physicsFrame++;
+            this._physicsTick = (this._physicsTick || 0) + 1;
             const dualInputState = {
                 upKeyDown: this._state.upKeyDown,
                 upKeyPressed: this._state.upKeyPressed,
