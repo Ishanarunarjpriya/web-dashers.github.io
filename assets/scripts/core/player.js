@@ -3139,6 +3139,7 @@ if (this.p.isFlying || this.p.isUfo) {
     if (window.slopeBackWall === false) return false;
     const ty = gameObj.slopeType;
     if (ty === null || ty === undefined) return false;
+    if (!gameObj.gdWallOnLeft) return false;
     const halfW = (gameObj.w || 0) / 2;
     const halfH = (gameObj.h || 0) / 2;
     if (!(halfW > 0) || !(halfH > 0)) return false;
@@ -3265,6 +3266,8 @@ if (this.p.isFlying || this.p.isUfo) {
     if (upsideDown !== isFloorTop) {
       const touching = upsideDown ? playersY < target : playersY > target;
       if (!touching) return none;
+      const movingAway = isFloorTop ? this.p.yVelocity < 0 : this.p.yVelocity > 0;
+      if (movingAway) return none;
       const crash = upsideDown ? playersY + 4 < target : playersY - 4 > target;
       if (crash) return { landed: false, died: true };
       return none;
@@ -3778,7 +3781,7 @@ if (this.p.isFlying || this.p.isUfo) {
     const nearbyObjects = this._gameLayer?.getNearbySectionObjects?.(playerWorldX) || [];
 
     for (const gameObj of nearbyObjects) {
-      if (!gameObj || gameObj.type !== jumpRingType || this._isObjectActivated(gameObj)) continue;
+      if (!gameObj || gameObj.type !== jumpRingType || (!gameObj.multiActivate && this._isObjectActivated(gameObj))) continue;
 
       const hasCircleHitbox = gameObj.hitbox_radius !== undefined && gameObj.hitbox_radius !== null;
       if (hasCircleHitbox) {
@@ -4140,8 +4143,7 @@ if (this.p.isFlying || this.p.isUfo) {
       this.updateGroundRotation(dt);
     }
     const playerSize = this.p.isMini ? 18 : 30;
-    const _miniGrav = this.p.isMini ? 1.4 : 1;
-    const _gravAmt = p * 0.6 * _miniGrav;
+    const _gravAmt = p * 0.6;
     const canSpiderTeleport = this.p.canJump || this.p.onGround || this.p.onCeiling;
 
     let prioritizeOrb = this._shouldPrioritizeGroundOrbInput();
@@ -4773,7 +4775,7 @@ if (this.p.isFlying || this.p.isUfo) {
           const justPressed = this.p.upKeyDown && !this.p.wasUpKeyDown;
           const _needsClick = !_orbInputConsumedThisStep && !this.p._orbActivationConsumedForPress && ((this.p.isFlying || this.p.isUfo) ? justPressed : (justPressed || (this.p.queuedHold && this.p.upKeyDown)));
           this.p.touchingRing = true;
-          if (!this._isObjectActivated(gameObj) && _needsClick) {
+          if ((gameObj.multiActivate || !this._isObjectActivated(gameObj)) && _needsClick) {
             this._orbpadHitEffect(gameObj, true);
             if (_isDash) {
               const dashHoldTicks = this._getDashHoldTicks(gameObj) + 1;
@@ -5006,6 +5008,7 @@ if (this.p.isFlying || this.p.isUfo) {
             gameObj, pieceWidth, playersY, playersLastY, left, right, top, bottom, playerSize, waveHitSize, gamemodeAddition
           );
           if (slopeResult.died) {
+            if (window.noClip) continue;
             this.killPlayer();
             return;
           }
