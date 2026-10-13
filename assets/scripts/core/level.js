@@ -751,10 +751,6 @@ window.LevelObject = class LevelObject {
     this._pickupTriggerIdx = 0;
     this._touchPickupTriggerActivated = new Set();
     this._countTriggers = [];
-    this._collisionBlocks = [];
-    this._collisionTriggers = [];
-    this._collisionTriggerIdx = 0;
-    this._activeCollisionTriggers = [];
     this._countTriggerIdx = 0;
     this._activeCountTriggers = [];
     this._touchCountTriggerActivated = new Set();
@@ -1036,9 +1032,6 @@ window.LevelObject = class LevelObject {
     if (Array.isArray(this._countTriggers)) {
       this.checkCountTriggers(targetX, colorManager);
     }
-    if (Array.isArray(this._collisionTriggers)) {
-      this.checkCollisionTriggers(targetX);
-    }
     if (Array.isArray(this._instantCountTriggers)) {
       this.checkInstantCountTriggers(targetX, colorManager);
     }
@@ -1087,7 +1080,6 @@ window.LevelObject = class LevelObject {
     this.checkToggleTriggers?.(0);
     this.checkPickupTriggers?.(0);
     this.checkCountTriggers?.(0);
-    this.checkCollisionTriggers?.(0);
     this.checkInstantCountTriggers?.(0);
     this.checkOnDeathTriggers?.(0);
     this.checkTouchTriggers?.(0);
@@ -2521,34 +2513,6 @@ window.LevelObject = class LevelObject {
       });
     }
 
-    if (levelObj.id === 1816) {
-      const _raw = levelObj._raw;
-      const blockScale = Number(levelObj.scale) || 1;
-      this._collisionBlocks.push({
-        blockId: parseInt(_raw[80] ?? 0, 10) || 0,
-        dynamic: String(_raw[94] ?? "0") === "1",
-        x: levelObj.x * 2,
-        y: levelObj.y * 2,
-        half: 30 * blockScale,
-        _eeGroups: triggerBase.groups
-      });
-    }
-
-    if (levelObj.id === 1815) {
-      const _raw = levelObj._raw;
-      this._collisionTriggers.push({
-        ...triggerBase,
-        x: levelObj.x * 2,
-        y: levelObj.y * 2,
-        touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
-        blockA: parseInt(_raw[80] ?? 0, 10) || 0,
-        blockB: parseInt(_raw[95] ?? 0, 10) || 0,
-        targetGroup: parseInt(_raw[51] ?? 0, 10),
-        activate: String(_raw[56] ?? "0") === "1",
-        onExit: String(_raw[93] ?? "0") === "1"
-      });
-    }
-
     if (levelObj.id === 1049) {
       const _raw = levelObj._raw;
       this._toggleTriggers.push({
@@ -2764,15 +2728,10 @@ window.LevelObject = class LevelObject {
     const isDetailChild = (childDef) => hasDetailChannel && childDef && childDef.black !== true && childDef.tint !== undefined && childDef.tint !== 0;
     const canColor = objectDef.can_color !== false;
 
-    const objRaw = levelObj._raw || {};
-    const objHsv1 = String(objRaw[41] ?? "0") === "1" && objRaw[43] ? parseChannelHsv(objRaw[43]) : null;
-    const objHsv2 = String(objRaw[42] ?? "0") === "1" && objRaw[44] ? parseChannelHsv(objRaw[44]) : null;
     const registerColor = (spr, ch, forceParentColor = false) => {
       if (!spr || spr._cantColor || (spr._isBlack && !spr._canColor)) return;
       if (ch > 0 && (canColor || spr._canColor) && spr) {
         spr._eeColorChannel = ch;
-        const sprHsv = (hasDetailChannel && Number(ch) === Number(col2) && Number(col2) !== Number(col1)) ? objHsv2 : (Number(ch) === Number(col1) ? objHsv1 : null);
-        if (sprHsv) spr._eeHsv = sprHsv;
         if (!this._colorChannelSprites[ch]) this._colorChannelSprites[ch] = [];
         this._colorChannelSprites[ch].push(spr);
         if (this._channelBlending && this._channelBlending[ch]) {
@@ -3119,7 +3078,7 @@ window.LevelObject = class LevelObject {
           childSprite._eeWorldX = childWorldX;
           childSprite._eeBaseY = childBaseY;
           const guidelayer = childDef.portalGuide ? 0 : ((childDef.z !== undefined ? childDef.z : -1));
-          childSprite._eeZDepth = objZDepth + Math.max(-10, Math.min(10, guidelayer)) * 0.0008;
+          childSprite._eeZDepth = objZDepth + guidelayer;
           childSprite._eeOrigAlpha = objectDef?.alpha ?? 1;
           if (childSprite._eeOrigAlpha !== 1) childSprite.setAlpha(childSprite._eeOrigAlpha);
           if (isSawObjectId) {
@@ -3375,10 +3334,8 @@ window.LevelObject = class LevelObject {
         this._addCollisionToSection(collider);
       }
     } else if (objectDef.type === portalType) {
-      const portalScaleX = Math.abs(Number(levelObj.scaleX ?? levelObj.scale) || 1);
-      const portalScaleY = Math.abs(Number(levelObj.scaleY ?? levelObj.scale) || 1);
-      const portalW = objectDef.gridW * a * portalScaleX;
-      const portalH = objectDef.gridH * a * portalScaleY;
+      const portalW = objectDef.gridW * a;
+      const portalH = objectDef.gridH * a;
       const portalSub = objectDef.sub || {
         10: "gravity_flip",
         11: "gravity_normal",
@@ -3422,7 +3379,7 @@ window.LevelObject = class LevelObject {
         const portalRot = parseFloat(levelObj.rot || 0) || 0;
         const portalRotRad = portalRot * Math.PI / 180;
         const isTeleportPortal = portalColliderType === "portal_teleport";
-        const hitboxShift = isTeleportPortal ? -30 * portalScaleX : 0;
+        const hitboxShift = isTeleportPortal ? -30 : 0;
         const colliderX = worldX - Math.cos(portalRotRad) * hitboxShift;
         const colliderY = worldY + Math.sin(portalRotRad) * hitboxShift;
         const collider = new Collider(portalColliderType, colliderX, colliderY, portalW, portalH, portalRot);
@@ -3431,15 +3388,9 @@ window.LevelObject = class LevelObject {
         collider.portalY = worldY;
         if (isTeleportPortal) {
           const yOffset = this._getTeleportPortalYOffset(levelObj);
-          const teleportShiftX = Math.sin(portalRotRad) * yOffset * 2;
-          const teleportShiftY = Math.cos(portalRotRad) * yOffset * 2;
-          collider.teleportTargetX = worldX + teleportShiftX;
+          collider.teleportTargetX = worldX;
           collider.teleportTargetY = worldY + yOffset * 2;
           collider.teleportYOffset = yOffset * 2;
-          if (Math.abs(teleportShiftX) > 0.5) {
-            collider.teleportShiftX = teleportShiftX;
-            collider.teleportShiftY = teleportShiftY;
-          }
         }
         registerCollider(collider);
         this.objects.push(collider);
@@ -3535,7 +3486,6 @@ window.LevelObject = class LevelObject {
       const orbH = objectDef.gridH * a;
       const orbObj = new Collider(jumpRingType, worldX, worldY, orbW, orbH, levelObj.rot || 0);
       orbObj.orbId = levelObj.id;
-      orbObj.multiActivate = String(levelObj._raw?.[99] ?? levelObj._raw?.["99"] ?? "") === "1";
       orbObj.orbRotation = levelObj.rot || 0;
       orbObj._dashHoldTicks = 0;
       registerCollider(orbObj);
@@ -3774,7 +3724,6 @@ window.LevelObject = class LevelObject {
     this._countTriggers.sort((a, b) => a.x - b.x);
     this._instantCountTriggers.sort((a, b) => a.x - b.x);
     this._pulseTriggers.sort((a, b) => a.x - b.x);
-    this._collisionTriggers.sort((a, b) => a.x - b.x);
     this._buildTouchColorTriggers();
 
     for (let si = 0; si < this._sectionContainers.length; si++) {
@@ -4869,7 +4818,6 @@ window.LevelObject = class LevelObject {
     for (const trig of spawnMatches(this._pickupTriggers)) this._executePickupTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._countTriggers)) this._armCountTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._instantCountTriggers)) this._executeInstantCountTrigger(trig, colorManager);
-    for (const trig of spawnMatches(this._collisionTriggers)) this._armCollisionTrigger(trig);
   }
 
   checkTouchSpawnTriggers(playerX, playerY) {
@@ -5795,71 +5743,6 @@ window.LevelObject = class LevelObject {
     this._touchCountTriggerActivated = new Set();
   }
 
-  _armCollisionTrigger(trig) {
-    if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
-    if (!trig.blockA || !trig.blockB || !(trig.targetGroup > 0)) return;
-    if (this._activeCollisionTriggers.some(entry => entry.trig === trig)) return;
-    this._activeCollisionTriggers.push({ trig, colliding: false });
-  }
-
-  checkCollisionTriggers(playerX) {
-    while (this._collisionTriggerIdx < this._collisionTriggers.length) {
-      const trig = this._collisionTriggers[this._collisionTriggerIdx];
-      if (trig.x > playerX) break;
-      if (!trig.spawnTriggered && !trig.touchTriggered) this._armCollisionTrigger(trig);
-      this._collisionTriggerIdx++;
-    }
-  }
-
-  _isCollisionBlockEnabled(block) {
-    const off = this._groupToggledOff;
-    if (!off) return true;
-    const ids = this._getObjectGroupIds(block);
-    for (let i = 0; i < ids.length; i++) if (off[ids[i]]) return false;
-    return true;
-  }
-
-  _collisionBlocksTouch(idA, idB) {
-    const scratch = this._collisionScratch || (this._collisionScratch = { x: 0, y: 0 });
-    const blocks = this._collisionBlocks;
-    for (let i = 0; i < blocks.length; i++) {
-      const a = blocks[i];
-      if (a.blockId !== idA || !this._isCollisionBlockEnabled(a)) continue;
-      this._getCombinedGroupOffset(a, scratch);
-      const ax = a.x + scratch.x;
-      const ay = a.y + scratch.y;
-      for (let j = 0; j < blocks.length; j++) {
-        const b = blocks[j];
-        if (b === a || b.blockId !== idB || (!a.dynamic && !b.dynamic) || !this._isCollisionBlockEnabled(b)) continue;
-        this._getCombinedGroupOffset(b, scratch);
-        const reach = a.half + b.half;
-        if (Math.abs(ax - (b.x + scratch.x)) < reach && Math.abs(ay - (b.y + scratch.y)) < reach) return true;
-      }
-    }
-    return false;
-  }
-
-  updateCollisionTriggers() {
-    const active = this._activeCollisionTriggers;
-    if (!active || !active.length) return;
-    for (let i = 0; i < active.length; i++) {
-      const entry = active[i];
-      const trig = entry.trig;
-      if (this._isTriggerToggledOff(trig)) continue;
-      const touching = this._collisionBlocksTouch(trig.blockA, trig.blockB);
-      if (touching === entry.colliding) continue;
-      entry.colliding = touching;
-      if (touching !== trig.onExit) {
-        this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: trig.activate });
-      }
-    }
-  }
-
-  resetCollisionTriggers() {
-    this._collisionTriggerIdx = 0;
-    this._activeCollisionTriggers = [];
-  }
-
   _executeInstantCountTrigger(trig, colorManager) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
     const current = this._itemCounts[trig.itemId] || 0;
@@ -6171,18 +6054,7 @@ window.LevelObject = class LevelObject {
     if (spr._isSaw) return;
     if (spr._isBlack && !spr._canColor) return;
     if (spr._blackDefault && typeof colorManager.hasColor === "function" && !colorManager.hasColor(chId)) return;
-    if (spr._eeHsv) hex = this._applyObjectHsv(spr, hex);
     if (typeof spr.setTint === "function") spr.setTint(hex);
-  }
-
-  _applyObjectHsv(spr, hex) {
-    if (spr._eeHsvIn === hex) return spr._eeHsvOut;
-    const shifted = applyChannelHsv({ r: (hex >> 16) & 255, g: (hex >> 8) & 255, b: hex & 255 }, spr._eeHsv);
-    const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
-    const out = (clamp(shifted.r) << 16) | (clamp(shifted.g) << 8) | clamp(shifted.b);
-    spr._eeHsvIn = hex;
-    spr._eeHsvOut = out;
-    return out;
   }
 
   _ensureColorChannelIndex() {

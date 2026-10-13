@@ -7487,12 +7487,10 @@ _showwippopup() {
     this._level.resetTouchTriggers?.();
     this._level.resetPickupTriggers?.();
     this._level.resetCountTriggers?.();
-    this._level.resetCollisionTriggers?.();
     this._level.resetInstantCountTriggers?.();
     this._level.checkToggleTriggers?.(0);
     this._level.checkPickupTriggers?.(0, this._colorManager);
     this._level.checkCountTriggers?.(0, this._colorManager);
-    this._level.checkCollisionTriggers?.(0);
     this._level.checkInstantCountTriggers?.(0, this._colorManager);
     this._level.checkOnDeathTriggers?.(0);
     this._level.checkTouchTriggers?.(0);
@@ -7821,12 +7819,10 @@ _showwippopup() {
     this._level.resetTouchTriggers?.();
     this._level.resetPickupTriggers?.();
     this._level.resetCountTriggers?.();
-    this._level.resetCollisionTriggers?.();
     this._level.resetInstantCountTriggers?.();
     this._level.checkToggleTriggers?.(checkpoint.x);
     this._level.checkPickupTriggers?.(checkpoint.x, this._colorManager);
     this._level.checkCountTriggers?.(checkpoint.x, this._colorManager);
-    this._level.checkCollisionTriggers?.(checkpoint.x);
     this._level.checkInstantCountTriggers?.(checkpoint.x, this._colorManager);
     this._level.checkOnDeathTriggers?.(checkpoint.x);
     this._level.checkTouchTriggers?.(checkpoint.x);
@@ -8796,8 +8792,6 @@ _showwippopup() {
         }
     }
     this._level.checkCountTriggers?.(playerX, this._colorManager);
-    this._level.checkCollisionTriggers?.(playerX);
-    this._level.updateCollisionTriggers?.();
     if (this._level.checkTouchCountTriggers) {
         this._level.checkTouchCountTriggers(playerX, this._state.y, this._colorManager);
         if (this._isDual && !this._state2.isDead) {
