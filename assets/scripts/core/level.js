@@ -3607,6 +3607,8 @@ window.LevelObject = class LevelObject {
       if (eyeDef && staticFrame === eyeDef.frame) {
         eyeSprite = staticSpr;
         staticSpr._beastManaged = true;
+        staticSpr._eeZDepth = objZDepth + 0.009;
+        staticSpr.depth = staticSpr._eeZDepth;
         continue;
       }
       const baseFrame = staticFrame.replace("_glow_001.png", "_001.png");
