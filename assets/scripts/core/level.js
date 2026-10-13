@@ -683,6 +683,7 @@ window.LevelObject = class LevelObject {
     this.flyCameraTarget = null;
     this._colorTriggers = [];
     this._colorTriggerIdx = 0;
+    this._touchColorTriggers = [];
     this._touchColorTriggerActivated = new Set();
     this._touchSpawnTriggerActivated = new Set();
     this._touchMoveTriggerActivated = new Set();
@@ -3723,6 +3724,7 @@ window.LevelObject = class LevelObject {
     this._countTriggers.sort((a, b) => a.x - b.x);
     this._instantCountTriggers.sort((a, b) => a.x - b.x);
     this._pulseTriggers.sort((a, b) => a.x - b.x);
+    this._buildTouchColorTriggers();
 
     for (let si = 0; si < this._sectionContainers.length; si++) {
       const sc = this._sectionContainers[si];
@@ -3913,8 +3915,9 @@ window.LevelObject = class LevelObject {
     const playerHalfSize = (typeof playerSize === "number" ? playerSize : 20);
     const halfHitbox = 30 + playerHalfSize;
 
-    for (const trig of this._colorTriggers) {
-      if (!trig || !trig.touchTriggered || trig.spawnTriggered || !this._isTriggerSaveObjectLive(trig.uid)) continue;
+    if (this._touchColorTriggerSrcLen !== this._colorTriggers.length) this._buildTouchColorTriggers();
+    for (const trig of this._touchColorTriggers) {
+      if (trig.spawnTriggered || !this._isTriggerSaveObjectLive(trig.uid)) continue;
       const uid = trig.uid ?? `${trig.x},${trig.y},${trig.index}`;
       if (this._touchColorTriggerActivated.has(uid)) continue;
       if (Math.abs(px - trig.x) <= halfHitbox && Math.abs(py - (trig.y ?? 0)) <= halfHitbox) {
@@ -3924,6 +3927,10 @@ window.LevelObject = class LevelObject {
     }
 
     return triggered || EMPTY_TRIGGER_LIST;
+  }
+  _buildTouchColorTriggers() {
+    this._touchColorTriggers = this._colorTriggers.filter(t => t && t.touchTriggered && !t.spawnTriggered);
+    this._touchColorTriggerSrcLen = this._colorTriggers.length;
   }
   resetColorTriggers() {
     this._colorDirty = true;
@@ -6094,6 +6101,9 @@ window.LevelObject = class LevelObject {
   _colorsNeedApply(colorManager) {
     let dirty = this._colorDirty === true;
     if (this._colorAppliedMin !== this._visMinSec || this._colorAppliedMax !== this._visMaxSec) dirty = true;
+    let full = dirty;
+    const changed = this._colorChangedChannels || (this._colorChangedChannels = []);
+    changed.length = 0;
     const lastHex = this._colorLastHex || (this._colorLastHex = {});
     const lastHas = this._colorLastHas || (this._colorLastHas = {});
     const lastOp = this._colorLastOp || (this._colorLastOp = {});
@@ -6109,10 +6119,16 @@ window.LevelObject = class LevelObject {
         lastHas[chId] = has;
         lastOp[chId] = op;
         dirty = true;
+        changed.push(chId);
       }
     }
     this._colorFramesSinceApply = (this._colorFramesSinceApply || 0) + 1;
-    if (this._colorFramesSinceApply >= 30) dirty = true;
+    if (this._colorFramesSinceApply >= 30) {
+      dirty = true;
+      full = true;
+    }
+    if (!this._visibleColorByChannel || this._visibleColorStamp !== this._colorIndexStamp) full = true;
+    this._colorFullApply = full;
     return dirty;
   }
 
@@ -6137,7 +6153,37 @@ window.LevelObject = class LevelObject {
       }
       this._applyChannelAlpha(spr, colorManager);
     };
-    this._forEachVisibleColorSprite(tintSprite);
+    if (!this._colorFullApply) {
+      const byChannel = this._visibleColorByChannel;
+      const changed = this._colorChangedChannels;
+      const done = this._colorPartialSeen || (this._colorPartialSeen = new Set());
+      done.clear();
+      for (let i = 0; i < changed.length; i++) {
+        const list = byChannel[changed[i]];
+        if (!list) continue;
+        for (let j = 0; j < list.length; j++) {
+          const spr = list[j];
+          if (done.has(spr)) continue;
+          done.add(spr);
+          tintSprite(spr);
+        }
+      }
+      return;
+    }
+    const byChannel = {};
+    const addTo = (chId, spr) => {
+      const key = String(chId);
+      (byChannel[key] || (byChannel[key] = [])).push(spr);
+    };
+    this._forEachVisibleColorSprite((spr) => {
+      if (!spr || spr._eeTintStamp !== stamp || !spr.active) return;
+      const chans = spr._eeTintChannels;
+      for (let i = 0; i < chans.length; i++) addTo(chans[i], spr);
+      if (spr._SawColor !== undefined) addTo(spr._SawColor, spr);
+      tintSprite(spr);
+    });
+    this._visibleColorByChannel = byChannel;
+    this._visibleColorStamp = stamp;
   }
   resetEnterEffectTriggers() {
     this._enterEffectTriggerIdx = 0;
@@ -6317,6 +6363,8 @@ window.LevelObject = class LevelObject {
   }
   setGroundColor(_0x3958eb) {
     if (window.isEditor) return; // not dealing with ts rn
+    if (this._groundTint === _0x3958eb) return;
+    this._groundTint = _0x3958eb;
     for (let _0x46c21a of this._groundTiles) {
       _0x46c21a.setTint(_0x3958eb);
     }
