@@ -3204,7 +3204,13 @@ if (this.p.isFlying || this.p.isUfo) {
   _usesGdCubeSlopes() {
     if (window.gdCubeSlopes === false) return false;
     const p = this.p;
-    return !p.isFlying && !p.isBall && !p.isWave && !p.isUfo && !p.isSpider && !p.isRobot && !p.isSwing;
+    return !p.isFlying && !p.isWave && !p.isUfo && !p.isSwing;
+  }
+  _gdSlopeGrace() {
+    const tick = this._scene?._physicsTick;
+    if (tick === undefined) return false;
+    return (this._gdModeTick !== undefined && tick - this._gdModeTick < 24)
+      || (this._gdFlipTick !== undefined && tick - this._gdFlipTick < 24);
   }
   _gdSlopeLineY(gameObj, worldX) {
     const dx = gameObj.hypoBx - gameObj.hypoAx;
@@ -3268,9 +3274,11 @@ if (this.p.isFlying || this.p.isUfo) {
       if (!touching) return none;
       const movingAway = isFloorTop ? this.p.yVelocity < 0 : this.p.yVelocity > 0;
       if (movingAway) return none;
+      if (this.p.isBall) return { landed: false, died: false, push: { y: target, grace: false } };
       const crash = upsideDown ? playersY + 4 < target : playersY - 4 > target;
-      if (crash) return { landed: false, died: true };
-      return none;
+      if (!crash) return none;
+      if (this._gdSlopeGrace()) return { landed: false, died: false, push: { y: target, grace: true } };
+      return { landed: false, died: true };
     }
     const special = !slopeIntersection && slidingDown && !this.p.isJumping;
     const touching = upsideDown ? playersY > target : playersY < target;
@@ -3281,7 +3289,7 @@ if (this.p.isFlying || this.p.isUfo) {
     }
     if (!collide) return none;
     const wdAngle = gameObj.getSlopeAngleRad();
-    const tanSpeed = playerSpeed * (window.slopeTangentD !== undefined ? window.slopeTangentD : d);
+    const tanSpeed = playerSpeed * (window.slopeTangentD !== undefined ? window.slopeTangentD : 1);
     const surfaceY = gameObj.getSlopeSurfaceY(pieceWidth) ?? lineY;
     const risingFast = upsideDown ? this.p.yVelocity < -10 : this.p.yVelocity > 10;
     return { landed: true, died: false, candidate: {
@@ -3334,7 +3342,7 @@ if (this.p.isFlying || this.p.isUfo) {
     const pHigh = playersY + playerSize - gamemodeAddition;
     const pLastLow = playersLastY - playerSize + gamemodeAddition;
     const pLastHigh = playersLastY + playerSize - gamemodeAddition;
-    const _tanSpeed = playerSpeed * (window.slopeTangentD !== undefined ? window.slopeTangentD : d);
+    const _tanSpeed = playerSpeed * (window.slopeTangentD !== undefined ? window.slopeTangentD : 1);
     const tangent = Math.tan(angle) * _tanSpeed;
 
     if (this.p.isFlying && !this.p.isUfo) {
@@ -3382,7 +3390,7 @@ if (this.p.isFlying || this.p.isUfo) {
             slopeAngle: angle, blocked: true } };
         }
         if (pLow < surfaceY - playerSize && pLastLow < surfaceY - playerSize) {
-          return { landed: false, died: true };
+          return { landed: false, died: false };
         }
         return { landed: false, died: false };
       }
@@ -3399,7 +3407,7 @@ if (this.p.isFlying || this.p.isUfo) {
         return { landed: false, died: false };
       }
       if (pLow < surfaceY - playerSize && pLastLow < surfaceY - playerSize) {
-        return { landed: false, died: true };
+        return { landed: false, died: false };
       }
       return { landed: false, died: false };
     }
@@ -3412,7 +3420,7 @@ if (this.p.isFlying || this.p.isUfo) {
           slopeAngle: angle, blocked: true } };
       }
       if (pHigh > surfaceY + playerSize && pLastHigh > surfaceY + playerSize) {
-        return { landed: false, died: true };
+        return { landed: false, died: false };
       }
       return { landed: false, died: false };
     }
@@ -3429,7 +3437,7 @@ if (this.p.isFlying || this.p.isUfo) {
       return { landed: false, died: false };
     }
     if (pHigh > surfaceY + playerSize && pLastHigh > surfaceY + playerSize) {
-      return { landed: false, died: true };
+      return { landed: false, died: false };
     }
     return { landed: false, died: false };
   }
@@ -3464,10 +3472,21 @@ if (this.p.isFlying || this.p.isUfo) {
       return;
     }
     if (this.p.isJumping) return;
+    const upSign = this.p.gravityFlipped ? -1 : 1;
+    if (this._slopeExitVel * upSign < 0) {
+      if (this.p.upKeyDown) return;
+      this.p.yVelocity = Math.round(this._slopeExitVel * 1000) / 1000;
+      this.p.onGround = false;
+      this.p.canJump = false;
+      if (!this.p.isBall && !this.p.isSwing && !this.p.isWave && !this.p.isUfo && !this.p.isSpider && !this.p.isRobot && !this.p.isDashing) {
+        this.runRotateAction();
+      }
+      return;
+    }
     const exitScale = this._slopeExitScale();
     const exitCap = this.p.isSwing
       ? (window.slopeSwingCap !== undefined ? window.slopeSwingCap : 13)
-      : (window.slopeExitCap !== undefined ? window.slopeExitCap : 30);
+      : (window.slopeExitCap !== undefined ? window.slopeExitCap : Infinity);
     const exitVel = this._slopeExitVel * exitScale;
     const dir = exitVel >= 0 ? 1 : -1;
     if (exitVel * dir <= this.p.yVelocity * dir) return;
@@ -3475,21 +3494,13 @@ if (this.p.isFlying || this.p.isUfo) {
     this.p.onGround = false;
     this.p.canJump = false;
     const rising = this.p.gravityFlipped ? this.p.yVelocity < 0 : this.p.yVelocity > 0;
-    const launchedClear = Math.abs(this.p.yVelocity) > p * 2;
     const isCube = !this.p.isBall && !this.p.isSwing && !this.p.isFlying;
-    if (rising && launchedClear && isCube && !this.p.isWave && !this.p.isUfo && !this.p.isSpider && !this.p.isRobot) {
-      const quarter = Math.PI / 2;
-      const gravScale = this.p.isMini ? 0.957 : 1;
-      const airTime = Math.max(0.15, (2 * Math.abs(this.p.yVelocity)) / (p * 54 * gravScale));
-      const target = Math.round((this._rotation - quarter * this.flipMod()) / quarter) * quarter;
-      const slopeDeg = Math.abs(this._foldSlopeAngle(this._prevSlopeAngle || 0)) * 180 / Math.PI;
-      const steepSlowdown = 1 + 0.5 * Math.min(1, Math.max(0, (slopeDeg - 30) / 45));
+    if (rising && isCube && !this.p.isWave && !this.p.isUfo && !this.p.isSpider && !this.p.isRobot && !this.p.isDashing) {
+      const halfTurnTime = this.p.isMini ? 2 / 3 : 0.8666667;
       this.runRotateAction(-1);
-      this.rotateActionDuration = airTime * steepSlowdown;
-      this.rotateActionTotal = target - this._rotation;
+      this.rotateActionDuration = halfTurnTime * 16;
+      this.rotateActionTotal = -Math.PI * 16 * this.flipMod();
       this._slopeLaunchSpin = true;
-    } else if (rising && launchedClear && !isCube && !this.p.isWave && !this.p.isUfo && !this.p.isSpider && !this.p.isRobot && !this.rotateActionActive) {
-      this.runRotateAction();
     }
   }
   _checkSnapJump(_0x1f801b) {
@@ -3547,6 +3558,7 @@ if (this.p.isFlying || this.p.isUfo) {
         return;
       }
       this.p.gravityFlipped = flipped;
+      this._gdFlipTick = this._scene?._physicsTick;
       this.p.yVelocity *= _0x11bbde;
       this.p.onGround = false;
       this.p.canJump = false;
@@ -3557,8 +3569,7 @@ if (this.p.isFlying || this.p.isUfo) {
   runRotateAction(direction = 1) {
     this.rotateActionActive = true;
     this.rotateActionTime = 0;
-    const _miniDurScale = this.p.isMini ? (1 / 1.4) : 1;
-    this.rotateActionDuration = (0.39 / d) * _miniDurScale;
+    this.rotateActionDuration = this.p.isMini ? 1 / 3 : 0.39 / d;
     this.rotateActionStart = this._rotation;
     this.rotateActionTotal = Math.PI * this.flipMod() * direction;
   }
@@ -3618,11 +3629,26 @@ if (this.p.isFlying || this.p.isUfo) {
     }
     let _0x183c2a = this._onSlopeAngle !== null ? this._onSlopeAngle : this.convertToClosestRotation();
     if (this._onSlopeAngle !== null && !this.p.isRobot && !this.p.isSpider && !this.p.isFlying) {
-      const quarter = Math.PI / 2;
-      _0x183c2a = this._onSlopeAngle + Math.round((this._rotation - this._onSlopeAngle) / quarter) * quarter;
+      const slopeDeg = this._onSlopeAngle * 180 / Math.PI;
+      const rotDeg = this._rotation * 180 / Math.PI;
+      const curDeg = Math.trunc(rotDeg) % 360;
+      let near = slopeDeg;
+      let prev = slopeDeg;
+      if (curDeg > slopeDeg) {
+        do { prev = near; near += 90; } while (near < curDeg);
+      } else if (curDeg < slopeDeg) {
+        do { prev = near; near -= 90; } while (near > curDeg);
+      }
+      const pick = Math.abs(curDeg - near) < Math.abs(curDeg - prev) ? near : prev;
+      _0x183c2a = (rotDeg - (rotDeg % 360) + pick) * Math.PI / 180;
     }
-    let _0x108955 = 0.47250000000000003;
-    let _0x17a9a6 = Math.min(_0x5c24f7 * 1, _0x108955 * _0x5c24f7);
+    const _gdSpeed = playerSpeed === SpeedPortal.HALF ? 0.7
+      : playerSpeed === SpeedPortal.TWO_TIMES ? 1.1
+      : playerSpeed === SpeedPortal.THREE_TIMES ? 1.3
+      : playerSpeed === SpeedPortal.FOUR_TIMES ? 1.6 : 0.9;
+    const _frames = _0x5c24f7 / d;
+    const _onOrLeftSlope = this._onSlopeAngle !== null || this._gdWasOnSlope;
+    let _0x17a9a6 = Math.min(_frames, _gdSpeed * (_onOrLeftSlope ? 0.175 : 0.525) * _frames);
     this._rotation = this.slerp2D(this._rotation, _0x183c2a, _0x17a9a6);
   }
   updateBallRoll(_0x1dd8af, onSurface) {
@@ -4387,6 +4413,12 @@ if (this.p.isFlying || this.p.isUfo) {
     this._activeSlopeAngle = null;
     this._gdWasOnSlope = !!this._gdIsOnSlope;
     this._gdIsOnSlope = false;
+    const _modeSig = (this.p.isFlying ? 1 : 0) | (this.p.isBall ? 2 : 0) | (this.p.isWave ? 4 : 0) | (this.p.isUfo ? 8 : 0)
+      | (this.p.isSpider ? 16 : 0) | (this.p.isRobot ? 32 : 0) | (this.p.isSwing ? 64 : 0);
+    if (this._gdModeSig !== _modeSig) {
+      if (this._gdModeSig !== undefined) this._gdModeTick = this._scene?._physicsTick;
+      this._gdModeSig = _modeSig;
+    }
     let _0x30410f = false;
     let _boostedThisStep = false;
     let _teleportedThisStep = false;
@@ -5011,6 +5043,15 @@ if (this.p.isFlying || this.p.isUfo) {
             if (window.noClip) continue;
             this.killPlayer();
             return;
+          }
+          if (slopeResult.push) {
+            const _pushVel = slopeResult.push.grace ? 4 : 0;
+            this.p.y = slopeResult.push.y;
+            this.p.yVelocity = this.p.gravityFlipped
+              ? Math.max(this.p.yVelocity, _pushVel)
+              : Math.min(this.p.yVelocity, -_pushVel);
+            this.p.onGround = false;
+            continue;
           }
           if (slopeResult.landed && slopeResult.candidate) {
             const cand = slopeResult.candidate;
