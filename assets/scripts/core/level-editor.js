@@ -645,6 +645,7 @@ class LevelEditor {
     this._level.resetFollowTriggers?.();
     this._level.resetToggleTriggers?.();
     this._level.resetShakeTriggers?.();
+    this._level.resetPlayerVisibilityTriggers?.();
     this._level.resetOnDeathTriggers?.();
     this._level.resetTouchTriggers?.();
     this._level.resetPickupTriggers?.();
@@ -1520,6 +1521,11 @@ class LevelEditor {
         }
     }
     this._level.checkShakeTriggers?.(playerX);
+    this._level.checkPlayerVisibilityTriggers?.(playerX);
+    this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state.y);
+    if (this._isDual && !this._state2.isDead) this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state2.y);
+    this._player?.setHidden?.(!!this._level.playerHidden);
+    if (this._isDual) this._player2?.setHidden?.(!!this._level.playerHidden);
     if (this._level.checkTouchShakeTriggers) {
         this._level.checkTouchShakeTriggers(playerX, this._state.y);
         if (this._isDual && !this._state2.isDead) {

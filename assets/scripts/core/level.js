@@ -735,6 +735,10 @@ window.LevelObject = class LevelObject {
     this._shakeTriggers = [];
     this._shakeTriggerIdx = 0;
     this._touchShakeTriggerActivated = new Set();
+    this._playerVisTriggers = [];
+    this._playerVisTriggerIdx = 0;
+    this._touchPlayerVisActivated = new Set();
+    this.playerHidden = false;
     this._shakeState = null;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
@@ -2575,6 +2579,17 @@ window.LevelObject = class LevelObject {
       });
     }
 
+    if (levelObj.id === 1612 || levelObj.id === 1613) {
+      const _raw = levelObj._raw;
+      this._playerVisTriggers.push({
+        ...triggerBase,
+        x: levelObj.x * 2,
+        y: levelObj.y * 2,
+        touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
+        hide: levelObj.id === 1612
+      });
+    }
+
     if (levelObj.id === 1585) {
       const _raw = levelObj._raw;
       this._animationTriggers.push({
@@ -3763,6 +3778,7 @@ window.LevelObject = class LevelObject {
     this._followTriggers.sort((a, b) => a.x - b.x);
     this._toggleTriggers.sort((a, b) => a.x - b.x);
     this._shakeTriggers.sort((a, b) => a.x - b.x);
+    this._playerVisTriggers.sort((a, b) => a.x - b.x);
     this._onDeathTriggers.sort((a, b) => a.x - b.x);
     this._touchTriggers.sort((a, b) => a.x - b.x);
     this._animationTriggers.sort((a, b) => a.x - b.x);
@@ -4858,6 +4874,7 @@ window.LevelObject = class LevelObject {
     for (const trig of spawnMatches(this._toggleTriggers)) this._executeToggleTrigger(trig);
     for (const trig of spawnMatches(this._animationTriggers)) this._executeAnimationTrigger(trig);
     for (const trig of spawnMatches(this._shakeTriggers)) this._executeShakeTrigger(trig);
+    for (const trig of spawnMatches(this._playerVisTriggers)) this.playerHidden = trig.hide;
     for (const trig of spawnMatches(this._pulseTriggers)) this._startPulseTrigger(trig);
     for (const trig of spawnMatches(this._spawnTriggers)) this._queueSpawnTrigger(trig);
     for (const trig of spawnMatches(this._onDeathTriggers)) this._armOnDeathTrigger(trig);
@@ -5514,6 +5531,37 @@ window.LevelObject = class LevelObject {
         this._executeShakeTrigger(trig);
       }
     }
+  }
+
+  checkPlayerVisibilityTriggers(playerX) {
+    while (this._playerVisTriggerIdx < this._playerVisTriggers.length) {
+      const trig = this._playerVisTriggers[this._playerVisTriggerIdx];
+      if (trig.x > playerX) break;
+      if (!trig.spawnTriggered && !trig.touchTriggered) this.playerHidden = trig.hide;
+      this._playerVisTriggerIdx++;
+    }
+  }
+
+  checkTouchPlayerVisibilityTriggers(playerX, playerY) {
+    const px = Number(playerX) || 0;
+    const py = Number(playerY) || 0;
+    const playerHalfSize = (typeof playerSize === "number" ? playerSize : 20);
+    const halfHitbox = 30 + playerHalfSize;
+    for (const trig of this._playerVisTriggers) {
+      if (!trig || !trig.touchTriggered || trig.spawnTriggered || !this._isTriggerSaveObjectLive(trig.uid)) continue;
+      const uid = trig.uid ?? `${trig.x},${trig.y},${trig.hide}`;
+      if (this._touchPlayerVisActivated.has(uid)) continue;
+      if (Math.abs(px - trig.x) <= halfHitbox && Math.abs(py - (trig.y ?? 0)) <= halfHitbox) {
+        this._touchPlayerVisActivated.add(uid);
+        this.playerHidden = trig.hide;
+      }
+    }
+  }
+
+  resetPlayerVisibilityTriggers() {
+    this._playerVisTriggerIdx = 0;
+    this._touchPlayerVisActivated = new Set();
+    this.playerHidden = false;
   }
 
   resetShakeTriggers() {
