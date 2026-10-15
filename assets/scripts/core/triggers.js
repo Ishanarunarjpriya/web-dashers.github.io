@@ -128,15 +128,28 @@ function hsvToRgb(h, s, v) {
   return { r: Math.round((r + m) * 255), g: Math.round((g + m) * 255), b: Math.round((b + m) * 255) };
 }
 function lightBgColor(bg, p1) {
-  const hsv = rgbToHsv(bg.r, bg.g, bg.b);
-  const target = hsvToRgb(hsv.h, hsv.s, hsv.v + 20);
-  const t = Math.max(0, Math.min(1, hsv.v / 20));
-  if (t >= 1) return target;
-  return {
-    r: Math.round(target.r * t + p1.r * (1 - t)),
-    g: Math.round(target.g * t + p1.g * (1 - t)),
-    b: Math.round(target.b * t + p1.b * (1 - t))
-  };
+  const max = Math.max(bg.r, bg.g, bg.b) / 255;
+  const min = Math.min(bg.r, bg.g, bg.b) / 255;
+  const base = rgbToHsv(bg.r, bg.g, bg.b);
+  const sat = Math.max(0.0001, Math.min(1, (max === 0 ? 0 : (max - min) / max) - 0.2));
+  const val = Math.max(0.0001, Math.min(1, max + 0.2));
+  const c = val * sat;
+  const h = base.h;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = val - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  const target = { r: Math.trunc((r + m) * 255), g: Math.trunc((g + m) * 255), b: Math.trunc((b + m) * 255) };
+  const sum = bg.r + bg.g + bg.b;
+  if (sum >= 150) return target;
+  const f = sum / 150;
+  const mix = (a, t) => Math.trunc(Math.max(0, Math.min(255, (1 - f) * a + f * t)));
+  return { r: mix(p1.r, target.r), g: mix(p1.g, target.g), b: mix(p1.b, target.b) };
 }
 
 function parseChannelHsv(value) {
@@ -345,7 +358,7 @@ class ColorManager {
     if (color) return color;
     if (id === 1005) return channelHexToRgb(window.mainColor);
     if (id === 1006) return channelHexToRgb(window.secondaryColor);
-    if (id === 1007) return lightBgColor(this.getColor(fs), channelHexToRgb(window.secondaryColor));
+    if (id === 1007) return lightBgColor(this.getColor(fs), depth < 8 ? this.getColor(1005, depth + 1) : channelHexToRgb(window.mainColor));
     return {
       r: 255,
       g: 255,

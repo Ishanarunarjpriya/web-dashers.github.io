@@ -1016,6 +1016,7 @@ window.LevelObject = class LevelObject {
       if (trigger.touchTriggered || !this._isTriggerSaveObjectLive(trigger.uid)) continue;
       if (trigger.x <= targetX) {
         colorManager.triggerColor(trigger.index, trigger.color, 0, trigger.copy, trigger.opacity);
+        this.setChannelBlending(trigger.index, !!trigger.blending);
       } else {
         break;
       }
@@ -1087,6 +1088,7 @@ window.LevelObject = class LevelObject {
     this._sourceLevelObjects = levelObjects;
     this._setUpSettings(settingslist);
     this._flatDepth = !window.enableLDM && !window.isEditor;
+    this._channelBlendingInitial = { ...(this._channelBlending || {}) };
     this._spawnLevelObjects(levelObjects);
     this.checkToggleTriggers?.(0);
     this.checkPickupTriggers?.(0);
@@ -2425,6 +2427,7 @@ window.LevelObject = class LevelObject {
           },
           duration: parseFloat(_raw[10] ?? 0),
           tintGround: _raw[14] === "1",
+          blending: String(_raw[17] ?? "0") === "1",
           opacity: parseFloat(_raw[35] ?? 1),
           copy: copySource > 0 ? { source: copySource, hsv: parseChannelHsv(_raw[49]) } : null
         });
@@ -2785,12 +2788,18 @@ window.LevelObject = class LevelObject {
     const registerColor = (spr, ch, forceParentColor = false) => {
       if (!spr || spr._cantColor || (spr._isBlack && !spr._canColor)) return;
       if (ch > 0 && (canColor || spr._canColor) && spr) {
-        spr._eeColorChannel = ch;
         const sprHsv = (hasDetailChannel && Number(ch) === Number(col2) && Number(col2) !== Number(col1)) ? objHsv2 : (Number(ch) === Number(col1) ? objHsv1 : null);
+        if (Number(ch) === 1012 && Number(col1) > 0 && Number(col1) !== 1012) {
+          spr._eeLighter = true;
+          ch = col1;
+        }
+        spr._eeColorChannel = ch;
         if (sprHsv) spr._eeHsv = sprHsv;
         if (!this._colorChannelSprites[ch]) this._colorChannelSprites[ch] = [];
         this._colorChannelSprites[ch].push(spr);
-        if (this._channelBlending && this._channelBlending[ch]) {
+        if (spr._eeBaseBlend === undefined) spr._eeBaseBlend = spr.blendMode;
+        if (spr._eeLayerBase === undefined) spr._eeLayerBase = depthBase[zLayer] !== undefined ? depthBase[zLayer] : 0;
+        if ((this._channelBlending && this._channelBlending[ch]) || (ch >= 1005 && ch <= 1007)) {
           spr.setBlendMode(window.S ?? S);
           spr._eeChannelAdditive = true;
         }
@@ -4060,6 +4069,33 @@ window.LevelObject = class LevelObject {
     }
     return this._sectionContainers[sectionIndex];
   }
+  _spriteDepth(spr) {
+    const z = spr._eeZDepth;
+    if (!spr._eeChannelAdditive || spr._eeLayerBase === undefined) return z;
+    const base = spr._eeLayerBase;
+    return base - 0.5 + (z - base) * 0.24;
+  }
+  setChannelBlending(ch, on) {
+    if (!(ch > 0) || ch >= 1000) return;
+    this._channelBlending ||= {};
+    if (!!this._channelBlending[ch] === on) return;
+    this._channelBlending[ch] = on;
+    const sprites = this._colorChannelSprites?.[ch];
+    if (!sprites) return;
+    const add = window.S ?? S;
+    for (const spr of sprites) {
+      if (!spr || !spr.scene) continue;
+      spr._eeChannelAdditive = on;
+      spr.setBlendMode(on ? add : (spr._eeBaseBlend ?? 0));
+      if (spr._eeZDepth !== undefined) spr.depth = this._spriteDepth(spr);
+    }
+  }
+  resetChannelBlending() {
+    if (!this._channelBlendingInitial) return;
+    const current = this._channelBlending || {};
+    const keys = new Set([...Object.keys(current), ...Object.keys(this._channelBlendingInitial)]);
+    for (const k of keys) this.setChannelBlending(Number(k), !!this._channelBlendingInitial[k]);
+  }
   _addToSection(sliderWidth) {
     const _0x4ac40a = this._getSectionIndexForWorldX(sliderWidth._eeWorldX);
     this._sections[_0x4ac40a] ||= [];
@@ -4067,7 +4103,7 @@ window.LevelObject = class LevelObject {
     sliderWidth._eeSectionIndex = _0x4ac40a;
     sliderWidth._eeSpawnOrder = this._spawnOrderCounter++;
     if (sliderWidth._eeZDepth !== undefined) {
-      sliderWidth.depth = sliderWidth._eeZDepth;
+      sliderWidth.depth = this._spriteDepth(sliderWidth);
     }
     const _0x14d5f7 = sliderWidth._eeLayer !== undefined ? sliderWidth._eeLayer : 1;
     if (_0x14d5f7 === 2) {
@@ -4860,6 +4896,7 @@ window.LevelObject = class LevelObject {
       if (colorManager && typeof colorManager.triggerColor === "function") {
         colorManager.triggerColor(trig.index, trig.color, trig.duration, trig.copy, trig.opacity);
       }
+      this.setChannelBlending(trig.index, !!trig.blending);
     }
     for (const trig of spawnMatches(this._enterEffectTriggers)) {
       this._activeEnterEffect = trig.effect;
@@ -6215,8 +6252,35 @@ window.LevelObject = class LevelObject {
     if (spr._isSaw) return;
     if (spr._isBlack && !spr._canColor) return;
     if (spr._blackDefault && typeof colorManager.hasColor === "function" && !colorManager.hasColor(chId)) return;
+    if (spr._eeLighter) hex = this._lighterHex(hex);
     if (spr._eeHsv) hex = this._applyObjectHsv(spr, hex);
     if (typeof spr.setTint === "function") spr.setTint(hex);
+  }
+
+  _lighterHex(hex) {
+    this._lighterCache ||= new Map();
+    const cached = this._lighterCache.get(hex);
+    if (cached !== undefined) return cached;
+    const r = (hex >> 16) & 255, g = (hex >> 8) & 255, b = hex & 255;
+    const max = Math.max(r, g, b) / 255;
+    const min = Math.min(r, g, b) / 255;
+    const h = rgbToHsv(r, g, b).h;
+    const sat = Math.max(0.0001, Math.min(1, (max === 0 ? 0 : (max - min) / max) * 0.65));
+    const val = Math.max(0.0001, Math.min(1, max + 0.15));
+    const c = val * sat;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = val - c;
+    let rr = 0, gg = 0, bb = 0;
+    if (h < 60) { rr = c; gg = x; }
+    else if (h < 120) { rr = x; gg = c; }
+    else if (h < 180) { gg = c; bb = x; }
+    else if (h < 240) { gg = x; bb = c; }
+    else if (h < 300) { rr = x; bb = c; }
+    else { rr = c; bb = x; }
+    const out = (Math.trunc((rr + m) * 255) << 16) | (Math.trunc((gg + m) * 255) << 8) | Math.trunc((bb + m) * 255);
+    if (this._lighterCache.size > 4096) this._lighterCache.clear();
+    this._lighterCache.set(hex, out);
+    return out;
   }
 
   _applyObjectHsv(spr, hex) {

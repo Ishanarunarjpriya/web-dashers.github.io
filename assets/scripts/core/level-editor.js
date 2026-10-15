@@ -645,6 +645,7 @@ class LevelEditor {
     this._level.resetFollowTriggers?.();
     this._level.resetToggleTriggers?.();
     this._level.resetShakeTriggers?.();
+    this._level.resetChannelBlending?.();
     this._level.resetPlayerVisibilityTriggers?.();
     this._level.resetOnDeathTriggers?.();
     this._level.resetTouchTriggers?.();
@@ -1452,6 +1453,7 @@ class LevelEditor {
     const playerX = this._playerWorldX;
     const applyColorTrigger = (colorTrigger) => {
         this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration, colorTrigger.copy, colorTrigger.opacity);
+        this._level.setChannelBlending?.(colorTrigger.index, !!colorTrigger.blending);
         if (colorTrigger.tintGround) {
             this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration, colorTrigger.copy);
         }

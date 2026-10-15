@@ -7483,6 +7483,7 @@ _showwippopup() {
     this._level.resetToggleTriggers?.();
     this._level.resetAnimationTriggers?.();
     this._level.resetShakeTriggers?.();
+    this._level.resetChannelBlending?.();
     this._level.resetPlayerVisibilityTriggers?.();
     this._level.resetOnDeathTriggers?.();
     this._level.resetTouchTriggers?.();
@@ -7818,6 +7819,7 @@ _showwippopup() {
     this._level.resetToggleTriggers?.();
     this._level.resetAnimationTriggers?.();
     this._level.resetShakeTriggers?.();
+    this._level.resetChannelBlending?.();
     this._level.resetPlayerVisibilityTriggers?.();
     this._level.resetOnDeathTriggers?.();
     this._level.resetTouchTriggers?.();
@@ -8672,6 +8674,7 @@ _showwippopup() {
     if (!this._applyColorTriggerFn) {
       this._applyColorTriggerFn = (colorTrigger) => {
         this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration, colorTrigger.copy, colorTrigger.opacity);
+        this._level.setChannelBlending?.(colorTrigger.index, !!colorTrigger.blending);
         if (colorTrigger.tintGround) {
           this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration, colorTrigger.copy);
         }

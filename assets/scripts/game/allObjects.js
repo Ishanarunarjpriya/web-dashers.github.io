@@ -32397,32 +32397,41 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_scaleFadeRing_01_001.png",
-        "localDy": 0,
+        "localDx": -30,
+        "localDy": -30,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_01_001.png",
-        "localDy": 0,
+        "localDx": 30,
+        "localDy": -30,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_01_001.png",
-        "localDy": 0,
+        "localDx": 30,
+        "localDy": 30,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_01_001.png",
-        "localDy": 0,
+        "localDx": -30,
+        "localDy": 30,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
     ],
     "default_base_color_channel": 1,
-    "frame": "d_scaleFadeRing_01_001.png",
-    "glow_frame": "d_scaleFadeRing_01_glow_001.png",
+    "frame": "emptyFrame.png",
+    "editorFrame": "d_scaleFadeRing_01_001.png",
+    "glow_frame": "emptyFrame.png",
     "gridH": 2,
     "gridW": 2,
     "spritesheet": "GJ_GameSheet-uhd",
@@ -32437,32 +32446,41 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_scaleFadeRing_03_001.png",
-        "localDy": 0,
+        "localDx": -15,
+        "localDy": -15,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_03_001.png",
-        "localDy": 0,
+        "localDx": 15,
+        "localDy": -15,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_03_001.png",
-        "localDy": 0,
+        "localDx": 15,
+        "localDy": 15,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_03_001.png",
-        "localDy": 0,
+        "localDx": -15,
+        "localDy": 15,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
     ],
     "default_base_color_channel": 1,
-    "frame": "d_scaleFadeRing_03_001.png",
-    "glow_frame": "d_scaleFadeRing_03_glow_001.png",
+    "frame": "emptyFrame.png",
+    "editorFrame": "d_scaleFadeRing_03_001.png",
+    "glow_frame": "emptyFrame.png",
     "gridH": 1,
     "gridW": 1,
     "spritesheet": "GJ_GameSheet-uhd",
@@ -32477,32 +32495,41 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_scaleFadeRing_02_001.png",
-        "localDy": 0,
+        "localDx": -30,
+        "localDy": -30,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_02_001.png",
-        "localDy": 0,
+        "localDx": 30,
+        "localDy": -30,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_02_001.png",
-        "localDy": 0,
+        "localDx": 30,
+        "localDy": 30,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_02_001.png",
-        "localDy": 0,
+        "localDx": -30,
+        "localDy": 30,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
     ],
     "default_base_color_channel": 1,
-    "frame": "d_scaleFadeRing_02_001.png",
-    "glow_frame": "d_scaleFadeRing_02_glow_001.png",
+    "frame": "emptyFrame.png",
+    "editorFrame": "d_scaleFadeRing_02_001.png",
+    "glow_frame": "emptyFrame.png",
     "gridH": 2,
     "gridW": 2,
     "spritesheet": "GJ_GameSheet-uhd",
@@ -32517,32 +32544,41 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "d_scaleFadeRing_04_001.png",
-        "localDy": 0,
+        "localDx": -15,
+        "localDy": -15,
+        "rot": 0,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_04_001.png",
-        "localDy": 0,
+        "localDx": 15,
+        "localDy": -15,
+        "rot": 90,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_04_001.png",
-        "localDy": 0,
+        "localDx": 15,
+        "localDy": 15,
+        "rot": 180,
         "tint": 65280,
         "z": -1
       },
       {
         "frame": "d_scaleFadeRing_04_001.png",
-        "localDy": 0,
+        "localDx": -15,
+        "localDy": 15,
+        "rot": 270,
         "tint": 65280,
         "z": -1
       }
     ],
     "default_base_color_channel": 1,
-    "frame": "d_scaleFadeRing_04_001.png",
-    "glow_frame": "d_scaleFadeRing_04_glow_001.png",
+    "frame": "emptyFrame.png",
+    "editorFrame": "d_scaleFadeRing_04_001.png",
+    "glow_frame": "emptyFrame.png",
     "gridH": 1,
     "gridW": 1,
     "spritesheet": "GJ_GameSheet-uhd",
