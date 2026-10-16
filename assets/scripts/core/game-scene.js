@@ -39,7 +39,7 @@ class PracticeMode {
       rotateActionActive: !!scene?._player?.rotateActionActive,
       gravity: playerState.gravity,
       jumpPower: playerState.jumpPower,
-      mirrored: playerState.mirrored,
+      mirrored: scene?._mirrorAnimating && playerState === scene._state ? !!scene._mirrorTarget : playerState.mirrored,
       isDashing: playerState.isDashing,
       dashYVelocity: playerState.dashYVelocity,
       ballShouldRotate: playerState.ballShouldRotate,
@@ -7419,6 +7419,7 @@ _showwippopup() {
     this._spaceWasDown = false;
     this._physicsFrame = 0;
     this._pendingMusicOffset = null;
+    this._mirrorAnimating = false;
   }
   _restartLevel() {
     this._attempts++;
@@ -7541,6 +7542,7 @@ _showwippopup() {
         SpeedPortal.FOUR_TIMES
       ][pos.speed];
       this._state.mirrored = pos.mirrored;
+      this._mirrorAnimating = false;
       if (pos.dualMode) {
         this._enableDualMode();
       }
@@ -7662,6 +7664,7 @@ _showwippopup() {
     this._state.gravity = checkpoint.gravity;
     this._state.jumpPower = checkpoint.jumpPower;
     this._state.mirrored = checkpoint.mirrored;
+    this._mirrorAnimating = false;
     this._state.isDashing = checkpoint.isDashing;
     this._state.dashYVelocity = checkpoint.dashYVelocity;
     this._state.ballShouldRotate = checkpoint.ballShouldRotate || false;
@@ -7979,7 +7982,10 @@ _showwippopup() {
   }
 
   _updateBackground() {
-    this._bg.tilePositionX += (this._cameraX - this._prevCameraX) * this._bgSpeedX;
+    const mirrorDeltaX = this._cameraX - this._prevCameraX;
+    const mirrorP = this._mirrorProgress();
+    this._bg.tilePositionX += mirrorDeltaX * this._bgSpeedX * (1 - 2 * mirrorP);
+    if (mirrorP > 0 && mirrorDeltaX) this._level.shiftGroundTiles(2 * mirrorP * mirrorDeltaX);
     this._prevCameraX = this._cameraX;
     let tileY = this._bgInitY - this._cameraY * this._bgSpeedY;
     if (this._bgMirrorTileHeight > 0) {
@@ -8039,6 +8045,7 @@ _showwippopup() {
     return _0xd8019e * 60;
   }
   update(_0x54fa47, deltaTime) {
+    this._restoreMirrorTransforms();
     if (this._pendingScreenResize && !window.isEditor && !this._hasBlockingOverlay()) {
       this._applyScreenResize();
     }
@@ -8956,6 +8963,7 @@ _showwippopup() {
     }
     this._glitterCenterX = this._cameraX + screenWidth / 2;
     this._glitterCenterY = T - this._cameraY;
+    this._stepMirror(deltaTime / 1000);
     this._updateBackground();
     this._level.stepGroundAnimation(deltaTime / 1000);
     this._level.updateGroundTiles(this._cameraY);
@@ -8979,34 +8987,101 @@ _showwippopup() {
     this._applyMirrorEffect();
   }
 
-_applyMirrorEffect() {
-    const isMirrored = this._state.mirrored;
+_mirrorProgress() {
+    return this._mirrorAnimating ? this._mirrorP : (this._state.mirrored ? 1 : 0);
+  }
+  toggleMirror(on) {
+    const current = this._mirrorAnimating ? !!this._mirrorTarget : !!this._state.mirrored;
+    if (current === on) return false;
+    this._mirrorFrom = this._mirrorProgress();
+    this._mirrorP = this._mirrorFrom;
+    this._mirrorTarget = on;
+    this._mirrorTime = 0;
+    this._mirrorAnimating = true;
+    return true;
+  }
+  _stepMirror(dt) {
+    if (!this._mirrorAnimating) return;
+    this._mirrorTime += dt;
+    const k = Math.min(1, this._mirrorTime / 0.4);
+    const t = k * 2;
+    const eased = t < 1 ? 0.5 * Math.pow(t, 1.2) : 1 - 0.5 * Math.pow(2 - t, 1.2);
+    const to = this._mirrorTarget ? 1 : 0;
+    this._mirrorP = this._mirrorFrom + (to - this._mirrorFrom) * eased;
+    if (k >= 1) {
+      this._mirrorP = to;
+      this._mirrorAnimating = false;
+    }
+    const visual = this._mirrorAnimating ? this._mirrorP >= 0.5 : !!this._mirrorTarget;
+    this._state.mirrored = visual;
+    if (this._state2) this._state2.mirrored = visual;
+  }
+  _restoreMirrorTransforms() {
+    const saved = this._mirrorSaved;
+    if (!saved || !saved.length) return;
+    for (let i = 0; i < saved.length; i += 6) {
+      const o = saved[i];
+      o.x = saved[i + 1];
+      o.scaleX = saved[i + 2];
+      o.rotation = saved[i + 3];
+      if (saved[i + 4] !== undefined) o.alpha = saved[i + 4];
+      o.visible = saved[i + 5];
+    }
+    saved.length = 0;
+  }
+  _mirrorTransformObjects(p) {
+    this._restoreMirrorTransforms();
+    const saved = this._mirrorSaved || (this._mirrorSaved = []);
+    const flip = p >= 0.5;
+    const apply = (o, ox) => {
+      if (!o.visible) return;
+      const isEmitter = o.type === "ParticleEmitter";
+      saved.push(o, o.x, o.scaleX, o.rotation, isEmitter ? undefined : o.alpha, true);
+      const sx = o.x + ox;
+      const fade = Math.min(1, Math.min(sx, screenWidth - sx) / 140);
+      if (fade <= 0) {
+        o.visible = false;
+        return;
+      }
+      if (fade < 1 && !isEmitter) o.alpha *= fade;
+      o.x += p * (screenWidth - 2 * sx);
+      if (flip) {
+        o.scaleX = -o.scaleX;
+        o.rotation = -o.rotation;
+      }
+    };
+    for (const c of [this._level.additiveContainer, this._level.container, this._level.topContainer]) {
+      if (!c.visible) continue;
+      for (const child of c.list) {
+        if (child._eeMirrorGroup) {
+          if (!child.visible) continue;
+          const ox = c.x + child.x;
+          for (const o of child.list) apply(o, ox);
+        } else if (child._eeMirrorFollow || child._eeWorldX !== undefined) {
+          apply(child, c.x);
+        }
+      }
+    }
+    if (saved.length) this.events.once("render", this._restoreMirrorTransforms, this);
+  }
+  _applyMirrorEffect() {
+    const p = this._mirrorProgress();
     const containers = [this._level.additiveContainer, this._level.container, this._level.topContainer];
-    if (isMirrored) {
+    if (p >= 1) {
       for (const c of containers) {
         c.scaleX = -1;
         c.x = this._cameraX + screenWidth - (this._level.shakeOffsetX || 0);
       }
-      for (const tile of this._level._groundTiles) {
-        tile.x = screenWidth - tile.x - this._level._tileW;
-        tile.setFlipX(true);
-      }
-      for (const tile of this._level._ceilingTiles) {
-        tile.x = screenWidth - tile.x - this._level._tileW;
-        tile.setFlipX(true);
-      }
     } else {
       for (const c of containers) {
-        if (c.scaleX !== 1) c.scaleX = 1;
+        if (c.scaleX !== 1) {
+          c.scaleX = 1;
+          c.x = -this._cameraX + (this._level.shakeOffsetX || 0);
+        }
       }
-      for (const tile of this._level._groundTiles) {
-        tile.setFlipX(false);
-      }
-      for (const tile of this._level._ceilingTiles) {
-        tile.setFlipX(false);
-      }
+      if (p > 0) this._mirrorTransformObjects(p);
     }
-    this._bg.setFlipX(isMirrored);
+    if (this._bg.flipX) this._bg.setFlipX(false);
   }
   _labelTextCurrent(label, key) {
     return !label || (label._eeTextKey === key && label.text === label._eeTextValue);
@@ -9350,7 +9425,7 @@ _applyMirrorEffect() {
   }
 
   _getMirrorXOffset(xOffset) {
-    return this._state.mirrored ? screenWidth - xOffset : xOffset;
+    return xOffset + (screenWidth - 2 * xOffset) * this._mirrorProgress();
   }
   _enableDualMode() {
     if (this._isDual) return;

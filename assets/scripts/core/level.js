@@ -3530,6 +3530,7 @@ window.LevelObject = class LevelObject {
           emitting: true
         });
         _padEmitter.setDepth(12);
+        _padEmitter._eeMirrorFollow = true;
         _padEmitter.setScrollFactor(0);
         padObj._padParticleEmitter = _padEmitter;
         padObj.emitters = [_padEmitter];
@@ -4018,6 +4019,8 @@ window.LevelObject = class LevelObject {
         additive: this._scene.add.container(0, 0),
         normal: this._scene.add.container(0, 0)
       };
+      this._flatContainers.additive._eeMirrorGroup = true;
+      this._flatContainers.normal._eeMirrorGroup = true;
       this.additiveContainer.add(this._flatContainers.additive);
       this.container.add(this._flatContainers.normal);
     }
@@ -4063,6 +4066,8 @@ window.LevelObject = class LevelObject {
       const sectionVisible = !this._flatDepth && (this._visMinSec === undefined || this._visMinSec < 0 || (sectionIndex >= this._visMinSec && sectionIndex <= this._visMaxSec));
       sectionContainer.additive.visible = sectionVisible;
       sectionContainer.normal.visible = sectionVisible;
+      sectionContainer.additive._eeMirrorGroup = true;
+      sectionContainer.normal._eeMirrorGroup = true;
       this.additiveContainer.add(sectionContainer.additive);
       this.container.add(sectionContainer.normal);
       this._sectionContainers[sectionIndex] = sectionContainer;
