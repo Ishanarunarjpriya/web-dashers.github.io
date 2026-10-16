@@ -926,6 +926,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       this._makeBouncyButton(playBtn2, 1, async () => {
         if (playBtnLoading) return;
         playBtnLoading = true;
+        this._audio.stopMusic();
         this._audio.playEffect("playSound_01", { volume: 1 });
         playBtn2.setTint(0x666666);
         playBtn2.disableInteractive();
@@ -3852,6 +3853,9 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       if (this._paused) {
         this._audio.playEffect("quitSound_01");
         this._audio.stopMusic();
+        if (this._isMainLevelForCoinDisplay()) {
+          window._mainLevelReturnToSelect = true;
+        }
         this._resumeGame();
         this.scene.restart();
       } else if (!this._menuActive && !this._slideIn && !this._levelWon) {
@@ -4048,6 +4052,9 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       window._onlineReturnToPlayMenu = null;
       window._selectedLevelData = lvl;
       this._openPlayMenu(backTarget);
+    } else if (window._mainLevelReturnToSelect) {
+      window._mainLevelReturnToSelect = false;
+      this._openLevelSelect();
     }
   }
   _parseLevelColors(levelId) {
@@ -4977,6 +4984,9 @@ _buildPauseOverlay() {
         { frame: "GJ_menuBtn_001.png", atlas: "GJ_WebSheet", action: () => {
             this._audio.playEffect("quitSound_01");
             this._queueGameplayLevelViewReturn();
+            if (this._isMainLevelForCoinDisplay()) {
+              window._mainLevelReturnToSelect = true;
+            }
             this.game.registry.remove("autoStartGame");
             window.isEditor = false;
             this._audio.stopMusic();
@@ -9881,6 +9891,9 @@ _mirrorProgress() {
       action: () => {
         this._audio.playEffect("quitSound_01");
         this._audio.stopMusic();
+        if (this._isMainLevelForCoinDisplay()) {
+          window._mainLevelReturnToSelect = true;
+        }
         this.game.registry.set("fadeInFromBlack", true);
         this.cameras.main.fadeOut(400, 0, 0, 0, (_0x53bf86, _0x15310d) => {
           if (_0x15310d >= 1) {
