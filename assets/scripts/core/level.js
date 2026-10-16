@@ -3101,8 +3101,9 @@ window.LevelObject = class LevelObject {
               ? (childDef.can_color ?? objectDef.can_color)
               : childDef.can_color
           };
-          this._applyVisualProps(scene, childSprite, childDef.frame, childObjectData, childVisualDef);
-          childSprite._cantColor = childDef.Cant_Color === true;
+           this._applyVisualProps(scene, childSprite, childDef.frame, childObjectData, childVisualDef);
+           childSprite._cantColor = childDef.Cant_Color === true;
+          if (childDef.can_color === true) childSprite._canColor = true;
           
           const showguide = childDef.portalGuide ? (!window.isEditor && window.enablePortalGuide !== false) : true;
           const showguide2 = childDef.orbGuide ? (!window.isEditor && window.enableOrbGuide !== false) : true;

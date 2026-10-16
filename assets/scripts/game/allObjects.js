@@ -619,13 +619,13 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "41": {
-    "can_color": false,
+    "can_color": true,
     "type": "deco",
     "frame": "chain_01_001.png",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "default_base_color_channel": 1,
+    "default_base_color_channel": 1005,
     "default_z_layer": 3,
     "default_z_order": 9,
     "editorOffsetY": 20,
@@ -721,28 +721,29 @@ window.allobjects = function() {
     ]
   },
   "48": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "d_cloud_01_001.png",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 64511,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
   },
   "49": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "d_cloud_02_001.png",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 64511,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
   },
   "50": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "none",
     "gridW": 0,
@@ -759,6 +760,7 @@ window.allobjects = function() {
     ],
   },
   "51": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "none",
     "gridW": 0,
@@ -775,6 +777,7 @@ window.allobjects = function() {
     ]
   },
   "52": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "none",
     "gridW": 0,
@@ -791,12 +794,12 @@ window.allobjects = function() {
     ]
   },
   "53": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "none",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 64511,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9,
@@ -910,6 +913,7 @@ window.allobjects = function() {
     "enterEffect": 11
   },
   "60": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "none",
     "gridW": 0,
@@ -1881,6 +1885,7 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "123": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_thorn_01_001.png",
     "gridW": 0,
@@ -1890,6 +1895,7 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "124": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_thorn_02_001.png",
     "gridW": 0,
@@ -1899,6 +1905,7 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "125": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_smallBall_01_001.png",
     "gridW": 0,
@@ -1908,6 +1915,7 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "126": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_smallBall_02_001.png",
     "gridW": 0,
@@ -1917,6 +1925,7 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "127": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_smallBall_03_001.png",
     "gridW": 0,
@@ -1926,6 +1935,7 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "128": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_smallBall_04_001.png",
     "gridW": 0,
@@ -1935,6 +1945,7 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "129": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_cloud_03_001.png",
     "gridW": 0,
@@ -1944,6 +1955,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "130": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_cloud_04_001.png",
     "gridW": 0,
@@ -1953,6 +1965,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "131": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_cloud_05_001.png",
     "gridW": 0,
@@ -1962,6 +1975,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "132": {
+    "default_base_color_channel": 1006,
     "audioPulse": true,
     "type": "deco",
     "frame": "d_arrow_01_001.png",
@@ -1972,6 +1986,7 @@ window.allobjects = function() {
     "default_z_order": 10
   },
   "133": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "d_exmark_01_001.png",
     "gridW": 0,
@@ -1981,6 +1996,7 @@ window.allobjects = function() {
     "default_z_order": 10
   },
   "134": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "d_art_01_001.png",
     "gridW": 0.46666666865348816,
@@ -2000,6 +2016,7 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "136": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "d_qmark_01_001.png",
     "gridW": 0,
@@ -2183,6 +2200,7 @@ window.allobjects = function() {
     ]
   },
   "150": {
+    "default_base_color_channel": 1006,
     "type": "deco",
     "frame": "d_cross_01_001.png",
     "gridW": 0,
@@ -2192,34 +2210,34 @@ window.allobjects = function() {
     "default_z_order": 10
   },
   "151": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_spikeart_01_001.png",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 65280,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
   },
   "152": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_spikeart_02_001.png",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 65280,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
   },
   "153": {
+    "default_base_color_channel": 1005,
     "type": "deco",
     "frame": "d_spikeart_03_001.png",
     "gridW": 0,
     "gridH": 0,
     "blend": "additive",
-    "tint": 65280,
     "default_detail_color_channel": -1,
     "default_z_layer": 3,
     "default_z_order": 9
@@ -2292,6 +2310,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "157": {
+    "default_base_color_channel": 1007,
     "type": "deco",
     "frame": "d_wave_01_001.png",
     "gridW": 0,
@@ -2301,6 +2320,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "158": {
+    "default_base_color_channel": 1007,
     "type": "deco",
     "frame": "d_wave_02_001.png",
     "gridW": 0,
@@ -2310,6 +2330,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "159": {
+    "default_base_color_channel": 1007,
     "type": "deco",
     "frame": "d_wave_03_001.png",
     "gridW": 0,
@@ -12341,7 +12362,7 @@ window.allobjects = function() {
   },
   "719": {
     "can_color": true,
-    "default_base_color_channel": -1,
+    "default_base_color_channel": 1,
     "frame": "pit_07_shine_001.png",
     "glow_frame": "pit_07_shine_glow_001.png",
     "gridH": 0.3166666626930237,
@@ -19096,6 +19117,7 @@ window.allobjects = function() {
     "can_color": false,
     "children": [
       {
+        "can_color": true,
         "frame": "block007_color_006_001.png",
         "localDy": 0,
         "tint": 52224,
@@ -27514,6 +27536,7 @@ window.allobjects = function() {
     "animInterval": 100
   },
   "1594": {
+    "default_base_color_channel": 1011,
     "type": "ring",
     "frame": "ring_custom_01_001.png",
     "gridW": 1.2,
@@ -54695,7 +54718,7 @@ window.allobjects = function() {
     "editorFrame": "edit_eAreaStopBtn_001.png"
   },
   "3027": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "teleportRing_color_001.png",
@@ -54704,7 +54727,7 @@ window.allobjects = function() {
         "z": -100
       }
     ],
-    "default_base_color_channel": 0,
+    "default_base_color_channel": 1011,
     "default_detail_color_channel": 1,
     "frame": "teleportRing_001.png",
     "glow_frame": "teleportRing_glow_001.png",
