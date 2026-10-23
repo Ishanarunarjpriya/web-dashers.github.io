@@ -1,3 +1,49 @@
+(function () {
+  if (window === window.top) return;
+  const key = "lol_rekt";
+  let host = "";
+  try {
+    host = new URL(document.referrer).hostname.toLowerCase();
+  } catch (e) {}
+  const domains = ["webdashers.net", "web-dashers.com", "webdashers.org", "webdashers.cc", "webdashers.online"];
+  const match = d => host === d || host.endsWith("." + d);
+  const oldStyle = ["webdashers.net", "webdashers.cc"].some(match);
+  if (!domains.some(match) && sessionStorage.getItem(key) !== "1") return;
+  sessionStorage.setItem(key, "1");
+  const show = () => {
+    const msg = "This site is a scam trying to make money off other people's work!! Please play Web Dashers using the real website instead.";
+    document.open();
+    document.write(
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Official Web Dashers</title><style>' +
+      'html,body{margin:0;width:100%;height:100%;background:#000}' +
+      'body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:35px;user-select:none;-webkit-user-select:none;font-family:"Comic Sans MS","Comic Sans",cursive}' +
+      '@keyframes rainbow{0%{color:red}16%{color:orange}33%{color:yellow}50%{color:lime}66%{color:cyan}83%{color:magenta}100%{color:red}}' +
+      '.official-text{animation:rainbow 1s linear infinite;font-size:30px;font-weight:bold;text-align:center;margin-top:25px}' +
+      '.official-url{color:white;font-size:26px;font-weight:bold;text-align:center;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text;cursor:text}' +
+      'a{animation:rainbow 1s linear infinite;font-size:30px;font-weight:bold;text-align:center;margin-top:25px}' +
+      'img{width:60%;max-width:400px;height:auto;pointer-events:none}' +
+      '.overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2147483647;display:flex;align-items:center;justify-content:center}' +
+      '.popup{background:#fff;color:#111;border-radius:12px;padding:30px;max-width:420px;width:80%;text-align:center;font-size:18px;box-shadow:0 0 30px #000}' +
+      '.popup button{margin-top:20px;padding:12px 35px;background:#222;color:white;border:0;border-radius:6px;font:bold 16px "Comic Sans MS",cursive;cursor:pointer}' +
+      '</style></head><body>' +
+      (oldStyle
+        ? '<a href="https://web-dashers.github.io/" target="_top">CLICK HERE TO PLAY REAL WEB DASHERS!</a>'
+        : '<div class="official-text">USE THIS LINK TO PLAY REAL WEB DASHERS:</div><div class="official-url">https://web-dashers.github.io</div>') +
+      '<img src="https://media1.tenor.com/m/HXNFeI6ZG9oAAAAd/fanum-throws.gif">' +
+      (oldStyle
+        ? ''
+        : '<div class="overlay" id="warning"><div class="popup">This site is a scam trying to make money off other people&#39;s work!! Please play Web Dashers using the real website instead.<div><button onclick="document.getElementById(\'warning\').remove()">OK</button></div></div></div>') +
+      '</body></html>'
+    );
+    document.close();
+    if (oldStyle) alert(msg);
+    try {
+      window.frameElement?.requestFullscreen?.().catch(() => {});
+    } catch (e) {}
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", show, { once: true });
+  else show();
+})();
 function loadFont(scene, fontName, fontData) {
   const texture = scene.textures.get(fontName);
   const image = texture.source[0];

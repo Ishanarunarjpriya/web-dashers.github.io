@@ -11858,7 +11858,7 @@ window.allobjects = function() {
   },
   "687": {
     "black": true,
-    "can_color": true,
+    "can_color": false,
     "color_channel": "black",
     "default_base_color_channel": 1004,
     "frame": "lighttriangle_01_02_color_001.png",
