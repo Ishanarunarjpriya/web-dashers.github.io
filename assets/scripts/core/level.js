@@ -2729,6 +2729,8 @@ window.LevelObject = class LevelObject {
   const registerObjectSprite = (spr) => {
     if (!spr) return;
     spr._eeObjectId = linkedObjectId;
+    spr._eeDontFade = String(levelObj._raw?.[64] ?? levelObj._raw?.["64"] ?? "0") === "1";
+    spr._eeDontEnter = String(levelObj._raw?.[67] ?? levelObj._raw?.["67"] ?? "0") === "1";
     spr._eeEditorLayer = parseInt(levelObj.editorLayer ?? levelObj._raw?.[20] ?? levelObj._raw?.["20"] ?? 0, 10) || 0;
     spr._eeEditorLayer2 = parseInt(levelObj.editorLayer2 ?? levelObj._raw?.[61] ?? levelObj._raw?.["61"] ?? 0, 10) || 0;
     if (!this.objectSprites[linkedObjectId]) this.objectSprites[linkedObjectId] = [];
@@ -4043,7 +4045,7 @@ window.LevelObject = class LevelObject {
     if (layer === 2) return null;
     if (shown) {
       const fc = this._getFlatContainers();
-      return layer === 0 ? fc.additive : fc.normal;
+      return fc.normal;
     }
     const home = this._ensureSectionContainer(spr._eeSectionIndex);
     return layer === 0 ? home.additive : home.normal;
@@ -6531,7 +6533,9 @@ window.LevelObject = class LevelObject {
         const _0x1b2883 = _0xeded99 > _0x49c6d8;
         let _0x289aa2;
         _0x289aa2 = _0x1b2883 ? Math.max(0, Math.min(1, (_0x548004 - _0xeded99) / _0xa24372)) : Math.max(0, Math.min(1, (_0xeded99 - _0x29a51b) / _0xa24372));
-        if (_0x289aa2 >= 1) {
+        const _eeFadeK = effectSprite._eeDontFade ? 1 : _0x289aa2;
+        const _eeEnterK = effectSprite._eeDontEnter ? 1 : _0x289aa2;
+        if (_eeFadeK >= 1 && _eeEnterK >= 1) {
           if (effectSprite._eeActive) {
             effectSprite._eeActive = false;
             if (effectSprite._beastManaged) {
@@ -6551,10 +6555,10 @@ window.LevelObject = class LevelObject {
         }
         effectSprite._eeActive = true;
         const _0x453353 = _0x1b2883 ? this._activeEnterEffect : this._activeExitEffect;
-        const _0x20804e = 1 - _0x289aa2;
+        const _0x20804e = 1 - _eeEnterK;
         let _0x50e6d9 = effectSprite._eeBaseY;
         let _0x17437c = effectSprite._eeWorldX;
-        let _0x2128bf = _0x289aa2;
+        let _0x2128bf = _eeFadeK;
         let _0x127ace = 1;
         switch (_0x453353) {
           case 0:
@@ -6573,7 +6577,7 @@ window.LevelObject = class LevelObject {
             break;
           case 5:
             if (!effectSprite._eeAudioScale) {
-              _0x127ace = _0x289aa2;
+              _0x127ace = _eeEnterK;
             }
             break;
           case 6:

@@ -9048,7 +9048,7 @@ _mirrorProgress() {
       const isEmitter = o.type === "ParticleEmitter";
       saved.push(o, o.x, o.scaleX, o.rotation, isEmitter ? undefined : o.alpha, true);
       const sx = o.x + ox;
-      const fade = Math.min(1, Math.min(sx, screenWidth - sx) / 140);
+      const fade = o._eeDontFade ? 1 : Math.min(1, Math.min(sx, screenWidth - sx) / 140);
       if (fade <= 0) {
         o.visible = false;
         return;
