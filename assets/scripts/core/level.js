@@ -463,6 +463,8 @@ function _createSlopeCollider(levelObj, objectDef, worldX, worldY) {
   vRight = rotateSlopePoint(vRight.x, vRight.y, rotDeg);
   vLo = rotateSlopePoint(vLo.x, vLo.y, rotDeg);
   vHi = rotateSlopePoint(vHi.x, vHi.y, rotDeg);
+  const snap = pt => ({ x: Math.round(pt.x * 1e6) / 1e6, y: Math.round(pt.y * 1e6) / 1e6 });
+  vRight = snap(vRight); vLo = snap(vLo); vHi = snap(vHi);
   const xs = [vRight.x, vLo.x, vHi.x];
   const ys = [vRight.y, vLo.y, vHi.y];
   const w = Math.max(...xs) - Math.min(...xs);
@@ -496,6 +498,25 @@ const portalUfoType = "portal_ufo";
 const allObjects = window.allobjects();
 for (const [objId, objectDef] of Object.entries(allObjects || {})) {
   if (!objectDef || typeof objectDef !== "object") continue;
+  const animFrames = objectDef.animFrames;
+  if (Array.isArray(animFrames) && animFrames.length && objectDef.frame && !/_color_/.test(objectDef.frame)
+    && animFrames.every(f => /_color_\d+\.png$/.test(f))) {
+    const basePrefix = objectDef.frame.replace(/_\d+\.png$/, "");
+    const colorPrefix = animFrames[0].replace(/_color_\d+\.png$/, "");
+    if (basePrefix === colorPrefix) {
+      const ownFrame = f => typeof f === "string" && f.startsWith(basePrefix + "_");
+      objectDef.children = (objectDef.children || []).filter(c => !ownFrame(c && c.frame));
+      objectDef.children.unshift({
+        frame: animFrames[animFrames.length - 1],
+        localDy: 0,
+        tint: 65280,
+        z: -1,
+        animFrames: animFrames.slice(),
+        animInterval: objectDef.animInterval
+      });
+      objectDef.animFrames = animFrames.map(f => f.replace(/_color_(\d+\.png)$/, "_$1"));
+    }
+  }
   if (objectDef.glow === true || (objectDef.glow_frame && objectDef.glow_frame !== "none")) {
     objectDef.glow = true;
   }
@@ -3105,6 +3126,7 @@ window.LevelObject = class LevelObject {
           };
            this._applyVisualProps(scene, childSprite, childDef.frame, childObjectData, childVisualDef);
            childSprite._cantColor = childDef.Cant_Color === true;
+          registerAnimatedSprite(childSprite, childDef);
           if (childDef.can_color === true) childSprite._canColor = true;
           
           const showguide = childDef.portalGuide ? (!window.isEditor && window.enablePortalGuide !== false) : true;
@@ -3353,13 +3375,14 @@ window.LevelObject = class LevelObject {
       }
     };
 
-    const slopeCollider = _createSlopeCollider(levelObj, objectDef, worldX, worldY);
+    const noTouch = String(levelObj._raw?.[121] ?? levelObj._raw?.["121"] ?? "0") === "1";
+    const slopeCollider = noTouch ? null : _createSlopeCollider(levelObj, objectDef, worldX, worldY);
     if (slopeCollider) {
       registerCollider(slopeCollider);
       this.objects.push(slopeCollider);
       hasCollisionEntry = true;
       this._addCollisionToSection(slopeCollider);
-    } else if (objectDef.type === solidType && objectDef.gridW > 0 && objectDef.gridH > 0) {
+    } else if (!noTouch && objectDef.type === solidType && objectDef.gridW > 0 && objectDef.gridH > 0) {
       const w = objectDef.gridW * a;
       const h = objectDef.gridH * a;
       const collider = new Collider(solidType, worldX, worldY, w, h, levelObj.rot || 0);
@@ -3368,7 +3391,7 @@ window.LevelObject = class LevelObject {
       this.objects.push(collider);
       hasCollisionEntry = true;
       this._addCollisionToSection(collider);
-    } else if (objectDef.type === hazardType) {
+    } else if (!noTouch && objectDef.type === hazardType) {
       let hitW = 0;
       let hitH = 0;
 

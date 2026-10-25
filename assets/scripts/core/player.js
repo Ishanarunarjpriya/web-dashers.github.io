@@ -1958,12 +1958,33 @@ if (this.p.isFlying || this.p.isUfo) {
         }
       }
       if (_ufoMode) {
-        const _ufotilt = Math.max(-0.1, Math.min(3, (this.p.y - this.p.lastY) * 0.015));
+        const _ufoX = this._scene?._playerWorldX ?? 0;
+        const _ufoLast = this._ufoLastPos || (this._ufoLastPos = { x: _ufoX, y: this.p.y });
+        const _ufoDx = _ufoX - _ufoLast.x;
+        const _ufoDy = this.p.y - _ufoLast.y;
+        if (_ufoDx * _ufoDx + _ufoDy * _ufoDy >= 4.8) {
+          let _ufoAim = 0.4 * Math.atan2(_ufoDy, Math.abs(_ufoDx));
+          _ufoAim = this.p.gravityFlipped ? Math.min(_ufoAim, 0.1) : Math.max(_ufoAim, -0.1);
+          this._ufoTiltTarget = _ufoAim;
+          _ufoLast.x = _ufoX;
+          _ufoLast.y = this.p.y;
+        }
+        const _ufotilt = this._ufoTiltTarget || 0;
         const targetuforotation = this.p.mirrored ? -_ufotilt : _ufotilt;
         if (!Number.isFinite(this._uforotation)) this._uforotation = targetuforotation;
-        const rotationmix = Math.min(1, Math.max(0, (_0x3afedf || 0) * 8.5));
-        this._uforotation += (targetuforotation - this._uforotation) * rotationmix;
-        this._uforotation = Math.max(-0.11, Math.min(3, this._uforotation));
+        if (this._onSlopeAngle !== null && this._onSlopeAngle !== undefined) {
+          const _ufoSlopeTarget = this.p.mirrored ? -this._onSlopeAngle : this._onSlopeAngle;
+          const _ufoGdSpeed = playerSpeed === SpeedPortal.HALF ? 0.7
+            : playerSpeed === SpeedPortal.TWO_TIMES ? 1.1
+            : playerSpeed === SpeedPortal.THREE_TIMES ? 1.3
+            : playerSpeed === SpeedPortal.FOUR_TIMES ? 1.6 : 0.9;
+          const _ufoFrames = (_0x3afedf || 0) * 60;
+          const _ufoSlopeMix = Math.min(1, _ufoGdSpeed * 0.175 * _ufoFrames);
+          this._uforotation += (_ufoSlopeTarget - this._uforotation) * _ufoSlopeMix;
+        } else {
+          const rotationmix = 1 - Math.pow(0.93, Math.max(0, (_0x3afedf || 0) * 60));
+          this._uforotation += (targetuforotation - this._uforotation) * rotationmix;
+        }
         const uforotation = this._uforotation;
         const currentRotation = this.p.mirrored ? -playerRotation : playerRotation;
         const birdX = _0x7f0705 + _0x1b1d28;
@@ -2341,6 +2362,7 @@ if (this.p.isFlying || this.p.isUfo) {
     const savedPortalYVelocity = Number.isFinite(portalYVelocity) ? portalYVelocity : null;
     this.p.isRobot = true;
     this.p._robotHold = false;
+    this.p.robotAccel = 1.5;
     this.p._robotHoldTimer = 0;
     this.p.onGround = !enteredFromPortal;
     this.p.onCeiling = !enteredFromPortal && !!this.p.gravityFlipped;
@@ -3251,26 +3273,21 @@ if (this.p.isFlying || this.p.isUfo) {
     const halfW = (gameObj.w || 0) / 2;
     const halfH = (gameObj.h || 0) / 2;
     if (!(halfW > 0) || !(halfH > 0)) return null;
-    if (pieceWidth <= gameObj.x - halfW || pieceWidth >= gameObj.x + halfW) return null;
+    if (pieceWidth + playerSize <= gameObj.x - halfW || pieceWidth - playerSize >= gameObj.x + halfW) return null;
     const boxTop = gameObj.y + halfH;
     const boxBot = gameObj.y - halfH;
     const capAtTop = !!gameObj.gdSolidAbove;
     const gFlip = this.p.gravityFlipped;
     if (capAtTop === gFlip) return null;
     const face = capAtTop ? boxTop : boxBot;
-    const feet = capAtTop
-      ? playersY - playerSize + gamemodeAddition
-      : playersY + playerSize - gamemodeAddition;
-    const lastFeet = capAtTop
-      ? playersLastY - playerSize + gamemodeAddition
-      : playersLastY + playerSize - gamemodeAddition;
+    const feet = capAtTop ? playersY - playerSize : playersY + playerSize;
+    const lastFeet = capAtTop ? playersLastY - playerSize : playersLastY + playerSize;
     const falling = capAtTop ? (this.p.yVelocity <= 0) : (this.p.yVelocity >= 0);
     if (!falling && !this.p.onGround) return null;
     const crossed = capAtTop
-      ? (feet <= face && (lastFeet >= face || this.p.onGround))
-      : (feet >= face && (lastFeet <= face || this.p.onGround));
+      ? (feet <= face && feet + gamemodeAddition >= face && (lastFeet >= face || this.p.onGround))
+      : (feet >= face && feet - gamemodeAddition <= face && (lastFeet <= face || this.p.onGround));
     if (!crossed) return null;
-    if (Math.abs(face - feet) > playerSize) return null;
     return { landed: true, died: false, candidate: {
       y: capAtTop ? face + playerSize : face - playerSize,
       onCeiling: !capAtTop,
@@ -4824,7 +4841,7 @@ if (this.p.isFlying || this.p.isUfo) {
               }
               _padVel = 16 * _grav * _bump * (_padMini ? 0.8 : 1) * ((this.p.isBall || this.p.isSpider) ? 0.6 : 1);
               this.p.gdAccel = _padId === 1332;
-              if (this.p.isRobot) this.p.robotTouchedPad = true;
+              if (this.p.isRobot && String(window.settingsMap?.["kA34"] ?? "0") === "1") this.p.robotTouchedPad = true;
               this.p.isJumping = true;
               this.p.onGround = false;
               this.p.canJump = false;

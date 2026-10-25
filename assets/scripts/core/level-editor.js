@@ -1270,6 +1270,8 @@ class LevelEditor {
 
 
   _editorPlaytestRelease() {
+    this._state.robotTouchedPad = true;
+    this._state2.robotTouchedPad = true;
     this._state.upKeyDown = false;
     this._state.upKeyPressed = false;
     this._state.queuedHold = false;
