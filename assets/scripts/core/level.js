@@ -5031,7 +5031,9 @@ window.LevelObject = class LevelObject {
   }
 
   stepAlphaTriggers(dt) {
-    let changed = this._alphaForceApply === true || this._alphaAppliedSrc !== this._groupOpacity;
+    let fullApply = this._alphaForceApply === true || this._alphaAppliedSrc !== this._groupOpacity;
+    const changedGroups = this._alphaChangedGroups || (this._alphaChangedGroups = new Set());
+    changedGroups.clear();
     let i = 0;
     while (i < this._activeAlphaTweens.length) {
       const anim = this._activeAlphaTweens[i];
@@ -5043,7 +5045,7 @@ window.LevelObject = class LevelObject {
 
       const newOpacity = anim.startOpacity + (trig.targetOpacity - anim.startOpacity) * progress;
       const clamped = Math.max(0, Math.min(1, newOpacity));
-      if (this._groupOpacity[trig.targetGroup] !== clamped) changed = true;
+      if (this._groupOpacity[trig.targetGroup] !== clamped) changedGroups.add(trig.targetGroup);
       this._groupOpacity[trig.targetGroup] = clamped;
 
       if (progress >= 1) {
@@ -5054,19 +5056,32 @@ window.LevelObject = class LevelObject {
     }
 
     const glowMultiplier = this._getGlowAlphaMultiplier();
-    if (glowMultiplier !== this._alphaAppliedGlowMultiplier) changed = true;
-    if (!changed) return;
+    if (glowMultiplier !== this._alphaAppliedGlowMultiplier) fullApply = true;
+    if (!fullApply && !changedGroups.size) return;
     this._alphaForceApply = false;
     this._alphaAppliedSrc = this._groupOpacity;
     this._alphaAppliedGlowMultiplier = glowMultiplier;
 
-    for (const gid in this._groupOpacity) {
+    const opacities = this._groupOpacity;
+    const groupIds = fullApply ? Object.keys(opacities) : changedGroups;
+    for (const gid of groupIds) {
       const sprites = this._groupSprites[gid];
       if (!sprites) continue;
-      const op = this._groupOpacity[gid];
+      const groupOp = opacities[gid];
       for (const spr of sprites) {
         if (!spr || !spr.active) continue;
         if (spr._eeActive) continue;
+        let op = groupOp;
+        if (!fullApply && spr._eeGroups && spr._eeGroups.length > 1) {
+          let lastGid = -Infinity;
+          for (const g of spr._eeGroups) {
+            const n = Number(g);
+            if (opacities[g] !== undefined && n > lastGid) {
+              lastGid = n;
+              op = opacities[g];
+            }
+          }
+        }
         const baseAlpha = spr._eeOrigAlpha ?? 1;
         const targetAlpha = baseAlpha * op * (spr._eeIsGlowSprite ? glowMultiplier : 1);
         if (typeof spr.setAlpha === "function") spr.setAlpha(targetAlpha);

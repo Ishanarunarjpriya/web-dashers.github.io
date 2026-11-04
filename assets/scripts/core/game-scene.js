@@ -470,10 +470,12 @@ class GameScene extends Phaser.Scene {
     const _groundRaw = window.settingsMap?.["kA7"] ?? ((parseInt(window._groundId || "00", 10) || 0) + 1);
     window._groundId = getGroundTextureId(_groundRaw);
 
-    const _bgKey = "game_bg_" + getBackgroundTextureIndex(_bgGdId);
-    if (this.textures.exists(_bgKey)) {
-      this._applyMirroredBackgroundTexture(_bgKey);
-    }
+    const _bgId = window._backgroundId;
+    this._ensureBackgroundTexture(getBackgroundTextureIndex(_bgGdId), (bgKey) => {
+      if (!this._bg || window._backgroundId !== _bgId) return;
+      this._applyMirroredBackgroundTexture(bgKey);
+      this._releaseUnusedBackgrounds(bgKey);
+    });
     this._level.applyGroundTexture();
     if (this._level._initialColors) {
       for (let chId in this._level._initialColors) {
@@ -5598,6 +5600,8 @@ _buildSettingsPopup() {
         cullDistance: window.cullDistance,
         settingInfoText: window.settingInfoText || {},
         enableLDM: window.enableLDM,
+        highRes: !!window.highRes,
+        fpsCap60: !!window.fpsCap60,
     };
     localStorage.setItem("gd_settings", JSON.stringify(settings));
     localStorage.setItem("gd_useDirectInternet", String(!!window.useDirectInternet));
@@ -5635,6 +5639,8 @@ _buildSettingsPopup() {
         enableOrbGuide: false,
         enableMiniIcon: false,
         enableLDM: false,
+        highRes: false,
+        fpsCap60: false,
         cullDistance: 3
     };
 
@@ -5667,6 +5673,9 @@ _buildSettingsPopup() {
     window.useDirectInternet = !!data.useDirectInternet;
     localStorage.setItem("gd_useDirectInternet", String(!!window.useDirectInternet));
     window.enableLDM = !!data.enableLDM;
+    window.highRes = !!data.highRes;
+    window.fpsCap60 = !!data.fpsCap60;
+    window.setFpsLimit?.(window.fpsCap60 ? 60 : 0);
   }
   _buildMacroPopup() {
       if (this._macroPopup) return;
@@ -6085,6 +6094,72 @@ _buildSettingsPopup() {
       this._reqpopup = null;
     }
     }
+  _buildGraphicsPopup() {
+    if (this._graphicsPopup) {
+      return;
+    }
+
+    const xPos = screenWidth / 2;
+    const centerY = screenHeight / 2;
+    const popupWidth = 500;
+    const popupHeight = 300;
+    this._graphicsPopup = this.add.container(0, 0).setScrollFactor(0).setDepth(1000);
+
+    const background = this.add.rectangle(xPos, centerY, screenWidth, screenHeight, 0, 100 / 255).setInteractive();
+    this._graphicsPopup.add(background);
+
+    const bounceContainer = this.add.container(xPos, centerY).setScale(0);
+    this._graphicsPopup.add(bounceContainer);
+
+    const cornerRadius = this.textures.get("GJ_square02").source[0].width * 0.325;
+    bounceContainer.add(this._drawScale9(0, 0, popupWidth, popupHeight, "GJ_square02", cornerRadius, 16777215, 1));
+
+    const closeBtn = this.add.image(-(popupWidth / 2) + 20, -(popupHeight / 2) + 20, "GJ_WebSheet", "GJ_closeBtn_001.png").setInteractive();
+    bounceContainer.add(closeBtn);
+    this._makeBouncyButton(closeBtn, 1, () => {
+      this._graphicsPopup.destroy();
+      this._graphicsPopup = null;
+    });
+
+    bounceContainer.add(this.add.bitmapText(0, -(popupHeight / 2) + 45, "bigFont", "Graphics", 40).setOrigin(0.5));
+
+    const hiResCheck = this.add.image(-150, -30, "GJ_GameSheet03", window.highRes ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
+    bounceContainer.add(hiResCheck);
+    bounceContainer.add(this.add.bitmapText(-110, -30, "bigFont", "High Resolution", 30).setOrigin(0, 0.5));
+    this._makeBouncyButton(hiResCheck, 0.8, () => {
+      window.highRes = !window.highRes;
+      hiResCheck.setTexture("GJ_GameSheet03", window.highRes ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
+      this._saveSettings();
+      window.setRenderScale?.(window.getRenderScale());
+    });
+
+    const fpsCheck = this.add.image(-150, 40, "GJ_GameSheet03", window.fpsCap60 ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
+    bounceContainer.add(fpsCheck);
+    bounceContainer.add(this.add.bitmapText(-110, 40, "bigFont", "Limit to 60 FPS", 30).setOrigin(0, 0.5));
+    this._makeBouncyButton(fpsCheck, 0.8, () => {
+      window.fpsCap60 = !window.fpsCap60;
+      fpsCheck.setTexture("GJ_GameSheet03", window.fpsCap60 ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
+      this._saveSettings();
+      window.setFpsLimit?.(window.fpsCap60 ? 60 : 0);
+    });
+
+    if ((window.devicePixelRatio || 1) <= 1) {
+      bounceContainer.add(this.add.text(0, 105, "Your screen is already at full resolution.", {
+        fontFamily: "Arial",
+        fontSize: "20px",
+        color: "#ffffff",
+        align: "center"
+      }).setOrigin(0.5));
+    }
+
+    this.tweens.add({
+      targets: bounceContainer,
+      scale: { from: 0, to: 1 },
+      duration: 660,
+      ease: "Elastic.Out",
+      easeParams: [1, 0.6]
+    });
+  }
   _showcontactpopup() {
     if (this._reqpopup) {
       return;
@@ -7980,6 +8055,25 @@ _showwippopup() {
       console.warn("Failed to create mirrored background texture", textureKey, err);
       if (this.textures.exists(mirroredKey)) this.textures.remove(mirroredKey);
       return textureKey;
+    }
+  }
+
+  _ensureBackgroundTexture(index, onReady) {
+    const key = index === 0 ? "game_bg_01" : "game_bg_" + index;
+    if (this.textures.exists(key)) {
+      onReady(key);
+      return;
+    }
+    this.load.image(key, "assets/game-bg/game_bg_" + String(index + 1).padStart(2, "0") + "_001-hd.png");
+    this.load.once("filecomplete-image-" + key, () => onReady(key));
+    if (!this.load.isLoading()) this.load.start();
+  }
+
+  _releaseUnusedBackgrounds(keepKey) {
+    for (const key of this.textures.getTextureKeys()) {
+      if (!/^game_bg_\d+(__mirror_y_loop)?$/.test(key)) continue;
+      if (key === "game_bg_01" || key === keepKey || key === keepKey + "__mirror_y_loop") continue;
+      this.textures.remove(key);
     }
   }
 
@@ -10243,7 +10337,7 @@ window.open("https://github.com/web-dashers/web-dashers.github.io", "_blank"); }
     _makeSettingsBtn(_sColL, _sRow1Y, "Account",    _sBtnW2, false, null);
     _makeSettingsBtn(_sColR, _sRow1Y, "How To Play", _sBtnW2, true, () => { this._buildHowToPlayPopup(); });
     _makeSettingsBtn(_sColL, _sRow2Y, "Options",    _sBtnW2, true,  () => { this._buildSettingsPopup(); });
-    _makeSettingsBtn(_sColR, _sRow2Y, "Graphics",   _sBtnW2, false, null);
+    _makeSettingsBtn(_sColR, _sRow2Y, "Graphics",   _sBtnW2, true,  () => { this._buildGraphicsPopup(); });
     _makeSettingsBtn(_sCol3L, _sRow3Y, "Rate",      _sBtnW3, true, () => { this._redirectRate(); });
     _makeSettingsBtn(_sCol3M, _sRow3Y, "Songs",     _sBtnW3, true, () => { this._hideSettingsScreen(() => this.time.delayedCall(150, () => this._buildsongspopup())); });
     _makeSettingsBtn(_sCol3R, _sRow3Y, "Help",      _sBtnW3, true, () => { this._hideSettingsScreen(() => this.time.delayedCall(150, () => this._buildhelppopup())); });

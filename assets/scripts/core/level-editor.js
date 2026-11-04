@@ -3463,16 +3463,18 @@ class LevelEditor {
     if (key === "kA6") {
         window._backgroundId = String(numericValue).padStart(2, "0");
 
-        const bgKey = "game_bg_" + getBackgroundTextureIndex(numericValue);
+        const bgId = window._backgroundId;
 
-        if (this._bg && this.textures.exists(bgKey)) {
+        this._ensureBackgroundTexture(getBackgroundTextureIndex(numericValue), (bgKey) => {
+            if (!this._bg || window._backgroundId !== bgId) return;
             this._bg.setTexture(bgKey);
             const newBgH = this.textures.get(bgKey).source?.[0]?.height;
 
             if (newBgH) {
                 this._bgInitY = newBgH - screenHeight - o;
             }
-        }
+            this._releaseUnusedBackgrounds(bgKey);
+        });
     } else if (key === "kA7") {
         window._groundId = getGroundTextureId(numericValue);
 
@@ -4276,6 +4278,18 @@ class LevelEditor {
 
 
   _openEditorColorPickerPopup(channelId, labelText, onColorChanged, pickerOptions = {}) {
+    const pickerSheet = "CCControlColourPickerSpriteSheet-uhd";
+    if (!this.textures.exists(pickerSheet)) {
+      if (this._colourPickerSheetLoading) return;
+      this._colourPickerSheetLoading = true;
+      this.load.atlas(pickerSheet, "assets/sheets/" + pickerSheet + ".png", "assets/sheets/" + pickerSheet + ".json");
+      this.load.once("filecomplete-atlasjson-" + pickerSheet, () => {
+        this._colourPickerSheetLoading = false;
+        this._openEditorColorPickerPopup(channelId, labelText, onColorChanged, pickerOptions);
+      });
+      if (!this.load.isLoading()) this.load.start();
+      return;
+    }
     this._closeEditorColorPickerPopup();
 
     const sw = screenWidth;

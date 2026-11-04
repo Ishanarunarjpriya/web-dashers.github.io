@@ -54,6 +54,7 @@ const phaserConfig = {
   },
   render: {
     powerPreference: "default",
+    antialiasGL: false,
     roundPixels: true
   },
   scale: {
@@ -87,7 +88,97 @@ const phaserConfig = {
     };
   }
 })();
-new Phaser.Game(phaserConfig);
+(() => {
+  const rendererProto = Phaser.Renderer.WebGL.WebGLRenderer.prototype;
+  const resize = rendererProto.resize;
+  window.getRenderScale = () => {
+    let highRes = false;
+    try { highRes = JSON.parse(localStorage.getItem("gd_settings") || "{}").highRes === true; } catch (e) {}
+    return highRes ? Math.min(2, Math.max(1, window.devicePixelRatio || 1)) : 1;
+  };
+  window.renderScale = window.getRenderScale();
+  rendererProto.resize = function (width, height) {
+    const gl = this.gl;
+    if (gl && !gl._wdScaled) {
+      gl._wdScaled = true;
+      let boundFramebuffer = null;
+      let viewportBox = null;
+      let scissorBox = null;
+      const bindFramebuffer = gl.bindFramebuffer.bind(gl);
+      const viewport = gl.viewport.bind(gl);
+      const scissor = gl.scissor.bind(gl);
+      const applyViewport = () => {
+        const k = boundFramebuffer ? 1 : window.renderScale;
+        const [x, y, w, h] = viewportBox;
+        viewport(x * k, y * k, w * k, h * k);
+      };
+      const applyScissor = () => {
+        const k = boundFramebuffer ? 1 : window.renderScale;
+        const [x, y, w, h] = scissorBox;
+        scissor(x * k, y * k, w * k, h * k);
+      };
+      gl.bindFramebuffer = (target, framebuffer) => {
+        const changed = !boundFramebuffer !== !framebuffer;
+        boundFramebuffer = framebuffer;
+        bindFramebuffer(target, framebuffer);
+        if (changed && window.renderScale !== 1) {
+          if (viewportBox) applyViewport();
+          if (scissorBox) applyScissor();
+        }
+      };
+      gl.viewport = (x, y, w, h) => {
+        viewportBox = [x, y, w, h];
+        applyViewport();
+      };
+      gl.scissor = (x, y, w, h) => {
+        scissorBox = [x, y, w, h];
+        applyScissor();
+      };
+      Object.defineProperty(gl, "drawingBufferHeight", { get: () => this.canvas.height / window.renderScale });
+    }
+    const k = window.renderScale;
+    const canvasW = Math.round(width * k);
+    const canvasH = Math.round(height * k);
+    if (this.canvas.width !== canvasW || this.canvas.height !== canvasH) {
+      this.canvas.width = canvasW;
+      this.canvas.height = canvasH;
+    }
+    return resize.call(this, width, height);
+  };
+  window.setRenderScale = (k) => {
+    window.renderScale = k;
+    const renderer = window._wdGame?.renderer;
+    if (renderer?.gl) renderer.resize(renderer.width, renderer.height);
+  };
+})();
+window._wdGame = new Phaser.Game(phaserConfig);
+window.setFpsLimit = (limit) => {
+  const loop = window._wdGame?.loop;
+  if (!loop || loop.fpsLimit === limit) return;
+  loop.fpsLimit = limit;
+  loop.hasFpsLimit = limit > 0;
+  loop._limitRate = limit > 0 ? 1000 / limit : 0;
+  loop.stepLimitFPS = function (t) {
+    this.now = t;
+    let delta = Math.max(0, t - this.lastTime);
+    this.rawDelta = delta;
+    this.time += delta;
+    if (this.smoothStep) delta = this.smoothDelta(delta);
+    this.delta += delta;
+    if (t >= this.nextFpsUpdate) this.updateFPS(t);
+    this.framesThisSecond++;
+    if (this.delta >= this._limitRate - this.rawDelta / 2) {
+      this.callback(t, this.delta);
+      this.delta = 0;
+    }
+    this.lastTime = t;
+    this.frame++;
+  };
+  if (loop.running) {
+    loop.sleep();
+    loop.wake();
+  }
+};
 
 window.clearGameCache = () => {
   if (window.gameCache) {
