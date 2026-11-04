@@ -5601,6 +5601,7 @@ _buildSettingsPopup() {
         settingInfoText: window.settingInfoText || {},
         enableLDM: window.enableLDM,
         highRes: !!window.highRes,
+        uhdTextures: !!window.uhdTextures,
         fpsCap60: !!window.fpsCap60,
     };
     localStorage.setItem("gd_settings", JSON.stringify(settings));
@@ -5640,6 +5641,7 @@ _buildSettingsPopup() {
         enableMiniIcon: false,
         enableLDM: false,
         highRes: false,
+        uhdTextures: false,
         fpsCap60: false,
         cullDistance: 3
     };
@@ -5674,6 +5676,7 @@ _buildSettingsPopup() {
     localStorage.setItem("gd_useDirectInternet", String(!!window.useDirectInternet));
     window.enableLDM = !!data.enableLDM;
     window.highRes = !!data.highRes;
+    window.uhdTextures = !!data.uhdTextures;
     window.fpsCap60 = !!data.fpsCap60;
     window.setFpsLimit?.(window.fpsCap60 ? 60 : 0);
   }
@@ -6123,9 +6126,9 @@ _buildSettingsPopup() {
 
     bounceContainer.add(this.add.bitmapText(0, -(popupHeight / 2) + 45, "bigFont", "Graphics", 40).setOrigin(0.5));
 
-    const hiResCheck = this.add.image(-150, -30, "GJ_GameSheet03", window.highRes ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
+    const hiResCheck = this.add.image(-150, -55, "GJ_GameSheet03", window.highRes ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
     bounceContainer.add(hiResCheck);
-    bounceContainer.add(this.add.bitmapText(-110, -30, "bigFont", "High Resolution", 30).setOrigin(0, 0.5));
+    bounceContainer.add(this.add.bitmapText(-110, -55, "bigFont", "High Resolution", 30).setOrigin(0, 0.5));
     this._makeBouncyButton(hiResCheck, 0.8, () => {
       window.highRes = !window.highRes;
       hiResCheck.setTexture("GJ_GameSheet03", window.highRes ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
@@ -6133,9 +6136,18 @@ _buildSettingsPopup() {
       window.setRenderScale?.(window.getRenderScale());
     });
 
-    const fpsCheck = this.add.image(-150, 40, "GJ_GameSheet03", window.fpsCap60 ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
+    const uhdCheck = this.add.image(-150, 0, "GJ_GameSheet03", window.uhdTextures ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
+    bounceContainer.add(uhdCheck);
+    bounceContainer.add(this.add.bitmapText(-110, 0, "bigFont", "UHD Textures", 30).setOrigin(0, 0.5));
+    this._makeBouncyButton(uhdCheck, 0.8, () => {
+      window.uhdTextures = !window.uhdTextures;
+      uhdCheck.setTexture("GJ_GameSheet03", window.uhdTextures ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
+      this._saveSettings();
+    });
+
+    const fpsCheck = this.add.image(-150, 55, "GJ_GameSheet03", window.fpsCap60 ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png").setScale(0.8).setInteractive();
     bounceContainer.add(fpsCheck);
-    bounceContainer.add(this.add.bitmapText(-110, 40, "bigFont", "Limit to 60 FPS", 30).setOrigin(0, 0.5));
+    bounceContainer.add(this.add.bitmapText(-110, 55, "bigFont", "Limit to 60 FPS", 30).setOrigin(0, 0.5));
     this._makeBouncyButton(fpsCheck, 0.8, () => {
       window.fpsCap60 = !window.fpsCap60;
       fpsCheck.setTexture("GJ_GameSheet03", window.fpsCap60 ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
@@ -6143,14 +6155,15 @@ _buildSettingsPopup() {
       window.setFpsLimit?.(window.fpsCap60 ? 60 : 0);
     });
 
-    if ((window.devicePixelRatio || 1) <= 1) {
-      bounceContainer.add(this.add.text(0, 105, "Your screen is already at full resolution.", {
-        fontFamily: "Arial",
-        fontSize: "20px",
-        color: "#ffffff",
-        align: "center"
-      }).setOrigin(0.5));
-    }
+    const note = (window.devicePixelRatio || 1) > 1
+      ? "UHD needs High Resolution and a reload. Uses more memory."
+      : "Your screen is already at full resolution.";
+    bounceContainer.add(this.add.text(0, 110, note, {
+      fontFamily: "Arial",
+      fontSize: "20px",
+      color: "#ffffff",
+      align: "center"
+    }).setOrigin(0.5));
 
     this.tweens.add({
       targets: bounceContainer,

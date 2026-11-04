@@ -111,6 +111,27 @@ function loadFont(scene, fontName, fontData) {
   scene.cache.bitmapFont.add(fontName, { data: fontConfig, texture: fontName, frame: null });
 }
 
+const UHD_SHEETS = new Set(["GJ_GameSheet", "GJ_GameSheet02", "GJ_GameSheet03", "GJ_GameSheet04", "GJ_GameSheetGlow", "GJ_GameSheetEditor", "GJ_LaunchSheet", "GJ_ParticleSheet", "FireSheet_01-hd"]);
+function loadSheetAtlas(scene, key, file) {
+  const useUhd = !!window.useUhdTextures && UHD_SHEETS.has(file);
+  scene.load.atlas(key, "assets/sheets/" + (useUhd ? "uhd/" : "") + file + ".png", "assets/sheets/" + file + ".json");
+  if (!useUhd) return;
+  scene.load.once("filecomplete-atlasjson-" + key, () => {
+    const texture = scene.textures.get(key);
+    const source = texture.source[0];
+    if (source._wdUhd) return;
+    source._wdUhd = true;
+    source.width /= 2;
+    source.height /= 2;
+    for (const name of texture.getFrameNames(false)) {
+      const frame = texture.get(name);
+      if (frame.rotated) frame.updateUVsInverted();
+      else frame.updateUVs();
+    }
+    texture.get("__BASE").setSize(source.width, source.height);
+  });
+}
+
 class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: "BootScene" });
@@ -249,7 +270,7 @@ class BootScene extends Phaser.Scene {
     this.load.image("ishyLogo", "assets/sprites/ishy_logo.png");
     this.load.image("gravityLine_001", "assets/sprites/gravityLine_001.png");
     this.load.atlas("GJ_WebSheet", "assets/sheets/GJ_WebSheet.png", "assets/sheets/GJ_WebSheet.json");
-    this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
+    loadSheetAtlas(this, "GJ_LaunchSheet", "GJ_LaunchSheet");
     this.load.image("goldFont", "assets/fonts/goldFont.png");
     this.load.text("goldFontFnt", "assets/fonts/goldFont.fnt");
     
@@ -297,12 +318,12 @@ class BootScene extends Phaser.Scene {
         };
       }
 
-      this.load.atlas("GJ_GameSheet", "assets/sheets/GJ_GameSheet.png", "assets/sheets/GJ_GameSheet.json");
-      this.load.atlas("GJ_GameSheet02", "assets/sheets/GJ_GameSheet02.png", "assets/sheets/GJ_GameSheet02.json");
-      this.load.atlas("GJ_GameSheet03", "assets/sheets/GJ_GameSheet03.png", "assets/sheets/GJ_GameSheet03.json");
-      this.load.atlas("GJ_GameSheet04", "assets/sheets/GJ_GameSheet04.png", "assets/sheets/GJ_GameSheet04.json");
-      this.load.atlas("GJ_GameSheetEditor", "assets/sheets/GJ_GameSheetEditor.png", "assets/sheets/GJ_GameSheetEditor.json");
-      this.load.atlas("GJ_GameSheetGlow", "assets/sheets/GJ_GameSheetGlow.png", "assets/sheets/GJ_GameSheetGlow.json");
+      loadSheetAtlas(this, "GJ_GameSheet", "GJ_GameSheet");
+      loadSheetAtlas(this, "GJ_GameSheet02", "GJ_GameSheet02");
+      loadSheetAtlas(this, "GJ_GameSheet03", "GJ_GameSheet03");
+      loadSheetAtlas(this, "GJ_GameSheet04", "GJ_GameSheet04");
+      loadSheetAtlas(this, "GJ_GameSheetEditor", "GJ_GameSheetEditor");
+      loadSheetAtlas(this, "GJ_GameSheetGlow", "GJ_GameSheetGlow");
       this.load.atlas("GJ_GameSheetIcons", "assets/sheets/GJ_GameSheetIcons.png", "assets/sheets/GJ_GameSheetIcons.json");
       this.load.atlas("Wavesheet", "assets/sheets/Wavesheet.png", "assets/sheets/Wavesheet.json");
       this.load.json("Spider_AnimDesc", "assets/sheets/Spider_AnimDesc.json");
@@ -312,12 +333,12 @@ class BootScene extends Phaser.Scene {
       this.load.json("GJBeast03_AnimDesc", "assets/sheets/GJBeast03_AnimDesc.json");
       this.load.json("GJBeast04_AnimDesc", "assets/sheets/GJBeast04_AnimDesc.json");
       this.load.json("GJBeast05_AnimDesc", "assets/sheets/GJBeast05_AnimDesc.json");
-      this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
+      loadSheetAtlas(this, "GJ_LaunchSheet", "GJ_LaunchSheet");
       this.load.atlas("player_ball_00", "assets/sheets/player_ball_00.png", "assets/sheets/player_ball_00.json");
       this.load.atlas("player_dart_00", "assets/sheets/player_dart_00.png", "assets/sheets/player_dart_00.json");
       this.load.atlas("PixelSheet_01-hd", "assets/sheets/PixelSheet_01.png", "assets/sheets/PixelSheet_01.json");
-      this.load.atlas("FireSheet_01-hd", "assets/sheets/FireSheet_01-hd.png", "assets/sheets/FireSheet_01-hd.json");
-      this.load.atlas("GJ_ParticleSheet-uhd", "assets/sheets/GJ_ParticleSheet.png", "assets/sheets/GJ_ParticleSheet.json");
+      loadSheetAtlas(this, "FireSheet_01-hd", "FireSheet_01-hd");
+      loadSheetAtlas(this, "GJ_ParticleSheet-uhd", "GJ_ParticleSheet");
       this.load.image("bigFont", "assets/fonts/bigFont.png");
       this.load.text("bigFontFnt", "assets/fonts/bigFont.fnt");
       this.load.image("square04_001", "assets/sprites/square04_001.png");

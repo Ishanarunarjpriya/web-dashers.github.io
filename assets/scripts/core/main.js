@@ -97,6 +97,11 @@ const phaserConfig = {
     return highRes ? Math.min(2, Math.max(1, window.devicePixelRatio || 1)) : 1;
   };
   window.renderScale = window.getRenderScale();
+  try {
+    window.useUhdTextures = window.renderScale > 1 && JSON.parse(localStorage.getItem("gd_settings") || "{}").uhdTextures === true;
+  } catch (e) {
+    window.useUhdTextures = false;
+  }
   rendererProto.resize = function (width, height) {
     const gl = this.gl;
     if (gl && !gl._wdScaled) {
