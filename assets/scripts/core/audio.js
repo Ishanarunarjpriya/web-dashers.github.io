@@ -88,6 +88,31 @@ class AudioManager {
     const parsedOffset = Number(rawOffset);
     return Number.isFinite(parsedOffset) ? parsedOffset : 0;
   }
+  _loadPracticeSong() {
+    const key = "StayInsideMe";
+    const loader = this._scene?.load;
+    if (!loader || this._practiceSongLoading || this._scene.cache.audio.exists(key)) return;
+    this._practiceSongLoading = true;
+    loader.audio(key, "assets/music/StayInsideMe.mp3");
+    loader.once("filecomplete-audio-" + key, () => {
+      this._practiceSongLoading = false;
+      if (this._shouldUsePracticeSong()) this.startMusic();
+    });
+    if (!loader.isLoading()) loader.start();
+  }
+  _releaseUnusedSongs(keepKey) {
+    const cache = this._scene?.cache?.audio;
+    if (!cache) return;
+    const keep = new Set([keepKey, "menu_music"]);
+    if (this._shouldUsePracticeSong()) keep.add("StayInsideMe");
+    for (const key of cache.entries.keys()) {
+      if (keep.has(key)) continue;
+      const buffer = cache.get(key);
+      if (!buffer || !(buffer.duration > 20)) continue;
+      this._scene.sound.removeByKey(key);
+      cache.remove(key);
+    }
+  }
   _shouldUsePracticeSong() {
     return !!(this._scene?._practicedMode?.practiceMode && !window.practiceMusicSync);
   }
@@ -275,6 +300,7 @@ class AudioManager {
         this._musicPlaying = true;
         return;
       }
+      this._loadPracticeSong();
     }
     if (window._onlineSongBuffer && window._onlineSongKey === window.currentlevel?.[0]) {
       const startOffset = this._getLevelSongStartOffset();
@@ -301,6 +327,7 @@ class AudioManager {
       volume: this._effectiveVolume()
     });
     this._music.play();
+    this._releaseUnusedSongs(_songKey);
     const startOffset = this._getLevelSongStartOffset();
     this._music.seek = startOffset + StartPosOffset;
     this._setupAnalyser();
@@ -442,6 +469,7 @@ class AudioManager {
         this._musicPlaying = true;
         return;
       }
+      this._loadPracticeSong();
     }
     
     if (window._onlineSongBuffer && window._onlineSongKey === window.currentlevel?.[0]) {
@@ -475,6 +503,7 @@ class AudioManager {
       volume: 0
     });
     this._music.play();
+    this._releaseUnusedSongs(songKey);
     this._setupAnalyser();
     this._scene.tweens.add({
       targets: this._music,

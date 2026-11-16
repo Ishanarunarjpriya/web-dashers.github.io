@@ -405,6 +405,8 @@ class GameScene extends Phaser.Scene {
     });
   }
   create() {
+    this.game.events.off("prerender", this._snapLevelContainers, this);
+    this.game.events.on("prerender", this._snapLevelContainers, this);
     this._bgSpeedX = 0.1;
     this._bgSpeedY = 0.1;
     this._menuCameraX = -centerX;
@@ -470,10 +472,12 @@ class GameScene extends Phaser.Scene {
     const _groundRaw = window.settingsMap?.["kA7"] ?? ((parseInt(window._groundId || "00", 10) || 0) + 1);
     window._groundId = getGroundTextureId(_groundRaw);
 
-    const _bgKey = "game_bg_" + getBackgroundTextureIndex(_bgGdId);
-    if (this.textures.exists(_bgKey)) {
-      this._applyMirroredBackgroundTexture(_bgKey);
-    }
+    const _bgId = window._backgroundId;
+    this._ensureBackgroundTexture(getBackgroundTextureIndex(_bgGdId), (bgKey) => {
+      if (!this._bg || window._backgroundId !== _bgId) return;
+      this._applyMirroredBackgroundTexture(bgKey);
+      this._releaseUnusedBackgrounds(bgKey);
+    });
     this._level.applyGroundTexture();
     if (this._level._initialColors) {
       for (let chId in this._level._initialColors) {
@@ -7504,6 +7508,7 @@ _showwippopup() {
     this._level.resetCountTriggers?.();
     this._level.resetCollisionTriggers?.();
     this._level.resetInstantCountTriggers?.();
+    this._level.resetGenericTriggers();
     this._level.checkToggleTriggers?.(0);
     this._level.checkPickupTriggers?.(0, this._colorManager);
     this._level.checkCountTriggers?.(0, this._colorManager);
@@ -7842,6 +7847,7 @@ _showwippopup() {
     this._level.resetCountTriggers?.();
     this._level.resetCollisionTriggers?.();
     this._level.resetInstantCountTriggers?.();
+    this._level.resetGenericTriggers();
     this._level.checkToggleTriggers?.(checkpoint.x);
     this._level.checkPickupTriggers?.(checkpoint.x, this._colorManager);
     this._level.checkCountTriggers?.(checkpoint.x, this._colorManager);
@@ -7983,6 +7989,25 @@ _showwippopup() {
     }
   }
 
+  _ensureBackgroundTexture(index, onReady) {
+    const key = index === 0 ? "game_bg_01" : "game_bg_" + index;
+    if (this.textures.exists(key)) {
+      onReady(key);
+      return;
+    }
+    this.load.image(key, "assets/game-bg/game_bg_" + String(index + 1).padStart(2, "0") + "_001-hd.png");
+    this.load.once("filecomplete-image-" + key, () => onReady(key));
+    if (!this.load.isLoading()) this.load.start();
+  }
+
+  _releaseUnusedBackgrounds(keepKey) {
+    for (const key of this.textures.getTextureKeys()) {
+      if (!/^game_bg_\d+(__mirror_y_loop)?$/.test(key)) continue;
+      if (key === "game_bg_01" || key === keepKey || key === keepKey + "__mirror_y_loop") continue;
+      this.textures.remove(key);
+    }
+  }
+
   _applyMirroredBackgroundTexture(textureKey) {
     const texture = this.textures.get(textureKey);
     const source = texture?.source?.[0];
@@ -8042,8 +8067,201 @@ _showwippopup() {
       this._cameraY = explosionPiece;
     }
   }
+  _stepObjectAnimations(deltaTime) {
+    if (!window.enableLDM) {
+      window._animTimer += deltaTime;
+      for (let _as of window._animatedSprites) {
+        if (!_as || !_as.active || !_as.visible) continue;
+        if (_as._eeCulled || (_as.parentContainer && !_as.parentContainer.visible)) continue;
+        if (window._animTimer - (_as._lastAnimSwap || 0) >= _as._animInterval) {
+          _as._lastAnimSwap = window._animTimer;
+          _as._animIdx = (_as._animIdx + 1) % _as._animFrames.length;
+          let _fr = getAtlasFrame(_as._animScene, _as._animFrames[_as._animIdx]);
+          if (_fr) {
+            try {
+              _as.setTexture(_fr.atlas, _fr.frame);
+            } catch(e){}
+          }
+        }
+      }
+    } else {
+      window._animTimer += deltaTime;
+    }
+    if (this._level && this._level._sawSprites && !window.enableLDM) {
+      const sawTimer = (window._animTimer || 0) / 1000;
+      for (let _saw of this._level._sawSprites) {
+        if (!_saw || !_saw.active || !_saw.visible) continue;
+        if (_saw._eeCulled || (_saw.parentContainer && !_saw.parentContainer.visible)) continue;
+        const baseSpeed = _saw._Sawrotationspeed ?? 0.0034;
+        let sawRotationSpeed = baseSpeed;
+        if (_saw._SawRandom1 !== undefined) {
+          sawRotationSpeed += Math.sin(sawTimer + _saw._SawRandom1) * (_saw._SawRandom2 || 0);
+        }
+        _saw.rotation += deltaTime * sawRotationSpeed;
+      }
+    }
+  }
+  _stepBeastAnimations(deltaTime) {
+    if (this._level && this._level._beastSprites && this._level._beastSprites.length) {
+      const dtSec = Number.isFinite(deltaTime) ? deltaTime / 1000 : 0;
+      for (const beast of this._level._beastSprites) {
+        if (!beast || !beast.state) continue;
+        if (beast.hiddenStatics) {
+          for (const hiddenSpr of beast.hiddenStatics) {
+            if (hiddenSpr.visible) hiddenSpr.setVisible(false);
+            if (hiddenSpr.active) hiddenSpr.active = false;
+          }
+        }
+        if (!beast.state.desc) continue;
+        if (!beast.state.base) window.BeastAnim.defaultBase(beast.state);
+        window.BeastAnim.advance(beast.state, dtSec);
+        const st = beast.state;
+        const group = st.group;
+        if (!group || !group.length) continue;
+        const frameKey = group[Math.min(st.frameIdx, group.length - 1)];
+        const frame = st.desc.frames[frameKey];
+        if (!frame) continue;
+        const anchorContainer = beast.anchorSprite ? beast.anchorSprite.parentContainer : null;
+        if (anchorContainer && !anchorContainer.visible) continue;
+        const flipSignX = beast.flipX ? -1 : 1;
+        const anchorSpr = beast.anchorSprite && beast.anchorSprite.active ? beast.anchorSprite : null;
+        let rigOffX = 0;
+        let rigOffY = 0;
+        let rigRot = 0;
+        if (anchorSpr && anchorSpr._eeGroups && anchorSpr._eeGroups.length && this._level._getCombinedGroupOffset) {
+          const groupMove = this._level._getCombinedGroupOffset(anchorSpr, this._beastOffsetScratch || (this._beastOffsetScratch = { x: 0, y: 0 }));
+          rigOffX = Number(groupMove.x) || 0;
+          rigOffY = Number(groupMove.y) || 0;
+          for (const gid of anchorSpr._eeGroups) {
+            const rotData = this._level._groupRotations ? this._level._groupRotations[gid] : null;
+            if (!rotData || !rotData.totalRad) continue;
+            rigRot += rotData.totalRad;
+            if (rotData.centerGroupId > 0 && this._level._getGroupCenter) {
+              const pivot = this._level._getGroupCenter(rotData.centerGroupId);
+              const pivotDX = beast.worldX + rigOffX - pivot.cx;
+              const pivotDY = beast.baseY + rigOffY - pivot.cy;
+              const pivotCos = Math.cos(rotData.totalRad);
+              const pivotSin = Math.sin(rotData.totalRad);
+              rigOffX = pivot.cx + pivotDX * pivotCos - pivotDY * pivotSin - beast.worldX;
+              rigOffY = pivot.cy + pivotDX * pivotSin + pivotDY * pivotCos - beast.baseY;
+            }
+          }
+        }
+        const rigCos = rigRot ? Math.cos(rigRot) : 1;
+        const rigSin = rigRot ? Math.sin(rigRot) : 0;
+        if (beast.lastFrameKey !== frameKey) {
+          beast.lastFrameKey = frameKey;
+          for (const tex in beast.partSprites) {
+            if (frame.texSet[tex]) continue;
+            const idleSpr = beast.partSprites[tex];
+            idleSpr.scaleX = 0;
+            idleSpr.scaleY = 0;
+            const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
+            if (idleGlow) {
+              idleGlow.scaleX = 0;
+              idleGlow.scaleY = 0;
+            }
+          }
+        }
+        if (beast.baseRot === undefined) beast.baseRot = Math.atan2(beast.rotSin, beast.rotCos);
+        const unitScale = window.BeastAnim.UNIT_SCALE * beast.scale;
+        const flipSignY = beast.flipY ? -1 : 1;
+        const angleSign = beast.flipX !== beast.flipY ? -1 : 1;
+        const angleBase = beast.baseRot + rigRot;
+        const scaleSignX = flipSignX * beast.scale;
+        const scaleSignY = flipSignY * beast.scale;
+        const parts = frame.parts;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          const spr = beast.partSprites[part.texture];
+          if (!spr) continue;
+          const localX = part.x * unitScale * flipSignX;
+          const localY = -part.y * unitScale * flipSignY;
+          const rigLocalX = localX * rigCos - localY * rigSin;
+          const rigLocalY = localX * rigSin + localY * rigCos;
+          const worldX = beast.worldX + rigOffX + (rigLocalX * beast.rotCos - rigLocalY * beast.rotSin);
+          const worldY = beast.baseY + rigOffY + (rigLocalX * beast.rotSin + rigLocalY * beast.rotCos);
+          const effectDX = spr._eeEffectOffsetX || 0;
+          const effectDY = spr._eeEffectOffsetY || 0;
+          const effectScale = spr._eeEffectScale === undefined ? 1 : spr._eeEffectScale;
+          spr._eeEffectOffsetX = 0;
+          spr._eeEffectOffsetY = 0;
+          spr._eeEffectScale = 1;
+          const angle = part.rot * angleSign + angleBase;
+          spr.x = worldX + effectDX;
+          spr.y = worldY + effectDY;
+          spr.rotation = angle;
+          const partScaleX = part.sx * scaleSignX * effectScale;
+          const partScaleY = part.sy * scaleSignY * effectScale;
+          spr.scaleX = partScaleX;
+          spr.scaleY = partScaleY;
+          spr._eeZDepthBase = spr._eeZDepthBase ?? spr._eeZDepth;
+          const zDepth = spr._eeZDepthBase + part.z * 0.001;
+          if (spr._eeZDepth !== zDepth || spr.depth !== zDepth) {
+            spr._eeZDepth = zDepth;
+            spr.depth = zDepth;
+          }
+          const glowSpr = beast.partGlows ? beast.partGlows[part.texture] : null;
+          if (glowSpr) {
+            glowSpr.x = worldX + effectDX;
+            glowSpr.y = worldY + effectDY;
+            glowSpr.rotation = angle;
+            glowSpr.scaleX = partScaleX;
+            glowSpr.scaleY = partScaleY;
+            const glowDepth = zDepth - 0.001;
+            if (glowSpr._eeZDepth !== glowDepth || glowSpr.depth !== glowDepth) {
+              glowSpr._eeZDepth = glowDepth;
+              glowSpr.depth = glowDepth;
+            }
+          }
+          if (beast.eye && beast.eyeParent === part.texture) {
+            beast.eye.x = worldX + effectDX;
+            beast.eye.y = worldY + effectDY;
+            beast.eye.rotation = angle;
+            beast.eye.scaleX = partScaleX;
+            beast.eye.scaleY = partScaleY;
+          }
+        }
+      }
+    }
+  }
+  _stepLevelWhileDead(deltaTime) {
+    const level = this._level;
+    if (!level) return;
+    const dt = deltaTime / 1000;
+    const playerX = this._playerWorldX;
+    this._stepObjectAnimations(deltaTime);
+    level.beginGroupTransformBatch();
+    level.stepMoveTriggers(dt);
+    level.updateGenericTriggers(playerX, null, null, dt, this._colorManager);
+    level.stepSpawnTriggers(dt, this._colorManager);
+    level.stepAlphaTriggers(dt);
+    level.stepRotateTriggers(dt);
+    level.stepFollowPlayerYTriggers?.(dt);
+    level.stepFollowTriggers?.(dt);
+    level.flushGroupTransformBatch();
+    level.updateCollisionTriggers?.();
+    level.updateVisibility(this._cameraX);
+    level.stepPulseTriggers(dt, this._colorManager);
+    this._colorManager.step(dt);
+    level.applyColorChannels(this._colorManager, true);
+    this._bg.setTint(this._colorManager.getHex(fs));
+    level.setGroundColor(this._colorManager.getHex(gs));
+    level.setGround2Color?.(this._colorManager.getHex(1009));
+    level.applyEnterEffects(this._cameraX);
+    this._stepBeastAnimations(deltaTime);
+  }
+  _snapLevelContainers() {
+    const level = this._level;
+    if (!level) return;
+    for (const container of [level.container, level.additiveContainer, level.topContainer]) {
+      if (!container) continue;
+      container.x = Math.round(container.x);
+      container.y = Math.round(container.y);
+    }
+  }
   _quantizeDelta(_0x654f39) {
-    const speed = window.speedHack || 1;
+    const speed = (window.speedHack || 1) * (this._level?.timeWarp || 1);
     let _0x578d1b = (_0x654f39 * speed) / 1000 + this._deltaBuffer;
     let _0x53e02e = Math.round(_0x578d1b / u);
     if (_0x53e02e < 0) {
@@ -8337,6 +8555,15 @@ _showwippopup() {
         this._triggerEndPortal();
       }
     }
+    if (!this._levelWon && !this._state.isDead && this._level.endTriggered) {
+      this._levelWon = true;
+      this._endPortalGameY = this._level._endPortalGameY || 240;
+      if (this._level.endTriggered.instant) {
+        this._levelComplete();
+      } else {
+        this._player.playEndAnimation(this._playerWorldX + 200, () => this._levelComplete(), this._endPortalGameY);
+      }
+    }
     if (this._levelWon) {
       this._deltaBuffer = 0;
       if (this._endCamTween) {
@@ -8428,6 +8655,7 @@ _showwippopup() {
       this._level.container.y = this._cameraY + deathShakeY;
       this._level.topContainer.x = -this._cameraX + deathShakeX;
       this._level.topContainer.y = this._cameraY + deathShakeY;
+      this._stepLevelWhileDead(deltaTime);
       this._applyMirrorEffect();
       this._deathTimer += deltaTime;
       let _0x237728 = this._hadNewBest ? 1400 : 1000;
@@ -8448,38 +8676,7 @@ _showwippopup() {
     this._playTime += deltaTime / 1000;
     this._audio.update(deltaTime / 1000);
     
-    if (!window.enableLDM) {
-      window._animTimer += deltaTime;
-      for (let _as of window._animatedSprites) {
-        if (!_as || !_as.active || !_as.visible) continue;
-        if (_as._eeCulled || (_as.parentContainer && !_as.parentContainer.visible)) continue;
-        if (window._animTimer - (_as._lastAnimSwap || 0) >= _as._animInterval) {
-          _as._lastAnimSwap = window._animTimer;
-          _as._animIdx = (_as._animIdx + 1) % _as._animFrames.length;
-          let _fr = getAtlasFrame(_as._animScene, _as._animFrames[_as._animIdx]);
-          if (_fr) {
-            try {
-              _as.setTexture(_fr.atlas, _fr.frame);
-            } catch(e){}
-          }
-        }
-      }
-    } else {
-      window._animTimer += deltaTime;
-    }
-    if (this._level && this._level._sawSprites && !window.enableLDM) {
-      const sawTimer = (window._animTimer || 0) / 1000;
-      for (let _saw of this._level._sawSprites) {
-        if (!_saw || !_saw.active || !_saw.visible) continue;
-        if (_saw._eeCulled || (_saw.parentContainer && !_saw.parentContainer.visible)) continue;
-        const baseSpeed = _saw._Sawrotationspeed ?? 0.0034;
-        let sawRotationSpeed = baseSpeed;
-        if (_saw._SawRandom1 !== undefined) {
-          sawRotationSpeed += Math.sin(sawTimer + _saw._SawRandom1) * (_saw._SawRandom2 || 0);
-        }
-        _saw.rotation += deltaTime * sawRotationSpeed;
-      }
-    }
+    this._stepObjectAnimations(deltaTime);
     if (this._level && this._level._orbSprites) {
       const gravityGuideRotation = (this._state?.gravityFlipped ? Math.PI : 0);
       for (let _oSpr of this._level._orbSprites) {
@@ -8729,6 +8926,7 @@ _showwippopup() {
     }
     this._level.beginGroupTransformBatch();
     this._level.stepMoveTriggers(deltaTime / 1000);
+    this._level.updateGenericTriggers(playerX, this._state.y, this._isDual && !this._state2.isDead ? this._state2.y : null, deltaTime / 1000, this._colorManager);
     this._level.stepSpawnTriggers(deltaTime / 1000, this._colorManager);
     this._level.checkAlphaTriggers(playerX);
     if (this._level.checkTouchAlphaTriggers) {
@@ -8851,128 +9049,7 @@ _showwippopup() {
     this._level.updateObjectDebugIds();
     this._level.checkEnterEffectTriggers(playerX);
     this._level.applyEnterEffects(this._cameraX);
-    if (this._level && this._level._beastSprites && this._level._beastSprites.length) {
-      const dtSec = Number.isFinite(deltaTime) ? deltaTime / 1000 : 0;
-      for (const beast of this._level._beastSprites) {
-        if (!beast || !beast.state) continue;
-        if (beast.hiddenStatics) {
-          for (const hiddenSpr of beast.hiddenStatics) {
-            if (hiddenSpr.visible) hiddenSpr.setVisible(false);
-            if (hiddenSpr.active) hiddenSpr.active = false;
-          }
-        }
-        if (!beast.state.desc) continue;
-        if (!beast.state.base) window.BeastAnim.defaultBase(beast.state);
-        window.BeastAnim.advance(beast.state, dtSec);
-        const st = beast.state;
-        const group = st.group;
-        if (!group || !group.length) continue;
-        const frameKey = group[Math.min(st.frameIdx, group.length - 1)];
-        const frame = st.desc.frames[frameKey];
-        if (!frame) continue;
-        const anchorContainer = beast.anchorSprite ? beast.anchorSprite.parentContainer : null;
-        if (anchorContainer && !anchorContainer.visible) continue;
-        const flipSignX = beast.flipX ? -1 : 1;
-        const anchorSpr = beast.anchorSprite && beast.anchorSprite.active ? beast.anchorSprite : null;
-        let rigOffX = 0;
-        let rigOffY = 0;
-        let rigRot = 0;
-        if (anchorSpr && anchorSpr._eeGroups && anchorSpr._eeGroups.length && this._level._getCombinedGroupOffset) {
-          const groupMove = this._level._getCombinedGroupOffset(anchorSpr, this._beastOffsetScratch || (this._beastOffsetScratch = { x: 0, y: 0 }));
-          rigOffX = Number(groupMove.x) || 0;
-          rigOffY = Number(groupMove.y) || 0;
-          for (const gid of anchorSpr._eeGroups) {
-            const rotData = this._level._groupRotations ? this._level._groupRotations[gid] : null;
-            if (!rotData || !rotData.totalRad) continue;
-            rigRot += rotData.totalRad;
-            if (rotData.centerGroupId > 0 && this._level._getGroupCenter) {
-              const pivot = this._level._getGroupCenter(rotData.centerGroupId);
-              const pivotDX = beast.worldX + rigOffX - pivot.cx;
-              const pivotDY = beast.baseY + rigOffY - pivot.cy;
-              const pivotCos = Math.cos(rotData.totalRad);
-              const pivotSin = Math.sin(rotData.totalRad);
-              rigOffX = pivot.cx + pivotDX * pivotCos - pivotDY * pivotSin - beast.worldX;
-              rigOffY = pivot.cy + pivotDX * pivotSin + pivotDY * pivotCos - beast.baseY;
-            }
-          }
-        }
-        const rigCos = rigRot ? Math.cos(rigRot) : 1;
-        const rigSin = rigRot ? Math.sin(rigRot) : 0;
-        if (beast.lastFrameKey !== frameKey) {
-          beast.lastFrameKey = frameKey;
-          for (const tex in beast.partSprites) {
-            if (frame.texSet[tex]) continue;
-            const idleSpr = beast.partSprites[tex];
-            idleSpr.scaleX = 0;
-            idleSpr.scaleY = 0;
-            const idleGlow = beast.partGlows ? beast.partGlows[tex] : null;
-            if (idleGlow) {
-              idleGlow.scaleX = 0;
-              idleGlow.scaleY = 0;
-            }
-          }
-        }
-        if (beast.baseRot === undefined) beast.baseRot = Math.atan2(beast.rotSin, beast.rotCos);
-        const unitScale = window.BeastAnim.UNIT_SCALE * beast.scale;
-        const flipSignY = beast.flipY ? -1 : 1;
-        const angleSign = beast.flipX !== beast.flipY ? -1 : 1;
-        const angleBase = beast.baseRot + rigRot;
-        const scaleSignX = flipSignX * beast.scale;
-        const scaleSignY = flipSignY * beast.scale;
-        const parts = frame.parts;
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
-          const spr = beast.partSprites[part.texture];
-          if (!spr) continue;
-          const localX = part.x * unitScale * flipSignX;
-          const localY = -part.y * unitScale * flipSignY;
-          const rigLocalX = localX * rigCos - localY * rigSin;
-          const rigLocalY = localX * rigSin + localY * rigCos;
-          const worldX = beast.worldX + rigOffX + (rigLocalX * beast.rotCos - rigLocalY * beast.rotSin);
-          const worldY = beast.baseY + rigOffY + (rigLocalX * beast.rotSin + rigLocalY * beast.rotCos);
-          const effectDX = spr._eeEffectOffsetX || 0;
-          const effectDY = spr._eeEffectOffsetY || 0;
-          const effectScale = spr._eeEffectScale === undefined ? 1 : spr._eeEffectScale;
-          spr._eeEffectOffsetX = 0;
-          spr._eeEffectOffsetY = 0;
-          spr._eeEffectScale = 1;
-          const angle = part.rot * angleSign + angleBase;
-          spr.x = worldX + effectDX;
-          spr.y = worldY + effectDY;
-          spr.rotation = angle;
-          const partScaleX = part.sx * scaleSignX * effectScale;
-          const partScaleY = part.sy * scaleSignY * effectScale;
-          spr.scaleX = partScaleX;
-          spr.scaleY = partScaleY;
-          spr._eeZDepthBase = spr._eeZDepthBase ?? spr._eeZDepth;
-          const zDepth = spr._eeZDepthBase + part.z * 0.001;
-          if (spr._eeZDepth !== zDepth || spr.depth !== zDepth) {
-            spr._eeZDepth = zDepth;
-            spr.depth = zDepth;
-          }
-          const glowSpr = beast.partGlows ? beast.partGlows[part.texture] : null;
-          if (glowSpr) {
-            glowSpr.x = worldX + effectDX;
-            glowSpr.y = worldY + effectDY;
-            glowSpr.rotation = angle;
-            glowSpr.scaleX = partScaleX;
-            glowSpr.scaleY = partScaleY;
-            const glowDepth = zDepth - 0.001;
-            if (glowSpr._eeZDepth !== glowDepth || glowSpr.depth !== glowDepth) {
-              glowSpr._eeZDepth = glowDepth;
-              glowSpr.depth = glowDepth;
-            }
-          }
-          if (beast.eye && beast.eyeParent === part.texture) {
-            beast.eye.x = worldX + effectDX;
-            beast.eye.y = worldY + effectDY;
-            beast.eye.rotation = angle;
-            beast.eye.scaleX = partScaleX;
-            beast.eye.scaleY = partScaleY;
-          }
-        }
-      }
-    }
+    this._stepBeastAnimations(deltaTime);
     this._glitterCenterX = this._cameraX + screenWidth / 2;
     this._glitterCenterY = T - this._cameraY;
     this._stepMirror(deltaTime / 1000);

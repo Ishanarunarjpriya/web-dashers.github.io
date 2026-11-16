@@ -787,6 +787,9 @@ window.LevelObject = class LevelObject {
     this._instantCountTriggerIdx = 0;
     this._touchInstantCountTriggerActivated = new Set();
     this._itemCounts = {};
+    this._triggerGroupsByUid = new Map();
+    this._spawnFiredUids = new Set();
+    this._initGenericTriggers();
     this._pulseTriggers = [];
     this._pulseTriggerIdx = 0;
     this._activePulses = [];
@@ -1018,11 +1021,19 @@ window.LevelObject = class LevelObject {
   }
 
   _makeTriggerBase(levelObj, linkedObjectId) {
+    const groups = this._getLevelObjectGroupIds(levelObj);
+    if (groups.length) this._triggerGroupsByUid.set(linkedObjectId, groups);
     return {
       uid: linkedObjectId,
       spawnTriggered: this._isTriggerSpawnTriggered(levelObj),
-      groups: this._getLevelObjectGroupIds(levelObj)
+      multiTrigger: String(levelObj?._raw?.[87] ?? levelObj?._raw?.["87"] ?? "0") === "1",
+      groups
     };
+  }
+
+  _toggleGroupTriggered(groupId, activate, colorManager) {
+    this._executeToggleTrigger({ targetGroup: groupId, activate });
+    if (activate) this._activateSpawnedGroup(groupId, colorManager);
   }
 
   _triggerHasGroup(trigger, groupId) {
@@ -2646,11 +2657,10 @@ window.LevelObject = class LevelObject {
         y: levelObj.y * 2,
         touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
         targetGroup: parseInt(_raw[51] ?? 0, 10),
-        toggleType: parseInt(_raw[56] ?? 0, 10),
-        dualTouch: String(_raw[81] ?? "0") === "1",
-        holdMode: String(_raw[82] ?? "0") === "1",
-        dualAction: parseInt(_raw[198] ?? 0, 10),
-        specialMode: parseInt(_raw[89] ?? 0, 10)
+        toggleType: parseInt(_raw[82] ?? 0, 10) || 0,
+        dualTouch: String(_raw[89] ?? "0") === "1",
+        holdMode: String(_raw[81] ?? "0") === "1",
+        playerFilter: parseInt(_raw[198] ?? 0, 10) || 0
       });
     }
 
@@ -2695,6 +2705,8 @@ window.LevelObject = class LevelObject {
         comparison: parseInt(_raw[88] ?? 0, 10)
       });
     }
+
+    this._parseGenericTrigger(levelObj, triggerBase);
 
     if ([31, 34].includes(levelObj.id)) {
       this._startPositions.push({
@@ -3965,6 +3977,13 @@ window.LevelObject = class LevelObject {
     this._endPortalGameY = _0x1be4c3;
   }
   _isTriggerSaveObjectLive(uid) {
+    const off = this._groupToggledOff;
+    const ownGroups = off && this._triggerGroupsByUid.get(uid);
+    if (ownGroups) {
+      for (let i = 0; i < ownGroups.length; i++) {
+        if (off[ownGroups[i]]) return false;
+      }
+    }
     const objects = window.levelObjects;
     if (!Number.isInteger(uid) || !Array.isArray(objects)) return true;
     let cache = this._liveObjectIdCache;
@@ -4584,6 +4603,14 @@ window.LevelObject = class LevelObject {
         finalY = cy + dx * sinR + dy * cosR;
       }
     }
+    if (this._hasGroupScales) {
+      const scaled = this._scalePositionScratch || (this._scalePositionScratch = { x: 0, y: 0 });
+      scaled.x = finalX;
+      scaled.y = finalY;
+      this._applyGroupScaleToSprite(spr, ids, scaled);
+      finalX = scaled.x;
+      finalY = scaled.y;
+    }
     if (!spr._beastManaged) {
       spr.x = finalX;
       spr.y = finalY;
@@ -4634,6 +4661,14 @@ window.LevelObject = class LevelObject {
         finalX = cx + dx * cosR - dy * sinR;
         finalY = collisionCy + dx * sinR + dy * cosR;
       }
+    }
+    if (this._hasGroupScales) {
+      const scaled = this._scalePositionScratch || (this._scalePositionScratch = { x: 0, y: 0 });
+      scaled.x = finalX;
+      scaled.y = finalY;
+      this._applyGroupScaleToCollider(col, ids, scaled);
+      finalX = scaled.x;
+      finalY = scaled.y;
     }
     col.x = finalX;
     col.y = finalY;
@@ -4920,8 +4955,17 @@ window.LevelObject = class LevelObject {
     const targetGroup = parseInt(groupId ?? 0, 10);
     if (!Number.isFinite(targetGroup) || targetGroup <= 0) return;
 
+    const fired = this._spawnFiredUids;
+    const firedNow = new Set();
     const spawnMatches = (list) => (Array.isArray(list) ? list : [])
-      .filter(trig => trig && trig.spawnTriggered && this._triggerHasGroup(trig, targetGroup) && !this._isTriggerToggledOff(trig) && this._isTriggerSaveObjectLive(trig.uid));
+      .filter(trig => {
+        if (!trig || !trig.spawnTriggered || !this._triggerHasGroup(trig, targetGroup) || !this._isTriggerSaveObjectLive(trig.uid)) return false;
+        if (trig.multiTrigger) return true;
+        if (fired.has(trig.uid) && !firedNow.has(trig.uid)) return false;
+        fired.add(trig.uid);
+        firedNow.add(trig.uid);
+        return true;
+      });
 
     for (const trig of spawnMatches(this._colorTriggers)) {
       if (colorManager && typeof colorManager.triggerColor === "function") {
@@ -4951,6 +4995,7 @@ window.LevelObject = class LevelObject {
     for (const trig of spawnMatches(this._countTriggers)) this._armCountTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._instantCountTriggers)) this._executeInstantCountTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._collisionTriggers)) this._armCollisionTrigger(trig);
+    this._activateSpawnedGenericTriggers(targetGroup, colorManager);
   }
 
   checkTouchSpawnTriggers(playerX, playerY) {
@@ -4997,6 +5042,7 @@ window.LevelObject = class LevelObject {
   }
 
   resetSpawnTriggers() {
+    this._spawnFiredUids = new Set();
     this._spawnTriggerIdx = 0;
     this._activeSpawnDelays = [];
     this._touchSpawnTriggerActivated = new Set();
@@ -5031,7 +5077,9 @@ window.LevelObject = class LevelObject {
   }
 
   stepAlphaTriggers(dt) {
-    let changed = this._alphaForceApply === true || this._alphaAppliedSrc !== this._groupOpacity;
+    let fullApply = this._alphaForceApply === true || this._alphaAppliedSrc !== this._groupOpacity;
+    const changedGroups = this._alphaChangedGroups || (this._alphaChangedGroups = new Set());
+    changedGroups.clear();
     let i = 0;
     while (i < this._activeAlphaTweens.length) {
       const anim = this._activeAlphaTweens[i];
@@ -5043,7 +5091,7 @@ window.LevelObject = class LevelObject {
 
       const newOpacity = anim.startOpacity + (trig.targetOpacity - anim.startOpacity) * progress;
       const clamped = Math.max(0, Math.min(1, newOpacity));
-      if (this._groupOpacity[trig.targetGroup] !== clamped) changed = true;
+      if (this._groupOpacity[trig.targetGroup] !== clamped) changedGroups.add(trig.targetGroup);
       this._groupOpacity[trig.targetGroup] = clamped;
 
       if (progress >= 1) {
@@ -5054,19 +5102,32 @@ window.LevelObject = class LevelObject {
     }
 
     const glowMultiplier = this._getGlowAlphaMultiplier();
-    if (glowMultiplier !== this._alphaAppliedGlowMultiplier) changed = true;
-    if (!changed) return;
+    if (glowMultiplier !== this._alphaAppliedGlowMultiplier) fullApply = true;
+    if (!fullApply && !changedGroups.size) return;
     this._alphaForceApply = false;
     this._alphaAppliedSrc = this._groupOpacity;
     this._alphaAppliedGlowMultiplier = glowMultiplier;
 
-    for (const gid in this._groupOpacity) {
+    const opacities = this._groupOpacity;
+    const groupIds = fullApply ? Object.keys(opacities) : changedGroups;
+    for (const gid of groupIds) {
       const sprites = this._groupSprites[gid];
       if (!sprites) continue;
-      const op = this._groupOpacity[gid];
+      const groupOp = opacities[gid];
       for (const spr of sprites) {
         if (!spr || !spr.active) continue;
         if (spr._eeActive) continue;
+        let op = groupOp;
+        if (!fullApply && spr._eeGroups && spr._eeGroups.length > 1) {
+          let lastGid = -Infinity;
+          for (const g of spr._eeGroups) {
+            const n = Number(g);
+            if (opacities[g] !== undefined && n > lastGid) {
+              lastGid = n;
+              op = opacities[g];
+            }
+          }
+        }
         const baseAlpha = spr._eeOrigAlpha ?? 1;
         const targetAlpha = baseAlpha * op * (spr._eeIsGlowSprite ? glowMultiplier : 1);
         if (typeof spr.setAlpha === "function") spr.setAlpha(targetAlpha);
@@ -5655,8 +5716,7 @@ window.LevelObject = class LevelObject {
   _executeOnDeathTrigger(trig, colorManager) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
     if (trig.activate) {
-      this._activateSpawnedGroup(trig.targetGroup, colorManager);
-      this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
+      this._toggleGroupTriggered(trig.targetGroup, true, colorManager);
     } else {
       this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
     }
@@ -5740,44 +5800,21 @@ window.LevelObject = class LevelObject {
   stepTouchTriggers(p1Holding, p1Pressed, p2Holding, p2Pressed, colorManager) {
     for (const trig of this._activeTouchTriggers) {
       if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) continue;
-      const isHolding = Boolean(p1Holding || p2Holding);
-      const isPressed = Boolean(p1Pressed || p2Pressed);
+      const useP1 = trig.playerFilter !== 2;
+      const useP2 = trig.playerFilter !== 1;
+      const isHolding = Boolean((useP1 && p1Holding) || (useP2 && p2Holding));
+      const isPressed = Boolean((useP1 && p1Pressed) || (useP2 && p2Pressed));
+      const isCurrentlyOff = Boolean(this._groupToggledOff?.[trig.targetGroup]);
+      let activate = null;
       if (trig.holdMode) {
-        if (isHolding && !trig._holding) {
-          trig._holding = true;
-          if (trig.toggleType === 2) {
-            this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
-          } else {
-            this._activateSpawnedGroup(trig.targetGroup, colorManager);
-            this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
-          }
-        } else if (!isHolding && trig._holding) {
-          trig._holding = false;
-          if (trig.toggleType === 2) {
-            this._activateSpawnedGroup(trig.targetGroup, colorManager);
-            this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
-          } else {
-            this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
-          }
+        if (isHolding !== Boolean(trig._holding)) {
+          trig._holding = isHolding;
+          activate = trig.toggleType === 0 ? isCurrentlyOff : (trig.toggleType === 1) === isHolding;
         }
-      } else {
-        if (isPressed) {
-          if (trig.toggleType === 1) {
-            this._activateSpawnedGroup(trig.targetGroup, colorManager);
-            this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
-          } else if (trig.toggleType === 2) {
-            this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
-          } else {
-            const isCurrentlyOff = Boolean(this._groupToggledOff?.[trig.targetGroup]);
-            if (isCurrentlyOff) {
-              this._activateSpawnedGroup(trig.targetGroup, colorManager);
-              this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
-            } else {
-              this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
-            }
-          }
-        }
+      } else if (isPressed) {
+        activate = trig.toggleType === 0 ? isCurrentlyOff : trig.toggleType === 1;
       }
+      if (activate !== null) this._toggleGroupTriggered(trig.targetGroup, activate, colorManager);
     }
   }
 
@@ -5837,32 +5874,34 @@ window.LevelObject = class LevelObject {
   resetPickupTriggers() {
     this._pickupTriggerIdx = 0;
     this._touchPickupTriggerActivated = new Set();
-    this._itemCounts = {};
+    const keptCounts = {};
+    for (const id of this._persistentItems) {
+      if (this._itemCounts[id] !== undefined) keptCounts[id] = this._itemCounts[id];
+    }
+    this._itemCounts = keptCounts;
   }
 
   _armCountTrigger(trig, colorManager) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
     if (!this._activeCountTriggers.includes(trig)) {
       this._activeCountTriggers.push(trig);
+      trig._countPrev = this._itemCounts[trig.itemId] || 0;
     }
-    this._evaluateCountTrigger(trig, colorManager);
   }
 
   _evaluateCountTrigger(trig, colorManager) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) return;
     const current = this._itemCounts[trig.itemId] || 0;
-    if (current >= trig.targetCount) {
-      if (trig.activate) {
-        this._activateSpawnedGroup(trig.targetGroup, colorManager);
-        this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
-      } else {
-        this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
-      }
-      if (!trig.multiActivate) {
-        const idx = this._activeCountTriggers.indexOf(trig);
-        if (idx !== -1) this._activeCountTriggers.splice(idx, 1);
-      }
+    const previous = trig._countPrev;
+    if (current === previous) return;
+    trig._countPrev = current;
+    const target = trig.targetCount;
+    if (!((previous < target && current >= target) || (previous > target && current <= target))) return;
+    if (!trig.multiActivate) {
+      const idx = this._activeCountTriggers.indexOf(trig);
+      if (idx !== -1) this._activeCountTriggers.splice(idx, 1);
     }
+    this._toggleGroupTriggered(trig.targetGroup, !!trig.activate, colorManager);
   }
 
   _checkCountTriggers(itemId, colorManager) {
@@ -5962,7 +6001,7 @@ window.LevelObject = class LevelObject {
       if (touching === entry.colliding) continue;
       entry.colliding = touching;
       if (touching !== trig.onExit) {
-        this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: trig.activate });
+        this._toggleGroupTriggered(trig.targetGroup, !!trig.activate, this._scene?._colorManager);
       }
     }
   }
@@ -5985,8 +6024,7 @@ window.LevelObject = class LevelObject {
     }
     if (matched) {
       if (trig.activate) {
-        this._activateSpawnedGroup(trig.targetGroup, colorManager);
-        this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: true });
+        this._toggleGroupTriggered(trig.targetGroup, true, colorManager);
       } else {
         this._executeToggleTrigger({ targetGroup: trig.targetGroup, activate: false });
       }
@@ -6490,8 +6528,8 @@ window.LevelObject = class LevelObject {
     const baseY = baseUniform > 0 ? baseUniform : (spr._eeObjScaleY ?? 1);
     const pulse = spr._eePulseMult || 1;
     spr._eeEffectMult = multiplier;
-    const targetX = baseX * multiplier * pulse;
-    const targetY = baseY * multiplier * pulse;
+    const targetX = baseX * multiplier * pulse * (spr._eeGroupScaleX ?? 1);
+    const targetY = baseY * multiplier * pulse * (spr._eeGroupScaleY ?? 1);
     if (spr.scaleX !== targetX || spr.scaleY !== targetY) spr.setScale(targetX, targetY);
   }
   _getGroupOpacityForSprite(spr) {

@@ -315,7 +315,6 @@ class BootScene extends Phaser.Scene {
       this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
       this.load.atlas("player_ball_00", "assets/sheets/player_ball_00.png", "assets/sheets/player_ball_00.json");
       this.load.atlas("player_dart_00", "assets/sheets/player_dart_00.png", "assets/sheets/player_dart_00.json");
-      this.load.atlas("CCControlColourPickerSpriteSheet-uhd", "assets/sheets/CCControlColourPickerSpriteSheet-uhd.png", "assets/sheets/CCControlColourPickerSpriteSheet-uhd.json");
       this.load.atlas("PixelSheet_01-hd", "assets/sheets/PixelSheet_01.png", "assets/sheets/PixelSheet_01.json");
       this.load.atlas("FireSheet_01-hd", "assets/sheets/FireSheet_01-hd.png", "assets/sheets/FireSheet_01-hd.json");
       this.load.atlas("GJ_ParticleSheet-uhd", "assets/sheets/GJ_ParticleSheet.png", "assets/sheets/GJ_ParticleSheet.json");
@@ -364,18 +363,10 @@ class BootScene extends Phaser.Scene {
         let paddedIndex = String(index);
         if (paddedIndex.length < 2) paddedIndex = "0" + paddedIndex;
         this.load.image("groundSquare_" + paddedIndex + "_001.png", "assets/game-ground/groundSquare_" + i + "_001.png");
-        this.load.image("groundSquare_" + paddedIndex + "_2_001.png", "assets/game-ground/groundSquare_" + i + "_2_001.png");
-      }
-
-      for (let i = 1; i < 60; i++) {
-        let index = i - 1;
-        i = String(i);
-        if (i.length < 2) i = "0" + i;
-        this.load.image("game_bg_" + index, "assets/game-bg/game_bg_" + i + "_001-hd.png");
+        if (index >= 7) this.load.image("groundSquare_" + paddedIndex + "_2_001.png", "assets/game-ground/groundSquare_" + i + "_2_001.png");
       }
 
       this.load.audio("menu_music", "assets/music/menuLoop.mp3");
-      this.load.audio("StayInsideMe", "assets/music/StayInsideMe.mp3");
 
       /*for (const lvlarray of window.allLevels) {
         this.load.text(lvlarray[2], "assets/levels/" + lvlarray[2].split("_")[1] + ".txt");
