@@ -702,6 +702,9 @@ window.LevelObject = class LevelObject {
     this._flyVisualFloorInset = 0;
     this._flyVisualCeilingInset = 0;
     this.flyCameraTarget = null;
+    this.freeModeCamera = false;
+    this.freeCamEasing = 10;
+    this.freeCamPadding = 0.5;
     this._colorTriggers = [];
     this._colorTriggerIdx = 0;
     this._touchColorTriggers = [];
@@ -1539,7 +1542,7 @@ window.LevelObject = class LevelObject {
     var newCeilingTile;
     const scene = this._scene;
     const tileWidth = this._tileW;
-    const requiredTileCount = Math.ceil(screenWidth / tileWidth) + 2;
+    const requiredTileCount = Math.ceil((screenWidth + 2 * this.getViewPad()) / tileWidth) + 2;
     const groundY = b(0);
     while (this._groundTiles.length < requiredTileCount) {
       const newTileX = this._maxGroundWorldX + tileWidth;
@@ -1574,9 +1577,12 @@ window.LevelObject = class LevelObject {
     this._ceilingLine.setScale(floorLineScale, 1);
     this._groundShadowR.x = screenWidth + 1;
     this._ceilingShadowR.x = screenWidth + 1;
+    this._appliedGroundViewPad = undefined;
   }
   updateGroundTiles(cameraY = 0) {
-    const cameraX = this._cameraXRef.value;
+    const viewPad = this.getViewPad();
+    if ((this._groundTiles.length - 2) * this._tileW < screenWidth + 2 * viewPad) this.resizeScreen();
+    const cameraX = this._cameraXRef.value - viewPad;
     const shakeX = this.shakeOffsetX || 0;
     const shakeY = this.shakeOffsetY || 0;
     const tileWidth = this._tileW;
@@ -1617,7 +1623,7 @@ window.LevelObject = class LevelObject {
       ceilingTile._worldX = groundTile._worldX;
       if (groundTile._worldX > maxWorldX) maxWorldX = groundTile._worldX;
       this._maxGroundWorldX = maxWorldX;
-      let tileScreenX = groundTile._worldX - cameraX + shakeX;
+      let tileScreenX = groundTile._worldX - cameraX - viewPad + shakeX;
       groundTile.x = tileScreenX;
       groundTile.y = leftTileIndex + shakeY;
       const ground2Tile = this._ground2Tiles?.[i];
@@ -1637,6 +1643,17 @@ window.LevelObject = class LevelObject {
         ceiling2Tile.setVisible(hasGround2 && ceilingVisibleForTile);
       }
     }
+    if (this._appliedGroundViewPad !== viewPad) {
+      this._appliedGroundViewPad = viewPad;
+      const floorLineFrame = this._scene.textures.getFrame("GJ_WebSheet", "floorLine_01_001.png");
+      const floorLineScale = (screenWidth + 2 * viewPad + SHAKE_MAX_OFFSET * 2) / (floorLineFrame ? floorLineFrame.width : 888);
+      this._groundLine.setScale(floorLineScale, 1);
+      this._ceilingLine.setScale(floorLineScale, 1);
+      this._groundShadowL.x = -1 - viewPad;
+      this._ceilingShadowL.x = -1 - viewPad;
+      this._groundShadowR.x = screenWidth + 1 + viewPad;
+      this._ceilingShadowR.x = screenWidth + 1 + viewPad;
+    }
     this._groundLine.x = screenWidth / 2 + shakeX;
     this._groundLine.y = leftTileIndex + shakeY;
     this._ceilingLine.x = screenWidth / 2 + shakeX;
@@ -1653,6 +1670,17 @@ window.LevelObject = class LevelObject {
     this._ceilingShadowR.y = rightTileIndex + shakeY;
     this._ceilingShadowL.setVisible(ceilingVisible);
     this._ceilingShadowR.setVisible(ceilingVisible);
+    if (this.groundHidden) {
+      for (const list of [this._groundTiles, this._ground2Tiles, this._ceilingTiles, this._ceiling2Tiles]) {
+        for (const tile of list || []) tile.setVisible(false);
+      }
+      for (const piece of [this._groundLine, this._groundShadowL, this._groundShadowR, this._ceilingLine, this._ceilingShadowL, this._ceilingShadowR]) piece.setVisible(false);
+      this._groundHiddenApplied = true;
+    } else if (this._groundHiddenApplied) {
+      for (const tile of this._groundTiles) tile.setVisible(true);
+      for (const piece of [this._groundLine, this._groundShadowL, this._groundShadowR]) piece.setVisible(true);
+      this._groundHiddenApplied = false;
+    }
   }
   shiftGroundTiles(shiftAmount) {
     for (let i = 0; i < this._groundTiles.length; i++) {
@@ -1687,6 +1715,9 @@ window.LevelObject = class LevelObject {
     this._flyVisualFloorInset = 0;
     this._flyVisualCeilingInset = 0;
     this.flyCameraTarget = null;
+    this.freeModeCamera = false;
+    this.freeCamEasing = 10;
+    this.freeCamPadding = 0.5;
   }
   _computeFlyBounds(centerY, height = f, isPortal = false) {
     let floorY;
@@ -1704,6 +1735,7 @@ window.LevelObject = class LevelObject {
   }
   setFlyMode(enabled, centerY, height = f, visualOnly = false, cameraHeight = height) {
     if (enabled) {
+      this.freeModeCamera = false;
       let bounds = this._computeFlyBounds(centerY, height, visualOnly);
       this._flyFloorY = bounds.floorY;
       this._flyCeilingY = bounds.ceilingY;
@@ -1767,6 +1799,7 @@ window.LevelObject = class LevelObject {
     }
   }
   getFloorY() {
+    if (this.gameplaySideways) return -1e9;
     if (this._flyGroundActive) {
       if (this._flyVisualOnly) {
         return 0;
@@ -1777,6 +1810,7 @@ window.LevelObject = class LevelObject {
     }
   }
   getCeilingY() {
+    if (this.gameplaySideways) return null;
     if (this._flyCeilingY !== null) {
       return this._flyCeilingY;
     } else {
@@ -1786,6 +1820,10 @@ window.LevelObject = class LevelObject {
   _applyVisualProps(scene, sprite, frameName, objectData, colorData = null) {
     if (!sprite) {
       return;
+    }
+    if (!window.isEditor && parseInt(objectData?.id, 10) !== 2065 && String(objectData?._raw?.[135] ?? objectData?._raw?.["135"] ?? "0") === "1") {
+      sprite.renderFlags &= ~1;
+      Object.defineProperty(sprite, "visible", { get: () => false, set: () => {}, configurable: true });
     }
     let {
       dx: offsetX,
@@ -2726,6 +2764,34 @@ window.LevelObject = class LevelObject {
       return objectDef;
     }
 
+    if (parseInt(levelObj.id, 10) === 2900) {
+      const rotRaw = levelObj._raw || {};
+      const alwaysHide = String(rotRaw[135] ?? rotRaw["135"] ?? "0") === "1";
+      if (!window.isEditor && !alwaysHide) {
+        const rotFrame = this._getTriggerFrameName(scene, objectDef, levelObj);
+        if (rotFrame && this._textureHasFrame(scene, rotFrame)) {
+          const rotWorldX = levelObj.x * 2;
+          const rotBaseY = b(levelObj.y * 2);
+          const rotArrow = addImageToScene(scene, rotWorldX, rotBaseY, rotFrame);
+          if (rotArrow) {
+            rotArrow.setTint(0x00ff00);
+            rotArrow.setAngle(parseFloat(rotRaw[6] ?? rotRaw["6"] ?? 0) || 0);
+            rotArrow._eeWorldX = rotWorldX;
+            rotArrow._eeBaseY = rotBaseY;
+            rotArrow._eeZDepth = 2;
+            rotArrow._eeLayer = 2;
+            rotArrow._eeObjectId = linkedObjectId;
+            rotArrow._eeGameRotArrow = true;
+            this._addToSection(rotArrow);
+            if (Number.isInteger(linkedObjectId)) {
+              if (!this.objectSprites[linkedObjectId]) this.objectSprites[linkedObjectId] = [];
+              this.objectSprites[linkedObjectId].push(rotArrow);
+            }
+          }
+        }
+      }
+    }
+
     this._spawnTriggerEditorVisual(levelObj, objectDef, linkedObjectId);
     return objectDef;
   }
@@ -2926,6 +2992,7 @@ window.LevelObject = class LevelObject {
       registerColor(sprite, col1, !!isSawObjectId);
       this._addToSection(sprite);
       registerObjectSprite(sprite);
+      if (parseInt(levelObj.id, 10) === 2065) this._registerParticleObject?.(sprite, levelObj);
 
       if (objGids && objGids.length) {
         sprite._eeGroups = objGids;
@@ -3453,6 +3520,7 @@ window.LevelObject = class LevelObject {
         111: "ufo",
         745: "robot",
         1331: "spider",
+        1933: "swing",
         747: "teleport",
         286: "dual_on",
         287: "dual_off"
@@ -3471,6 +3539,7 @@ window.LevelObject = class LevelObject {
         ufo: portalUfoType,
         robot: "portal_robot",
         spider: "portal_spider",
+        swing: "portal_swing",
         teleport: "portal_teleport",
         mirrora: "portal_mirror_on",
         mirrorb: "portal_mirror_off",
@@ -3491,6 +3560,15 @@ window.LevelObject = class LevelObject {
         collider.particleColor = objectDef.portalParticleColor;
         collider.portalX = worldX;
         collider.portalY = worldY;
+        collider.freeMode = String(levelObj._raw?.[111] ?? levelObj._raw?.["111"] ?? "0") === "1";
+        if (String(levelObj._raw?.[112] ?? "0") === "1") {
+          const easing = parseFloat(levelObj._raw?.[113]);
+          const padding = parseFloat(levelObj._raw?.[114]);
+          collider.cameraSettings = {
+            easing: Math.max(1, Math.min(40, Number.isFinite(easing) ? easing : 0)),
+            padding: Math.max(0, Math.min(1, Number.isFinite(padding) ? padding : 0))
+          };
+        }
         if (isTeleportPortal) {
           const yOffset = this._getTeleportPortalYOffset(levelObj);
           collider.teleportTargetX = worldX;
@@ -4291,8 +4369,9 @@ window.LevelObject = class LevelObject {
   _cullEmitters(cameraX) {
     const emitters = this._cullableEmitters;
     if (!emitters || !emitters.length) return;
-    const minX = cameraX - 400;
-    const maxX = cameraX + screenWidth + 400;
+    const viewPad = this.getViewPad();
+    const minX = cameraX - viewPad - 400;
+    const maxX = cameraX + screenWidth + viewPad + 400;
     for (let i = 0; i < emitters.length; i++) {
       const em = emitters[i];
       if (!em || !em.scene) continue;
@@ -4339,18 +4418,21 @@ window.LevelObject = class LevelObject {
     let cd = Number(window.cullDistance);
     if (!Number.isFinite(cd)) cd = 3;
     cd = Math.max(0, Math.min(3, Math.floor(cd)));
+    const viewPad = this.getViewPad();
+    _0xa5f1e1 -= viewPad;
+    const viewWidth = screenWidth + 2 * viewPad;
 
     let particleScale, sliderHeight;
     if (cd === 3) {
       particleScale = Math.max(0, Math.floor((_0xa5f1e1 - 200) / 400));
-      sliderHeight = Math.min(_0x1dce22, Math.floor((_0xa5f1e1 + screenWidth + 200) / 400));
+      sliderHeight = Math.min(_0x1dce22, Math.floor((_0xa5f1e1 + viewWidth + 200) / 400));
     } else if (cd === 0) {
       particleScale = _0x1dce22 + 1;
       sliderHeight = -1;
     } else {
       const margin = cd === 2 ? 100 : 0;
       particleScale = Math.max(0, Math.floor((_0xa5f1e1 - margin) / 400));
-      sliderHeight = Math.min(_0x1dce22, Math.floor((_0xa5f1e1 + screenWidth + margin) / 400));
+      sliderHeight = Math.min(_0x1dce22, Math.floor((_0xa5f1e1 + viewWidth + margin) / 400));
     }
     const _0x1800fc = this._visMinSec;
     const _0xc31046 = this._visMaxSec;
@@ -4404,7 +4486,50 @@ window.LevelObject = class LevelObject {
       }
     }
   }
+  _sidewaysProxy(col) {
+    let proxy = (this._sidewaysProxies ||= new Map()).get(col);
+    if (!proxy) {
+      proxy = Object.create(col);
+      proxy._sidewaysSource = col;
+      this._sidewaysProxies.set(col, proxy);
+    }
+    proxy.x = col.y;
+    proxy.y = col.x;
+    const rot = col.rotationDegrees || 0;
+    if (col.type !== slopeType && Math.abs(rot % 180) === 90) {
+      proxy.w = col.w;
+      proxy.h = col.h;
+      proxy.rotationDegrees = 0;
+    } else {
+      proxy.w = col.h;
+      proxy.h = col.w;
+      proxy.rotationDegrees = -rot;
+    }
+    proxy.hypoAx = col.hypoAy;
+    proxy.hypoAy = col.hypoAx;
+    proxy.hypoBx = col.hypoBy;
+    proxy.hypoBy = col.hypoBx;
+    proxy.rightAx = col.rightAy;
+    proxy.rightAy = col.rightAx;
+    return proxy;
+  }
   getNearbySectionObjects(_0x2e85c7) {
+    if (this.gameplaySideways) {
+      const buffer = this._nearbyBuffer;
+      const worldX = this._sidewaysWorldX ?? 0;
+      const section = Math.max(0, Math.floor(worldX / 400));
+      const from = Math.max(0, section - 1);
+      const to = Math.min(this._collisionSections.length - 1, section + 1);
+      buffer.length = 0;
+      for (let i = from; i <= to; i++) {
+        const list = this._collisionSections[i];
+        if (!list) continue;
+        for (const col of list) {
+          if (col && !col.disabled && col.active !== false) buffer.push(this._sidewaysProxy(col));
+        }
+      }
+      return buffer;
+    }
     const _0x55d1b7 = Math.max(0, Math.floor(_0x2e85c7 / 400));
     const _0x31c345 = Math.max(0, _0x55d1b7 - 1);
     const _0x5f1907 = Math.min(this._collisionSections.length - 1, _0x55d1b7 + 1);
@@ -5544,6 +5669,7 @@ window.LevelObject = class LevelObject {
     const records = new Set();
     for (const spr of sprites) {
       if (spr && spr._beastRecord) records.add(spr._beastRecord);
+      if (spr && spr._particleSystem) spr._particleSystem.activate();
     }
     for (const record of records) window.BeastAnim.command(record.state, trig.animateId);
   }
@@ -6558,8 +6684,9 @@ window.LevelObject = class LevelObject {
     const _0x221c93 = 400;
     const _0xa24372 = 140;
     const _0x5e9f2a = 200;
-    const _0x29a51b = _0x2f36ed;
-    const _0x548004 = _0x2f36ed + screenWidth;
+    const viewPad = this.getViewPad();
+    const _0x29a51b = _0x2f36ed - viewPad;
+    const _0x548004 = _0x2f36ed + screenWidth + viewPad;
     const _0x49c6d8 = _0x2f36ed + screenWidth / 2;
     const _0x2d8f53 = Math.max(0, Math.floor((_0x29a51b - _0xa24372) / _0x221c93));
     const _0x2b19db = Math.min(this._sections.length - 1, Math.floor((_0x548004 + _0xa24372) / _0x221c93));

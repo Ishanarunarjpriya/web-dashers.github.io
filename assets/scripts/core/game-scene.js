@@ -29,6 +29,8 @@ class PracticeMode {
       isDart: playerState.isDart,
       isRobot: playerState.isRobot,
       isSwing: playerState.isSwing,
+      gameplaySideways: !!scene?._level?.gameplaySideways,
+      direction: scene?._level?.direction === -1 ? -1 : 1,
       isJetpack: playerState.isJetpack,
       isFlying: playerState.isFlying,
       isJumping: playerState.isJumping,
@@ -407,6 +409,8 @@ class GameScene extends Phaser.Scene {
   create() {
     this.game.events.off("prerender", this._snapLevelContainers, this);
     this.game.events.on("prerender", this._snapLevelContainers, this);
+    this.game.events.off("prerender", this._applyWorldCamera, this);
+    this.game.events.on("prerender", this._applyWorldCamera, this);
     this._bgSpeedX = 0.1;
     this._bgSpeedY = 0.1;
     this._menuCameraX = -centerX;
@@ -2878,6 +2882,13 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
     window.currentRobot = window.currentRobot || localStorage.getItem("iconCurrentRobot") || "robot_01";
     _iconFrameSets.spider = _makeSegmentedIconFrames("spider");
     _iconFrameSets.robot = _makeSegmentedIconFrames("robot");
+    window.currentSwing = window.currentSwing || localStorage.getItem("iconCurrentSwing") || "swing_01";
+    const _swingIconFrames = [];
+    for (let i = 1; i <= 40; i++) {
+      const swingFrame = `swing_${String(i).padStart(2, "0")}_001.png`;
+      if (typeof getAtlasFrame === "function" && getAtlasFrame(this, swingFrame)) _swingIconFrames.push(swingFrame);
+    }
+    _iconFrameSets.swing = _swingIconFrames.length ? _swingIconFrames : ["swing_01_001.png"];
 
 
     const _iconWindowProps = {
@@ -2888,6 +2899,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       ufo: "currentBird",
       robot: "currentRobot",
       spider: "currentSpider",
+      swing: "currentSwing",
     };
 
     const _iconAtlas = {
@@ -2898,6 +2910,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       ufo: "GJ_GameSheetIcons",
       robot: "GJ_GameSheetIcons",
       spider: "GJ_GameSheetIcons",
+      swing: "GJ_GameSheetIcons",
     };
 
     const _tabBtnFrames = {
@@ -2908,6 +2921,7 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       ufo:  { on: "gj_birdBtn_on_001.png",    off: "gj_birdBtn_off_001.png"    },
       robot:{ on: "gj_robotBtn_on_001.png",   off: "gj_robotBtn_off_001.png"   },
       spider:{ on: "gj_spiderBtn_on_001.png", off: "gj_spiderBtn_off_001.png" },
+      swing: { on: "gj_swingBtn_on_001.png",  off: "gj_swingBtn_off_001.png"  },
     };
 
     const _safeTabBtnFrame = (tab, state) => {
@@ -3338,20 +3352,21 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
       this._iconOverlayObjects.push(selectedIconExtra, selectedIcon);
 
       const tabBtnY = containerY - 40;
-      const tabKeys = ["icon", "ship", "ball", "ufo", "wave", "robot", "spider"];
-      const tabSpacing = 58;
+      const tabKeys = ["icon", "ship", "ball", "ufo", "wave", "robot", "spider", "swing"];
+      const tabSpacing = 52;
       const tabOffsets = {
-        icon: -tabSpacing * 3,
-        ship: -tabSpacing * 2,
-        ball: -tabSpacing,
-        ufo: 0,
-        wave: tabSpacing,
-        robot: tabSpacing * 2,
-        spider: tabSpacing * 3,
+        icon: -tabSpacing * 3.5,
+        ship: -tabSpacing * 2.5,
+        ball: -tabSpacing * 1.5,
+        ufo: -tabSpacing * 0.5,
+        wave: tabSpacing * 0.5,
+        robot: tabSpacing * 1.5,
+        spider: tabSpacing * 2.5,
+        swing: tabSpacing * 3.5,
       };
-      const tabRotations = { icon: -Math.PI/2, ship: 0, ball: -Math.PI/2, ufo: Math.PI/2, wave: Math.PI/2, robot: 0, spider: 0 };
-      const tabFlipXStates = { icon: true, ship: false, ball: true, ufo: false, wave: false, robot: false, spider: false };
-      const tabFlipYStates = { icon: false, ship: false, ball: false, ufo: true, wave: true, robot: false, spider: false };
+      const tabRotations = { icon: -Math.PI/2, ship: 0, ball: -Math.PI/2, ufo: Math.PI/2, wave: Math.PI/2, robot: 0, spider: 0, swing: 0 };
+      const tabFlipXStates = { icon: true, ship: false, ball: true, ufo: false, wave: false, robot: false, spider: false, swing: false };
+      const tabFlipYStates = { icon: false, ship: false, ball: false, ufo: true, wave: true, robot: false, spider: false, swing: false };
       const tabBtnSprites  = {};
 
       const _switchTab = (tab) => {
@@ -3561,6 +3576,22 @@ this._menuUpdateLogBtn = this.add.image(screenWidth - 30 - 50, 33, "GJ_WebSheet"
                   const layer = this._player[lp];
                   if (!layer || !layer.sprite) continue;
                   const found = getAtlasFrame(this, `${window.currentBird}${suffix}`);
+                  if (found) {
+                    layer.sprite.setTexture(found.atlas, found.frame);
+                    if (tint !== null) layer.sprite.setTint(tint);
+                  }
+                }
+              }
+              if (tab === "swing" && this._player) {
+                const layerMap = [
+                  { lp: "_swingSpriteLayer",  suffix: "_001.png",      tint: window.mainColor      },
+                  { lp: "_swingOverlayLayer", suffix: "_2_001.png",    tint: window.secondaryColor },
+                  { lp: "_swingExtraLayer",   suffix: "_extra_001.png",tint: window.mainColor      },
+                ];
+                for (const { lp, suffix, tint } of layerMap) {
+                  const layer = this._player[lp];
+                  if (!layer || !layer.sprite) continue;
+                  const found = getAtlasFrame(this, `${window.currentSwing}${suffix}`);
                   if (found) {
                     layer.sprite.setTexture(found.atlas, found.frame);
                     if (tint !== null) layer.sprite.setTint(tint);
@@ -7199,6 +7230,8 @@ _showwippopup() {
       this._player.enterRobotMode();
     } else if (gamemode == 6) {
       this._player.enterSpiderMode();
+    } else if (gamemode == 7) {
+      this._player.enterSwingMode();
     }
 
     this._applyLevelStartOptions();
@@ -7222,6 +7255,9 @@ _showwippopup() {
       return;
     }
 
+    const p1Disabled = !!this._level?.p1ControlsDisabled;
+    const p2Disabled = !!this._level?.p2ControlsDisabled;
+    if (p1Disabled && (!this._isDual || p2Disabled)) return;
     if (!this._slideIn && !this._state.isDead && !cancelInput) {
       this._state.upKeyDown = true;
       this._state.upKeyPressed = true;
@@ -7485,6 +7521,8 @@ _showwippopup() {
       playerSpeed = SpeedPortal.FOUR_TIMES;
     }
     this._level.resetObjects();
+    this._level._sidewaysWorldX = 0;
+    this._inSidewaysStep = false;
     this._level.shiftGroundTiles(this._cameraX - _0x2ba78a);
     this._level.resetGroundState();
     this._level.resetColorTriggers();
@@ -7548,6 +7586,8 @@ _showwippopup() {
         this._player.enterRobotMode();
       } else if (pos.gameMode == 6) {
         this._player.enterSpiderMode();
+      } else if (pos.gameMode == 7) {
+        this._player.enterSwingMode();
       }
       this._state.gravityFlipped = pos.gravityFlipped;
       this._state.isMini = pos.miniMode;
@@ -7600,6 +7640,8 @@ _showwippopup() {
         this._player.enterRobotMode();
       } else if (gamemode == 6) {
         this._player.enterSpiderMode();
+      } else if (gamemode == 7) {
+        this._player.enterSwingMode();
       }
 
       this._applyLevelStartOptions();
@@ -7703,6 +7745,7 @@ _showwippopup() {
     this._state.isSpider = false;
     this._state.isRobot = false;
     this._state.isBird = false;
+    this._state.isSwing = false;
     if (checkpoint.isFlying) {
       this._player.enterShipMode(null, true); // dont mess with y velocity if ur loading a checkpoint
     } else if (checkpoint.isBall) {
@@ -7715,6 +7758,8 @@ _showwippopup() {
       this._player.enterRobotMode();
     } else if (checkpoint.isSpider) {
       this._player.enterSpiderMode();
+    } else if (checkpoint.isSwing) {
+      this._player.enterSwingMode(null, true);
     } else if (checkpoint.isBird) {
       this._player.setBirdVisible(true);
       this._player.setCubeVisible(true);
@@ -7733,6 +7778,7 @@ _showwippopup() {
     this._state.isSpider = checkpoint.isSpider;
     this._state.isRobot = checkpoint.isRobot;
     this._state.isBird = checkpoint.isBird;
+    this._state.isSwing = checkpoint.isSwing;
     this._state._robotHold = !!checkpoint.robotHold;
     this._state._robotHoldTimer = checkpoint.robotHoldTimer || 0;
     
@@ -7775,6 +7821,11 @@ _showwippopup() {
       - (checkpoint.cameraY || 0) + this._cameraY;
     this._level._groundY = checkpoint.groundY;
     this._level._ceilingY = checkpoint.ceilingY;
+    this._level.gameplaySideways = !!checkpoint.gameplaySideways;
+    this._level.direction = checkpoint.direction === -1 ? -1 : 1;
+    this._level._directionDirty = true;
+    this._level._sidewaysWorldX = 0;
+    this._inSidewaysStep = false;
     if (typeof checkpoint.speed === "number") {
       playerSpeed = checkpoint.speed;
     } else {
@@ -7934,7 +7985,7 @@ _showwippopup() {
     this._level.resizeScreen();
     if (!this._menuActive) {
       const _0x56287b = this._cameraX;
-      this._cameraX = this._playerWorldX - centerX;
+      this._cameraX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0);
       this._cameraXRef._v = this._cameraX;
       this._level.applyShakeToOffsets?.(this.time.now);
       this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
@@ -8030,11 +8081,73 @@ _showwippopup() {
     }
     this._bg.tilePositionY = tileY;
   }
+  _applyStaticCamera(delta) {
+    const cam = this._level.staticCamera;
+    if (!cam || (!cam.x && !cam.y)) {
+      this._followCameraY = undefined;
+      return;
+    }
+    this._followCameraY = this._cameraY;
+    const seconds = delta / 60;
+    for (const axis of ["x", "y"]) {
+      const st = cam[axis];
+      if (!st) continue;
+      const follow = axis === "x" ? this._cameraX : this._cameraY;
+      if (!Number.isFinite(st.last)) st.last = follow;
+      if (!st.exiting) {
+        const guide = this._level._cameraGuides?.get(st.group);
+        let gx, gy;
+        if (guide) {
+          gx = guide.x;
+          gy = guide.y;
+        } else {
+          const c = this._level._getGroupCenter(st.group);
+          if (!c.cx && !c.cy) {
+            cam[axis] = null;
+            continue;
+          }
+          gx = c.cx;
+          gy = T - c.cy;
+        }
+        st.target = axis === "x" ? gx - screenWidth / 2 : gy - 320 + o;
+        if (!Number.isFinite(st.from)) st.from = follow;
+      }
+      st.elapsed += seconds;
+      const duration = st.trig.duration;
+      const s = duration > 0 && !st.instant ? Easing.sample(st.trig.easingType, st.trig.easingRate, Math.min(st.elapsed / duration, 1)) : 1;
+      let value;
+      if (st.exiting) {
+        value = st.last + (follow - st.last) * s;
+        if (s >= 1) cam[axis] = null;
+      } else {
+        value = st.from + (st.target - st.from) * s;
+      }
+      st.last = value;
+      if (axis === "x") this._cameraX = value;
+      else this._cameraY = value;
+    }
+  }
   _updateCameraY(_0xc7c517, snap = false) {
+    const cameraZoom = this._level?.cameraZoom || 1;
+    const minCameraY = cameraZoom !== 1 ? screenHeight / 2 * (1 / cameraZoom - 1) : 0;
     let explosionPiece = this._cameraY;
     let _0x1a27be = explosionPiece;
     if (this._level.flyCameraTarget !== null) {
       _0x1a27be = this._level.flyCameraTarget;
+    } else if (this._level.freeModeCamera && (this._state.isFlying || this._state.isUfo || this._state.isWave || this._state.isBall || this._state.isSwing || this._state.isSpider)) {
+      const offset = typeof o !== 'undefined' ? o : 0;
+      const padding = this._level.freeCamPadding ?? 0.5;
+      const margin = 2 * (160 - ((160 - 32) * padding + 30));
+      const center = explosionPiece - offset + 320;
+      const y = this._state.y;
+      if (y > center + margin) _0x1a27be = y - 320 - margin + offset;
+      else if (y < center - margin) _0x1a27be = y - 320 + margin + offset;
+      const easing = this._level.freeCamEasing ?? 10;
+      if (!snap && _0xc7c517 !== 0) {
+        explosionPiece = easing > 1 ? explosionPiece + (_0x1a27be - explosionPiece) / (easing / _0xc7c517) : _0x1a27be;
+        this._cameraY = Math.max(minCameraY, explosionPiece);
+        return;
+      }
     } else {
       let _0x2bc8fb = this._state.y;
       let _0x259956 = 140;
@@ -8054,15 +8167,15 @@ _showwippopup() {
         }
       }
     }
-    if (_0x1a27be < 0) {
-      _0x1a27be = 0;
+    if (_0x1a27be < minCameraY) {
+      _0x1a27be = minCameraY;
     }
     if (snap) {
       this._cameraY = _0x1a27be;
     } else if (_0xc7c517 !== 0) {
       explosionPiece += (_0x1a27be - explosionPiece) / (10 / _0xc7c517);
-      if (explosionPiece < 0) {
-        explosionPiece = 0;
+      if (explosionPiece < minCameraY) {
+        explosionPiece = minCameraY;
       }
       this._cameraY = explosionPiece;
     }
@@ -8250,6 +8363,243 @@ _showwippopup() {
     level.setGround2Color?.(this._colorManager.getHex(1009));
     level.applyEnterEffects(this._cameraX);
     this._stepBeastAnimations(deltaTime);
+  }
+  _applyArtChange(type, id) {
+    if (type === "ground") {
+      if (window._groundId === id) return;
+      window._groundId = id;
+      this._level?.applyGroundTexture?.();
+      return;
+    }
+    if (window._backgroundId === id) return;
+    window._backgroundId = id;
+    this._ensureBackgroundTexture(getBackgroundTextureIndex(parseInt(id, 10) || 1), (bgKey) => {
+      if (!this._bg || window._backgroundId !== id) return;
+      this._applyMirroredBackgroundTexture(bgKey);
+      this._releaseUnusedBackgrounds(bgKey);
+    });
+  }
+  _applyTriggerGravity(p1Scale, p2Scale) {
+    if (this._state) this._state.gravityScale = p1Scale;
+    if (this._state2) this._state2.gravityScale = p2Scale;
+  }
+  _swapSidewaysFrame() {
+    const x = this._playerWorldX;
+    this._playerWorldX = this._state.y;
+    this._state.y = x;
+    this._inSidewaysStep = !this._inSidewaysStep;
+  }
+  _rotateGameplay(trig) {
+    const level = this._level;
+    const state = this._state;
+    if (!level || !state || state.isDead || this._isDual) return;
+    const sideways = trig.ground === 3 || trig.ground === 4;
+    const flipped = trig.ground === 1 || trig.ground === 4;
+    const reversed = trig.move === 2 || trig.move === 3;
+    let velocity = playerSpeed;
+    if (trig.editVelocity) velocity = trig.overrideVelocity ? trig.velocityModY * 2 : velocity * trig.velocityModY;
+    level.gameplaySideways = sideways;
+    if ((level.direction < 0) !== reversed) {
+      level.direction = reversed ? -1 : 1;
+      level._directionDirty = true;
+    }
+    if (!!state.gravityFlipped !== flipped) this._player.flipGravity(flipped, 1);
+    state.yVelocity = velocity;
+    state.onGround = false;
+    state.onCeiling = false;
+    state.canJump = false;
+  }
+  _applyPlayerControlTrigger(trig) {
+    const targets = [];
+    if (trig.p1) targets.push([this._state, this._player]);
+    if (trig.p2 && this._isDual) targets.push([this._state2, this._player2]);
+    for (const [state, player] of targets) {
+      if (trig.stopJump) {
+        if (state.upKeyDown) state.robotTouchedPad = true;
+        state.upKeyDown = false;
+        state.upKeyPressed = false;
+        state.queuedHold = false;
+        this._stopJumpLatch = true;
+      }
+      if (trig.stopRotate) player.stopRotation();
+      if (trig.stopSlide) player._slopeExitVel = 0;
+    }
+  }
+  _teleportPlayerFromTrigger(trig) {
+    const group = trig.targetGroup > 0 ? trig.targetGroup : trig.centerGroup;
+    if (!(group > 0)) return;
+    const center = this._level?._getGroupCenter?.(group);
+    if (!center) return;
+    const useSecondary = !!trig.p2 && this._isDual && !this._state2.isDead;
+    const state = useSecondary ? this._state2 : this._state;
+    const player = useSecondary ? this._player2 : this._player;
+    if (!useSecondary && !trig.usePlayerX) this._playerWorldX = center.cx;
+    if (!trig.usePlayerY) {
+      state.y = center.cy;
+      state.lastY = center.cy;
+    }
+    state.onGround = false;
+    state.onCeiling = false;
+    if (trig.gravityMode > 0 && trig.gravityMode < 4) {
+      const flipped = trig.gravityMode === 1 ? false : trig.gravityMode === 2 ? true : !state.gravityFlipped;
+      if (!!state.gravityFlipped !== flipped) player.flipGravity(flipped);
+    }
+    player.checkCollisions(this._playerWorldX - centerX);
+  }
+  _enforceDisabledControls() {
+    const level = this._level;
+    if (!level) return;
+    const disabled = [!!level.p1ControlsDisabled, !!level.p2ControlsDisabled];
+    const states = [this._state, this._state2];
+    for (let i = 0; i < 2; i++) {
+      if (!disabled[i] || (i === 1 && !this._isDual)) continue;
+      const state = states[i];
+      if (state.upKeyDown) state.robotTouchedPad = true;
+      state.upKeyDown = false;
+      state.upKeyPressed = false;
+      state.queuedHold = false;
+    }
+    const wasDisabled = this._controlsWereDisabled;
+    this._controlsWereDisabled = disabled[0] || disabled[1];
+    if (wasDisabled && !this._controlsWereDisabled && (this._spaceWasDown || this.input.activePointer.isDown)) this._pushButton();
+  }
+  _applyWorldCamera() {
+    const level = this._level;
+    const inLevel = level && !window.isEditor && !this._menuActive;
+    const zoom = inLevel ? (level.cameraZoom || 1) : 1;
+    const angle = inLevel ? (level.cameraAngle || 0) : 0;
+    const shaderUniforms = inLevel ? level.getShaderUniforms?.() : null;
+    const main = this.cameras.main;
+    if (zoom === 1 && angle === 0 && !shaderUniforms) {
+      if (this._worldCameraActive) {
+        this._worldCameraActive = false;
+        main.setZoom(1);
+        main.setRotation(0);
+        main.resetPostPipeline();
+        for (const obj of this.children.list) obj.cameraFilter = 0;
+        this._clearChildCameraFilters();
+        for (const key of ["_bgCamera", "_lowCamera", "_highCamera", "_uiCamera"]) {
+          if (this[key]) this.cameras.remove(this[key]);
+          this[key] = null;
+        }
+      }
+      return;
+    }
+    const layerMin = shaderUniforms ? level.shaderLayerMin : 1;
+    const layerMax = shaderUniforms ? level.shaderLayerMax : 15;
+    const split = !!shaderUniforms && (layerMin > 2 || layerMax < 13);
+    if (!this._worldCameraActive) {
+      this._worldCameraActive = true;
+      this._bgCamera = this.cameras.add(0, 0, main.width, main.height);
+      this._lowCamera = this.cameras.add(0, 0, main.width, main.height);
+      this._highCamera = this.cameras.add(0, 0, main.width, main.height);
+      this._uiCamera = this.cameras.add(0, 0, main.width, main.height);
+      const cameraList = this.cameras.cameras;
+      const ordered = [this._bgCamera, this._lowCamera, main, this._highCamera, this._uiCamera];
+      cameraList.length = 0;
+      cameraList.push(...ordered);
+    }
+    const radians = angle * Math.PI / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    for (const camera of [this._bgCamera, this._lowCamera, this._highCamera, this._uiCamera]) camera.setSize(main.width, main.height);
+    for (const camera of [this._lowCamera, main, this._highCamera]) {
+      camera.setZoom(zoom);
+      camera.setRotation(radians);
+    }
+    this._bgCamera.setRotation(radians);
+    this._bgCamera.setZoom(Math.max(cos + sin * main.height / main.width, cos + sin * main.width / main.height));
+    const separateBackground = zoom !== 1 || angle !== 0 || split || (shaderUniforms && layerMin > 1);
+    this._applyShaderPipeline(main, shaderUniforms);
+    this._applyShaderPipeline(this._bgCamera, separateBackground && layerMin <= 1 ? shaderUniforms : null);
+    const allIds = this._bgCamera.id | this._lowCamera.id | main.id | this._highCamera.id | this._uiCamera.id;
+    const only = (camera) => allIds & ~camera.id;
+    const worldCameraFor = (layer) => !split ? main : layer < layerMin ? this._lowCamera : layer > layerMax ? this._highCamera : main;
+    const lowDepthUi = [this._pauseBtn, this._checkpointBtnContainer, this._macroBtn];
+    const levelContainers = level ? [level.container, level.additiveContainer, level.topContainer] : [];
+    const playerObjects = split ? this._collectPlayerObjects() : null;
+    for (const obj of this.children.list) {
+      if (obj.depth >= 59 || lowDepthUi.includes(obj)) {
+        obj.cameraFilter = only(this._uiCamera);
+      } else if (obj.depth <= -10) {
+        obj.cameraFilter = only(separateBackground ? this._bgCamera : main);
+      } else if (split && levelContainers.includes(obj)) {
+        obj.cameraFilter = only(this._lowCamera) & only(main) & only(this._highCamera);
+        this._applyChildCameraFilters(obj, worldCameraFor, only);
+      } else {
+        const layer = playerObjects && playerObjects.has(obj) ? 8 : this._gdLayerForTopDepth(obj.depth);
+        obj.cameraFilter = only(worldCameraFor(layer));
+      }
+    }
+    if (!split) this._clearChildCameraFilters();
+  }
+  _collectPlayerObjects() {
+    const found = new Set();
+    const add = (value) => {
+      if (!value || typeof value !== "object") return;
+      if (value instanceof Phaser.GameObjects.GameObject) {
+        found.add(value);
+      } else if (value.sprite instanceof Phaser.GameObjects.GameObject) {
+        found.add(value.sprite);
+      }
+    };
+    for (const player of [this._player, this._player2]) {
+      if (!player) continue;
+      for (const key in player) {
+        const value = player[key];
+        if (Array.isArray(value)) {
+          for (const item of value) add(item);
+        } else {
+          add(value);
+        }
+      }
+    }
+    return found;
+  }
+  _gdLayerForDepth(depth) {
+    if (depth < -10.5) return 3;
+    if (depth < -7.5) return 4;
+    if (depth < -3) return 5;
+    if (depth < 4.5) return 6;
+    if (depth < 7.5) return 7;
+    if (depth < 9.75) return 9;
+    if (depth < 11.25) return 10;
+    if (depth < 12.75) return 11;
+    return 12;
+  }
+  _gdLayerForTopDepth(depth) {
+    if (depth >= 20 && depth < 23) return 13;
+    return this._gdLayerForDepth(depth);
+  }
+  _applyChildCameraFilters(container, worldCameraFor, only) {
+    this._childFilterTouched ||= new Set();
+    for (const child of container.list) {
+      if (child.list) {
+        if (child.visible) this._applyChildCameraFilters(child, worldCameraFor, only);
+        continue;
+      }
+      child.cameraFilter = only(worldCameraFor(this._gdLayerForDepth(child._eeZDepth ?? child.depth)));
+      this._childFilterTouched.add(child);
+    }
+  }
+  _clearChildCameraFilters() {
+    if (!this._childFilterTouched || !this._childFilterTouched.size) return;
+    for (const child of this._childFilterTouched) child.cameraFilter = 0;
+    this._childFilterTouched.clear();
+  }
+  _applyShaderPipeline(camera, uniforms) {
+    if (!uniforms) {
+      if (camera.postPipelines.length) camera.resetPostPipeline();
+      return;
+    }
+    const pipelines = this.renderer.pipelines;
+    if (!pipelines.postPipelineClasses.has("GDShaderPipeline")) pipelines.addPostPipeline("GDShaderPipeline", window.GDShaderPipeline);
+    let pipeline = camera.getPostPipeline("GDShaderPipeline");
+    if (!pipeline || Array.isArray(pipeline)) {
+      camera.setPostPipeline("GDShaderPipeline");
+      pipeline = camera.getPostPipeline("GDShaderPipeline");
+    }
+    pipeline.uniformValues = uniforms;
   }
   _snapLevelContainers() {
     const level = this._level;
@@ -8535,7 +8885,8 @@ _showwippopup() {
       this.cameras.main
     ).length > 0;
 
-    if (!!this.input.activePointer.isDown && !this._state.upKeyDown && !this._state.isDead) {
+    if (!this.input.activePointer.isDown && !this._spaceWasDown) this._stopJumpLatch = false;
+    if (!!this.input.activePointer.isDown && !this._stopJumpLatch && !this._state.upKeyDown && !this._state.isDead) {
       this._state.upKeyDown = true;
       this._state.queuedHold = true;
       this._state._orbActivationConsumedForPress = false;
@@ -8546,7 +8897,7 @@ _showwippopup() {
       this._state.queuedHold = false;
       this._state._orbActivationConsumedForPress = false;
     }
-    this._level.updateEndPortalY(this._cameraY, this._state.isFlying || this._state.isWave || this._state.isUfo || this._state.isSpider);
+    this._level.updateEndPortalY(this._cameraY, this._state.isFlying || this._state.isWave || this._state.isUfo || this._state.isSpider || this._state.isSwing);
     if (!this._levelWon && !this._state.isDead && this._level.endXPos > 0) {
       const _0x448396 = 600;
       if (this._playerWorldX >= this._level.endXPos - _0x448396) {
@@ -8658,7 +9009,7 @@ _showwippopup() {
       this._stepLevelWhileDead(deltaTime);
       this._applyMirrorEffect();
       this._deathTimer += deltaTime;
-      let _0x237728 = this._hadNewBest ? 1400 : 1000;
+      let _0x237728 = (this._level.respawnTime ?? 1) * 1000 + (this._hadNewBest ? 400 : 0);
       if (this._deathTimer > _0x237728) {
         if (this._practicedMode.practiceMode) {
           this._respawnFromCheckpoint();
@@ -8728,14 +9079,21 @@ _showwippopup() {
     }
     let subStepDelta = subSteps > 0 ? quantizedDelta / subSteps : 0;
     let verticalDelta = subStepDelta * d;
-    let horizontalDelta = subStepDelta * playerSpeed * d;
+    const triggerDirection = this._level?.direction < 0 ? -1 : 1;
+    let horizontalDelta = subStepDelta * playerSpeed * d * triggerDirection;
     const initialY = this._state.y;
     const initialY2 = this._state2.y;
     for (let i = 0; i < subSteps; i++) {
+      const sidewaysStep = !!this._level?.gameplaySideways && !this._isDual;
+      if (sidewaysStep) {
+        this._level._sidewaysWorldX = this._playerWorldX;
+        this._swapSidewaysFrame();
+      }
       this._state.lastY = this._state.y;
       this._physicsFrame++;
       this._physicsTick = (this._physicsTick || 0) + 1;
       this._applyJumpInput();
+      this._enforceDisabledControls();
       if (this._macroBot?.playing) {
         this._macroBot.step(this._physicsFrame);
       }
@@ -8761,6 +9119,7 @@ _showwippopup() {
         this._player2.killPlayer();
       }
       this._playerWorldX += horizontalDelta;
+      if (sidewaysStep) this._swapSidewaysFrame();
       if (this._isDual && !this._state2.isDead) {
         this._copyDualInputFlags(_dualInputState, this._state2);
         if (this._shouldSuppressDualGravityAction(this._state2, _primaryGravitySynced)) {
@@ -8841,7 +9200,7 @@ _showwippopup() {
     this._state.ignorePortals = false;
     this._state2.ignorePortals = false;
     if (!this._endCameraOverride) {
-      const cameraOffsetX = this._playerWorldX - centerX;
+      const cameraOffsetX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0);
       if (this._level.endXPos > 0) {
         const maxCameraX = this._level.endXPos - screenWidth;
         if (cameraOffsetX >= maxCameraX - 200) {
@@ -8875,10 +9234,15 @@ _showwippopup() {
       this._cameraX = tween.fromX + (tween.toX - tween.fromX) * tween.p;
       this._cameraY = tween.fromY + (tween.toY - tween.fromY) * tween.p;
     }
-    this._cameraXRef._v = this._cameraX;
     if (!this._endCameraOverride) {
+      if (this._followCameraY !== undefined && this._level.staticCamera) this._cameraY = this._followCameraY;
+      this._cameraY -= this._level._appliedCameraOffsetY || 0;
       this._updateCameraY(quantizedDelta);
+      this._level._appliedCameraOffsetY = this._level.cameraOffsetY || 0;
+      this._cameraY += this._level._appliedCameraOffsetY;
+      this._applyStaticCamera(quantizedDelta);
     }
+    this._cameraXRef._v = this._cameraX;
     this._level.applyShakeToOffsets?.(this.time.now);
     this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
     this._level.additiveContainer.y = this._cameraY + (this._level.shakeOffsetY || 0);
@@ -8980,8 +9344,17 @@ _showwippopup() {
     this._level.checkPlayerVisibilityTriggers?.(playerX);
     this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state.y);
     if (this._isDual && !this._state2.isDead) this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state2.y);
-    this._player?.setHidden?.(!!this._level.playerHidden);
-    if (this._isDual) this._player2?.setHidden?.(!!this._level.playerHidden);
+    this._player?.setHidden?.(!!this._level.playerHidden || !!this._level.optionHideP1);
+    if (this._isDual) this._player2?.setHidden?.(!!this._level.playerHidden || !!this._level.optionHideP2);
+    if (this._level.attemptsHidden) {
+      if (this._attemptsLabel.visible) {
+        this._attemptsLabel.setVisible(false);
+        this._attemptsHiddenByTrigger = true;
+      }
+    } else if (this._attemptsHiddenByTrigger) {
+      this._attemptsHiddenByTrigger = false;
+      this._attemptsLabel.setVisible(true);
+    }
     if (this._level.checkTouchShakeTriggers) {
         this._level.checkTouchShakeTriggers(playerX, this._state.y);
         if (this._isDual && !this._state2.isDead) {
@@ -9056,10 +9429,10 @@ _showwippopup() {
     this._updateBackground();
     this._level.stepGroundAnimation(deltaTime / 1000);
     this._level.updateGroundTiles(this._cameraY);
-    if (this._state.isFlying) {
+    if (this._state.isFlying || this._state.isSwing) {
       this._player.updateShipRotation(quantizedDelta);
     }
-    if (this._isDual && this._state2.isFlying && !this._state2.isDead) {
+    if (this._isDual && (this._state2.isFlying || this._state2.isSwing) && !this._state2.isDead) {
     this._player2.updateShipRotation(quantizedDelta);
   }
     const playerScreenX = this._playerWorldX - this._cameraX;
@@ -9201,6 +9574,7 @@ _mirrorProgress() {
     if (state.isWave) return "wave";
     if (state.isRobot) return "robot";
     if (state.isSpider) return "spider";
+    if (state.isSwing) return "swing";
     return "cube";
   }
   _getGamemodePortalMode(portalType) {
@@ -9219,6 +9593,8 @@ _mirrorProgress() {
         return "robot";
       case "portal_spider":
         return "spider";
+      case "portal_swing":
+        return "swing";
       default:
         return null;
     }
@@ -9234,6 +9610,7 @@ _mirrorProgress() {
       player.setBirdVisible?.(mode === "ufo");
       player.setRobotVisible(mode === "robot");
       player.setSpiderVisible(mode === "spider");
+      player.setSwingVisible(mode === "swing");
       return;
     }
     const saved = {
@@ -9266,6 +9643,9 @@ _mirrorProgress() {
       case "spider":
         player.enterSpiderMode({ y: saved.y, portalY: saved.y });
         break;
+      case "swing":
+        player.enterSwingMode({ y: saved.y, portalY: saved.y }, true);
+        break;
       default:
         player.exitShipMode();
         player.exitBallMode();
@@ -9273,18 +9653,21 @@ _mirrorProgress() {
         player.exitWaveMode();
         player.exitRobotMode();
         player.exitSpiderMode();
+        player.exitSwingMode();
         state.isFlying = false;
         state.isBall = false;
         state.isUfo = false;
         state.isWave = false;
         state.isRobot = false;
         state.isSpider = false;
+        state.isSwing = false;
         player.setShipVisible(false);
         player.setBallVisible(false);
         player.setWaveVisible(false);
         player.setBirdVisible?.(false);
         player.setRobotVisible(false);
         player.setSpiderVisible(false);
+        player.setSwingVisible(false);
         player.setCubeVisible(true);
         break;
     }
@@ -9495,7 +9878,7 @@ _mirrorProgress() {
   }
   _refreshFlyBoundsAfterDual() {
     if (!this._level) return;
-    if (this._state.isFlying || this._state.isWave || this._state.isUfo) {
+    if (this._state.isFlying || this._state.isWave || this._state.isUfo || this._state.isSwing) {
       this._level.setFlyMode(true, this._state.y, f, false);
     } else if (this._state.isBall) {
       this._level.setFlyMode(true, this._state.y, f - a * 2, false);

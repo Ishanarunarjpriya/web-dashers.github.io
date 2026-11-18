@@ -12,7 +12,31 @@
     2067: "scale",
     1935: "timeWarp",
     3600: "end",
-    3618: "reset"
+    3618: "reset",
+    1916: "cameraOffset",
+    1913: "cameraZoom",
+    2015: "cameraRotate",
+    2899: "options",
+    3029: "changeBackground",
+    3030: "changeGround",
+    2904: "shader",
+    2910: "shader",
+    2911: "shader",
+    2919: "shader",
+    2920: "shader",
+    2921: "shader",
+    2922: "shader",
+    2923: "shader",
+    1917: "reverse",
+    2066: "gravity",
+    1932: "playerControl",
+    3022: "teleport",
+    1934: "song",
+    3602: "sfx",
+    3605: "editSong",
+    3603: "editSfx",
+    2900: "rotateGameplay",
+    1914: "staticCamera"
   };
   const HIDDEN_TRIGGER_IDS = [
     1913, 1914, 1916, 1917, 1931, 1932, 1934, 2015, 2016, 2062, 2066, 2899, 2900, 2901, 2903, 2904, 2905, 2907, 2909, 2910,
@@ -58,6 +82,12 @@
   const proto = window.LevelObject.prototype;
 
   proto._parseGenericTrigger = function (levelObj, triggerBase) {
+    if (String(levelObj.id) === "2016") {
+      const groups = String(levelObj._raw?.[57] ?? "").split(".").map(g => parseInt(g, 10)).filter(g => g > 0);
+      this._cameraGuides ||= new Map();
+      for (const g of groups) if (!this._cameraGuides.has(g)) this._cameraGuides.set(g, { x: levelObj.x * 2, y: levelObj.y * 2 });
+      return;
+    }
     const kind = GENERIC_TRIGGER_KINDS[levelObj.id];
     if (!kind) return;
     const raw = levelObj._raw || {};
@@ -131,16 +161,104 @@
       trig.onlyMove = rawBool(raw, 133);
     } else if (kind === "timeWarp") {
       trig.timeMod = Math.max(0.1, Math.min(2, rawFloat(raw, 120, 1)));
+    } else if (kind === "cameraOffset") {
+      trig.offsetX = rawFloat(raw, 28) * 2;
+      trig.offsetY = rawFloat(raw, 29) * 2;
+      trig.axis = rawInt(raw, 101);
+      trig.duration = Math.max(0, rawFloat(raw, 10));
+      trig.easingType = rawInt(raw, 30);
+      const rate = rawFloat(raw, 85);
+      trig.easingRate = rate > 0 ? rate : 2;
+    } else if (kind === "shader") {
+      trig.objectId = levelObj.id;
+      this._parseShaderTrigger(trig, raw);
+    } else if (kind === "changeBackground" || kind === "changeGround") {
+      trig.artId = rawInt(raw, 533);
+    } else if (kind === "options") {
+      trig.hideGround = rawInt(raw, 161);
+      trig.hideP1 = rawInt(raw, 162);
+      trig.hideP2 = rawInt(raw, 163);
+      trig.disableP1 = rawInt(raw, 165);
+      trig.disableP2 = rawInt(raw, 199);
+      trig.hideAttempts = rawInt(raw, 532);
+      trig.respawnMode = rawInt(raw, 573);
+      trig.respawnTime = rawFloat(raw, 574);
+    } else if (kind === "cameraRotate") {
+      trig.degrees = rawFloat(raw, 68);
+      trig.add = rawBool(raw, 70);
+      trig.snap360 = rawBool(raw, 394);
+      trig.duration = Math.max(0, rawFloat(raw, 10));
+      trig.easingType = rawInt(raw, 30);
+      const rotateRate = rawFloat(raw, 85);
+      trig.easingRate = rotateRate > 0 ? rotateRate : 2;
+    } else if (kind === "staticCamera") {
+      trig.targetGroup = rawInt(raw, 71);
+      trig.duration = Math.max(0, rawFloat(raw, 10));
+      trig.easingType = rawInt(raw, 30);
+      const staticRate = rawFloat(raw, 85);
+      trig.easingRate = staticRate > 0 ? staticRate : 2;
+      trig.axis = rawInt(raw, 101);
+      trig.exit = rawBool(raw, 110);
+      trig.exitInstant = rawBool(raw, 465);
+    } else if (kind === "cameraZoom") {
+      const zoom = rawFloat(raw, 371, 1);
+      trig.zoom = zoom <= 0 ? 1 : Math.max(0.4, Math.min(3, zoom));
+      trig.duration = Math.max(0, rawFloat(raw, 10));
+      trig.easingType = rawInt(raw, 30);
+      const rate = rawFloat(raw, 85);
+      trig.easingRate = rate > 0 ? rate : 2;
     } else if (kind === "end") {
       trig.noEffects = rawBool(raw, 460);
       trig.noSFX = rawBool(raw, 461);
       trig.instant = rawBool(raw, 487);
+    } else if (kind === "rotateGameplay") {
+      trig.touchTriggered = true;
+      trig.ground = rawInt(raw, 166, 2);
+      trig.move = rawInt(raw, 167, 4);
+      trig.editVelocity = rawBool(raw, 169);
+      trig.overrideVelocity = rawBool(raw, 584);
+      trig.velocityModX = rawFloat(raw, 582);
+      trig.velocityModY = rawFloat(raw, 583);
+      trig.channelOnly = rawBool(raw, 172);
+      trig.dontSlide = rawBool(raw, 585);
+    } else if (kind === "gravity") {
+      const gravityValue = rawFloat(raw, 148, 1);
+      trig.gravity = Math.max(0.1, Math.min(2, gravityValue));
+      trig.p1 = !rawBool(raw, 200);
+      trig.p2 = !rawBool(raw, 138) && !rawBool(raw, 201);
+    } else if (kind === "playerControl") {
+      trig.stopJump = rawBool(raw, 540);
+      trig.stopMove = rawBool(raw, 541);
+      trig.stopRotate = rawBool(raw, 542);
+      trig.stopSlide = rawBool(raw, 543);
+      trig.p1 = rawBool(raw, 138) || !rawBool(raw, 200);
+      trig.p2 = !rawBool(raw, 138) || rawBool(raw, 200);
+    } else if (kind === "teleport") {
+      trig.gravityMode = rawInt(raw, 354);
+      trig.teleportY = rawValue(raw, 54) !== undefined ? rawFloat(raw, 54) : null;
+      trig.usePlayerX = rawBool(raw, 352);
+      trig.usePlayerY = rawBool(raw, 353);
+      trig.noEffects = rawBool(raw, 443);
+    } else if (kind === "song" || kind === "sfx" || kind === "editSong" || kind === "editSfx") {
+      trig.soundId = rawInt(raw, 392);
+      trig.volume = Math.max(0, Math.min(2, rawFloat(raw, 406, 1)));
+      trig.speed = Math.pow(2, rawInt(raw, 404) / 12);
+      trig.pitch = rawInt(raw, 405);
+      trig.loop = rawBool(raw, 414);
+      trig.prep = rawBool(raw, 399);
+      trig.loadPrep = rawBool(raw, 400);
+      trig.trackId = rawInt(raw, 432);
+      trig.start = Math.max(0, rawInt(raw, 408) / 1000);
+      trig.fadeIn = Math.max(0, rawInt(raw, 409) / 1000);
+      trig.end = Math.max(0, rawInt(raw, 410) / 1000);
+      trig.fadeOut = Math.max(0, rawInt(raw, 411) / 1000);
     }
     this._genericTriggers.push(trig);
   };
 
   proto._initGenericTriggers = function () {
     this._genericTriggers = [];
+    this._cameraGuides = new Map();
     this._groupScales = {};
     this._scaledSprites = new Set();
     this._scaledColliders = new Set();
@@ -150,6 +268,8 @@
   };
 
   proto.resetGenericTriggers = function (clearPersistent = false) {
+    this.resetParticleObjects?.();
+    this.staticCamera = null;
     this._genericTriggerIdx = 0;
     this._genericFired = new Set();
     this._genericTouching = new Map();
@@ -160,6 +280,38 @@
     this._points = 0;
     this.timeWarp = 1;
     this.endTriggered = null;
+    this.cameraOffsetX = 0;
+    this.cameraOffsetY = 0;
+    this._appliedCameraOffsetY = 0;
+    this._cameraOffsetTweens = { x: null, y: null };
+    this.cameraZoom = 1;
+    this._cameraZoomTween = null;
+    this.cameraAngle = 0;
+    this._cameraAngleTarget = 0;
+    this._cameraAngleTween = null;
+    this.groundHidden = false;
+    this.optionHideP1 = false;
+    this.optionHideP2 = false;
+    this.p1ControlsDisabled = false;
+    this.p2ControlsDisabled = false;
+    this.direction = 1;
+    this.gameplaySideways = false;
+    this._sidewaysProxies = new Map();
+    this.p1GravityScale = 1;
+    this.p2GravityScale = 1;
+    this._preppedSong = null;
+    this._directionDirty = false;
+    this._reverseIdx = -1;
+    this._scene?._audio?.stopTriggerChannels?.();
+    this._scene?._applyTriggerGravity?.(1, 1);
+    this.attemptsHidden = false;
+    this.respawnTime = null;
+    this.resetShaders();
+    if (this._initialArt) {
+      this._scene?._applyArtChange?.("background", this._initialArt.background);
+      this._scene?._applyArtChange?.("ground", this._initialArt.ground);
+      this._initialArt = null;
+    }
     const keptTimers = {};
     if (!clearPersistent && this._timers) {
       for (const id of this._persistentTimers) {
@@ -326,11 +478,74 @@
       if (!(trig.targetGroup > 0)) return;
       this._hasGroupScales = true;
       this._activeScaleTweens.push({ trig, elapsed: 0, prevX: 1, prevY: 1 });
+    } else if (kind === "cameraOffset") {
+      if (trig.axis !== 2) this._startCameraOffsetTween("x", trig.offsetX, trig);
+      if (trig.axis !== 1) this._startCameraOffsetTween("y", trig.offsetY, trig);
+    } else if (kind === "shader") {
+      this._fireShaderTrigger(trig);
+    } else if (kind === "changeBackground" || kind === "changeGround") {
+      if (trig.artId <= 0) return;
+      if (!this._initialArt) this._initialArt = { background: window._backgroundId, ground: window._groundId };
+      if (kind === "changeBackground") this._scene?._applyArtChange?.("background", String(trig.artId).padStart(2, "0"));
+      else this._scene?._applyArtChange?.("ground", getGroundTextureId(trig.artId));
+    } else if (kind === "options") {
+      if (trig.hideGround) this.groundHidden = trig.hideGround === 1;
+      if (trig.hideP1) this.optionHideP1 = trig.hideP1 === 1;
+      if (trig.hideP2) this.optionHideP2 = trig.hideP2 === 1;
+      if (trig.disableP1) this.p1ControlsDisabled = trig.disableP1 === 1;
+      if (trig.disableP2) this.p2ControlsDisabled = trig.disableP2 === 1;
+      if (trig.hideAttempts) this.attemptsHidden = trig.hideAttempts === 1;
+      if (trig.respawnMode) this.respawnTime = trig.respawnMode === 1 ? Math.min(10, Math.max(1, trig.respawnTime)) : null;
+    } else if (kind === "cameraRotate") {
+      this._startCameraRotate(trig);
+    } else if (kind === "cameraZoom") {
+      if (trig.duration <= 0) {
+        this.cameraZoom = trig.zoom;
+        this._cameraZoomTween = null;
+      } else {
+        this._cameraZoomTween = { from: this.cameraZoom, to: trig.zoom, elapsed: 0, trig };
+      }
     } else if (kind === "timeWarp") {
       this.timeWarp = trig.timeMod;
     } else if (kind === "end") {
       if (!this.endTriggered) this.endTriggered = trig;
       this._spawnGroupNow(trig.targetGroup);
+    } else if (kind === "staticCamera") {
+      const cam = this.staticCamera || (this.staticCamera = { x: null, y: null });
+      const axes = trig.axis === 1 ? ["x"] : trig.axis === 2 ? ["y"] : ["x", "y"];
+      for (const axis of axes) {
+        const prev = cam[axis];
+        if (trig.exit) {
+          if (prev && !prev.exiting) cam[axis] = { ...prev, exiting: true, elapsed: 0, trig, instant: trig.exitInstant };
+        } else {
+          cam[axis] = { group: trig.targetGroup, elapsed: 0, trig, exiting: false, from: prev ? prev.last : null };
+        }
+      }
+    } else if (kind === "rotateGameplay") {
+      if (!trig.channelOnly) this._scene?._rotateGameplay?.(trig);
+    } else if (kind === "reverse") {
+      this.direction = (this.direction || 1) * -1;
+      this._directionDirty = true;
+    } else if (kind === "gravity") {
+      if (trig.p1) this.p1GravityScale = trig.gravity;
+      if (trig.p2) this.p2GravityScale = trig.gravity;
+      this._scene?._applyTriggerGravity?.(this.p1GravityScale, this.p2GravityScale);
+    } else if (kind === "playerControl") {
+      this._scene?._applyPlayerControlTrigger?.(trig);
+    } else if (kind === "teleport") {
+      this._scene?._teleportPlayerFromTrigger?.(trig);
+    } else if (kind === "song") {
+      if (trig.prep) this._preppedSong = trig;
+      else if (trig.loadPrep) {
+        if (this._preppedSong) this._scene?._audio?.playSongTrigger?.(this._preppedSong);
+        this._preppedSong = null;
+      } else this._scene?._audio?.playSongTrigger?.(trig);
+    } else if (kind === "sfx") {
+      this._scene?._audio?.playSfxTrigger?.(trig);
+    } else if (kind === "editSong") {
+      this._scene?._audio?.editSongTrigger?.(trig);
+    } else if (kind === "editSfx") {
+      this._scene?._audio?.editSfxTrigger?.(trig);
     } else if (kind === "reset") {
       this._fireResetTrigger(trig);
     }
@@ -456,6 +671,72 @@
     }
   };
 
+  proto._startCameraOffsetTween = function (axis, target, trig) {
+    const key = axis === "x" ? "cameraOffsetX" : "cameraOffsetY";
+    if (trig.duration <= 0) {
+      this[key] = target;
+      this._cameraOffsetTweens[axis] = null;
+      return;
+    }
+    this._cameraOffsetTweens[axis] = { from: this[key], to: target, elapsed: 0, trig };
+  };
+
+  proto._stepCameraOffsetTweens = function (dt) {
+    for (const axis of ["x", "y"]) {
+      const tween = this._cameraOffsetTweens[axis];
+      if (!tween) continue;
+      tween.elapsed += dt;
+      const progress = Math.min(tween.elapsed / tween.trig.duration, 1);
+      const sample = Easing.sample(tween.trig.easingType, tween.trig.easingRate, progress);
+      this[axis === "x" ? "cameraOffsetX" : "cameraOffsetY"] = tween.from + (tween.to - tween.from) * sample;
+      if (progress >= 1) this._cameraOffsetTweens[axis] = null;
+    }
+    const angleTween = this._cameraAngleTween;
+    if (angleTween) {
+      angleTween.elapsed += dt;
+      const progress = Math.min(angleTween.elapsed / angleTween.trig.duration, 1);
+      const sample = Easing.sample(angleTween.trig.easingType, angleTween.trig.easingRate, progress);
+      this.cameraAngle = angleTween.from + (angleTween.to - angleTween.from) * sample;
+      if (progress >= 1) this._cameraAngleTween = null;
+    }
+    const zoomTween = this._cameraZoomTween;
+    if (zoomTween) {
+      zoomTween.elapsed += dt;
+      const progress = Math.min(zoomTween.elapsed / zoomTween.trig.duration, 1);
+      const sample = Easing.sample(zoomTween.trig.easingType, zoomTween.trig.easingRate, progress);
+      this.cameraZoom = zoomTween.from + (zoomTween.to - zoomTween.from) * sample;
+      if (progress >= 1) this._cameraZoomTween = null;
+    }
+  };
+
+  const wrapAngle = (angle) => {
+    if (angle >= -180 && angle <= 180) return angle;
+    const turns = Math.trunc(Math.trunc(Math.abs(angle) / 180) * 0.5);
+    return angle + (angle < -180 ? 360 : -360) * turns;
+  };
+
+  proto._startCameraRotate = function (trig) {
+    let target = trig.add ? this._cameraAngleTarget + trig.degrees : trig.degrees;
+    if (trig.snap360) {
+      this.cameraAngle = wrapAngle(this.cameraAngle);
+      target = wrapAngle(target);
+    }
+    this._cameraAngleTarget = target;
+    if (trig.duration <= 0) {
+      this.cameraAngle = trig.degrees;
+      this._cameraAngleTween = null;
+      return;
+    }
+    this._cameraAngleTween = { from: this.cameraAngle, to: target, elapsed: 0, trig };
+  };
+
+  proto.getViewPad = function () {
+    const zoom = this.cameraZoom || 1;
+    const radians = (this.cameraAngle || 0) * Math.PI / 180;
+    const visibleWidth = (screenWidth * Math.abs(Math.cos(radians)) + screenHeight * Math.abs(Math.sin(radians))) / zoom;
+    return visibleWidth > screenWidth ? (visibleWidth - screenWidth) / 2 : 0;
+  };
+
   proto._stepScaleTweens = function (dt) {
     const tweens = this._activeScaleTweens;
     if (!tweens.length) return;
@@ -562,17 +843,51 @@
     const triggers = this._genericTriggers;
     const dt = rawDt * (this.timeWarp || 1);
     this._levelTime += dt;
+    this.updateParticleObjects?.();
     if (triggers.length) {
       if (this._genericSortedLength !== triggers.length) {
         triggers.sort((a, b) => a.x - b.x);
         this._touchGenericTriggers = triggers.filter(trig => trig.touchTriggered);
         this._genericSortedLength = triggers.length;
       }
-      while (this._genericTriggerIdx < triggers.length) {
-        const trig = triggers[this._genericTriggerIdx];
-        if (trig.x > playerX) break;
-        if (!trig.spawnTriggered && !trig.touchTriggered) this._fireGenericTrigger(trig, colorManager);
-        this._genericTriggerIdx++;
+      if (this._directionDirty) {
+        this._directionDirty = false;
+        let lo = 0;
+        let hi = triggers.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (triggers[mid].x < playerX) lo = mid + 1;
+          else hi = mid;
+        }
+        this._reverseIdx = lo - 1;
+        let forward = 0;
+        hi = triggers.length;
+        while (forward < hi) {
+          const mid = (forward + hi) >> 1;
+          if (triggers[mid].x <= playerX) forward = mid + 1;
+          else hi = mid;
+        }
+        this._genericTriggerIdx = forward;
+      }
+      if ((this.direction || 1) < 0) {
+        while (this._reverseIdx >= 0) {
+          const trig = triggers[this._reverseIdx];
+          if (trig.x <= playerX) break;
+          if ((this.direction || 1) > 0) break;
+          this._reverseIdx--;
+          if (trig.spawnTriggered || trig.touchTriggered) continue;
+          if (!trig.multiTrigger && this._genericFired.has(trig.uid)) continue;
+          this._genericFired.add(trig.uid);
+          this._fireGenericTrigger(trig, colorManager);
+        }
+      } else {
+        while (this._genericTriggerIdx < triggers.length) {
+          if ((this.direction || 1) < 0) break;
+          const trig = triggers[this._genericTriggerIdx];
+          if (trig.x > playerX) break;
+          if (!trig.spawnTriggered && !trig.touchTriggered) this._fireGenericTrigger(trig, colorManager);
+          this._genericTriggerIdx++;
+        }
       }
       if (this._touchGenericTriggers.length && playerY !== null) {
         this._checkGenericTouch(Number(playerY) || 0, 0, playerX, colorManager);
@@ -582,6 +897,8 @@
     if (playerY !== null) this._releaseMultiTouchTriggers(playerX, Number(playerY) || 0, player2Y);
     this._stepTimers(dt, rawDt);
     this._stepScaleTweens(dt);
+    this._stepCameraOffsetTweens(dt);
+    this.stepShaders(dt);
   };
 
   proto._activateSpawnedGenericTriggers = function (targetGroup, colorManager) {

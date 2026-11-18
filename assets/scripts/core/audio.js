@@ -541,6 +541,136 @@ class AudioManager {
       });
     }
   }
+  _resolveTriggerSound(kind, id) {
+    if (!id) return null;
+    const cache = this._scene?.cache?.audio;
+    if (!cache) return null;
+    const numeric = String(id);
+    const candidates = kind === "song"
+      ? ["ng_song_" + numeric, "song_" + numeric, "music_" + numeric]
+      : ["sfx_" + numeric, "sound_" + numeric, "playSound_" + numeric];
+    for (const key of candidates) {
+      if (cache.exists(key)) return key;
+    }
+    return cache.exists(numeric) ? numeric : null;
+  }
+  _triggerVolume(scale) {
+    const value = Number(scale);
+    return Math.max(0, Math.min(2, Number.isFinite(value) ? value : 1));
+  }
+  playSongTrigger(trig) {
+    const key = this._resolveTriggerSound("song", trig?.soundId);
+    if (!key) return;
+    this.stopSongTrigger();
+    if (this._music) {
+      this._music.stop();
+      this._musicPlaying = false;
+    }
+    const sound = this._scene.sound.add(key, {
+      loop: !!trig.loop,
+      volume: 0
+    });
+    sound.play();
+    if (trig.start > 0) sound.seek = trig.start;
+    sound.setRate(Math.max(0.1, trig.speed || 1));
+    const target = this._triggerVolume(trig.volume) * this._effectiveVolume();
+    if (trig.fadeIn > 0) {
+      this._scene.tweens.add({ targets: sound, volume: target, duration: trig.fadeIn * 1000 });
+    } else {
+      sound.setVolume(target);
+    }
+    this._triggerSong = sound;
+    this._triggerSongEnd = trig.end > 0 ? trig.end : 0;
+  }
+  stopSongTrigger() {
+    this._triggerSongEnd = 0;
+    if (!this._triggerSong) return;
+    const sound = this._triggerSong;
+    this._triggerSong = null;
+    try { sound.stop(); } catch (err) {}
+    try { sound.destroy(); } catch (err) {}
+  }
+  _stepTriggerSong() {
+    if (!this._triggerSong || !this._triggerSongEnd) return;
+    if ((this._triggerSong.seek || 0) >= this._triggerSongEnd) this.stopSongTrigger();
+  }
+  editSongTrigger(trig) {
+    const sound = this._triggerSong;
+    if (!sound || !trig) return;
+    const target = this._triggerVolume(trig.volume) * this._effectiveVolume();
+    sound.setRate(Math.max(0.1, trig.speed || 1));
+    if (trig.fadeIn > 0) {
+      this._scene.tweens.add({ targets: sound, volume: target, duration: trig.fadeIn * 1000 });
+    } else {
+      sound.setVolume(target);
+    }
+    if (trig.start > 0) sound.seek = trig.start;
+    this._triggerSongEnd = trig.end > 0 ? trig.end : 0;
+    if (trig.fadeOut > 0) {
+      const song = sound;
+      this._scene.tweens.add({
+        targets: song,
+        volume: 0,
+        duration: trig.fadeOut * 1000,
+        onComplete: () => {
+          if (this._triggerSong === song) this.stopSongTrigger();
+        }
+      });
+    }
+  }
+  playSfxTrigger(trig) {
+    const key = this._resolveTriggerSound("sfx", trig?.soundId);
+    if (!key) return;
+    const sound = this._scene.sound.add(key);
+    const sfxVolume = Number(this._scene?._sfxVolume ?? localStorage.getItem("userSfxVol") ?? 1);
+    sound.play({
+      volume: this._triggerVolume(trig.volume) * (Number.isFinite(sfxVolume) ? sfxVolume : 1),
+      rate: Math.max(0.1, trig.speed || 1),
+      detune: (trig.pitch || 0) * 100,
+      loop: !!trig.loop,
+      seek: trig.start || 0
+    });
+    const channels = this._triggerSfx || (this._triggerSfx = new Map());
+    const id = String(trig.soundId ?? 0);
+    const entry = channels.get(id) || [];
+    entry.push(sound);
+    channels.set(id, entry);
+    sound.once("complete", () => {
+      const index = entry.indexOf(sound);
+      if (index >= 0) entry.splice(index, 1);
+      try { sound.destroy(); } catch (err) {}
+    });
+  }
+  editSfxTrigger(trig) {
+    const entry = this._triggerSfx?.get(String(trig?.soundId ?? 0));
+    if (!entry || !entry.length) return;
+    const sfxVolume = Number(this._scene?._sfxVolume ?? localStorage.getItem("userSfxVol") ?? 1);
+    const target = this._triggerVolume(trig.volume) * (Number.isFinite(sfxVolume) ? sfxVolume : 1);
+    for (const sound of entry.slice()) {
+      sound.setRate(Math.max(0.1, trig.speed || 1));
+      if (trig.fadeOut > 0) {
+        this._scene.tweens.add({
+          targets: sound,
+          volume: 0,
+          duration: trig.fadeOut * 1000,
+          onComplete: () => { try { sound.stop(); } catch (err) {} }
+        });
+      } else {
+        sound.setVolume(target);
+      }
+    }
+  }
+  stopTriggerChannels() {
+    this.stopSongTrigger();
+    if (!this._triggerSfx) return;
+    for (const entry of this._triggerSfx.values()) {
+      for (const sound of entry) {
+        try { sound.stop(); } catch (err) {}
+        try { sound.destroy(); } catch (err) {}
+      }
+      entry.length = 0;
+    }
+  }
   _setupAnalyser() {
     const audioContext = this._scene.sound.context;
     if (audioContext) {
@@ -552,6 +682,7 @@ class AudioManager {
     }
   }
   _ensureCorrectMusicMode() {
+    if (this._triggerSong) return;
     if (this._scene?._practiceMusicSyncChangePendingUntilRestart) return;
     if (this._pendingMusicLoadKey || this._pendingOnlineSongLoadKey) return;
     if (!this._music) return;
@@ -565,6 +696,7 @@ class AudioManager {
     }
   }
   update(timeSeconds) {
+    this._stepTriggerSong();
     if (!this._meteringEnabled || !this._analyser) {
       return;
     }
@@ -599,6 +731,7 @@ class AudioManager {
     return this._meterValue;
   }
   reset() {
+    this.stopTriggerChannels();
     this._meterValue = 0.1;
     this._lastAudio = 0.1;
     this._lastPeak = 0;

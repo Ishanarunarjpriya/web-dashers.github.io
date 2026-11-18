@@ -32030,17 +32030,19 @@ window.allobjects = function() {
     "editorFrame": "edit_eOnDeathBtn_001.png"
   },
   "1813": {
-    "can_color": true,
-    "default_base_color_channel": 1004,
-    "frame": "blockOutline_01_001.png",
+    "can_color": false,
+    "default_base_color_channel": 0,
+    "frame": "edit_eStopJumpBtn_001.png",
+    "glow_frame": "none",
     "gridH": 1,
     "gridW": 1,
-    "spritesheet": "GJ_GameSheet-uhd",
-    "type": "deco",
+    "spritesheet": "GJ_GameSheet02-uhd",
+    "type": "trigger",
     "z": 2,
     "default_detail_color_channel": -1,
     "default_z_layer": 5,
-    "default_z_order": 2
+    "default_z_order": 2,
+    "editorFrame": "edit_eStopJumpBtn_001.png"
   },
   "1814": {
     "can_color": false,
@@ -34436,7 +34438,7 @@ window.allobjects = function() {
     "gridW": 1.1166666746139526,
     "spritesheet": "GJ_GameSheet02-uhd",
     "type": "portal",
-    "sub": "fly",
+    "sub": "swing",
     "z": 10,
     "default_detail_color_channel": -1,
     "default_z_layer": 5,

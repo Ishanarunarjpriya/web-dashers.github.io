@@ -630,6 +630,34 @@ class LevelEditor {
   }
 
 
+  _swapSidewaysFrame() {
+    const x = this._playerWorldX;
+    this._playerWorldX = this._state.y;
+    this._state.y = x;
+    this._inSidewaysStep = !this._inSidewaysStep;
+  }
+
+  _rotateGameplay(trig) {
+    const level = this._level;
+    const state = this._state;
+    if (!level || !state || state.isDead || this._isDual) return;
+    const sideways = trig.ground === 3 || trig.ground === 4;
+    const flipped = trig.ground === 1 || trig.ground === 4;
+    const reversed = trig.move === 2 || trig.move === 3;
+    let velocity = playerSpeed;
+    if (trig.editVelocity) velocity = trig.overrideVelocity ? trig.velocityModY * 2 : velocity * trig.velocityModY;
+    level.gameplaySideways = sideways;
+    if ((level.direction < 0) !== reversed) {
+      level.direction = reversed ? -1 : 1;
+      level._directionDirty = true;
+    }
+    if (!!state.gravityFlipped !== flipped) this._player.flipGravity(flipped, 1);
+    state.yVelocity = velocity;
+    state.onGround = false;
+    state.onCeiling = false;
+    state.canJump = false;
+  }
+
   _resetEditorPlaytestLevelState() {
     this._level.resetObjects();
     this._level.resetGroundState();
@@ -653,6 +681,8 @@ class LevelEditor {
     this._level.resetCountTriggers?.();
     this._level.resetInstantCountTriggers?.();
     this._level.resetGenericTriggers();
+    this._level._sidewaysWorldX = 0;
+    this._inSidewaysStep = false;
     this._level.checkToggleTriggers?.(0);
     this._level.checkPickupTriggers?.(0, this._colorManager);
     this._level.checkCountTriggers?.(0, this._colorManager);
@@ -1002,6 +1032,8 @@ class LevelEditor {
         this._player.enterRobotMode();
     } else if (gamemode == 6) {
         this._player.enterSpiderMode();
+    } else if (gamemode == 7) {
+        this._player.enterSwingMode();
     }
 
     this._state.isMini = parseInt(pos.miniMode ?? 0, 10) === 1;
@@ -1055,6 +1087,8 @@ class LevelEditor {
       this._player.enterRobotMode();
     } else if (gamemode == 6) {
       this._player.enterSpiderMode();
+    } else if (gamemode == 7) {
+      this._player.enterSwingMode();
     }
 
     const getBool = (key) => parseInt(window.settingsMap?.[key] || "0", 10) === 1;
@@ -1320,13 +1354,18 @@ class LevelEditor {
 
     const subStepDelta = subSteps > 0 ? quantizedDelta / subSteps : 0;
     const verticalDelta = subStepDelta * d;
-    const horizontalDelta = subStepDelta * playerSpeed * d;
+    const horizontalDelta = subStepDelta * playerSpeed * d * (this._level?.direction < 0 ? -1 : 1);
     const previousNoClip = window.noClip;
 
     window.noClip = false;
 
     try {
         for (let i = 0; i < subSteps; i++) {
+            const sidewaysStep = !!this._level?.gameplaySideways && !this._isDual;
+            if (sidewaysStep) {
+                this._level._sidewaysWorldX = this._playerWorldX;
+                this._swapSidewaysFrame();
+            }
             this._state.lastY = this._state.y;
             this._physicsFrame++;
             this._physicsTick = (this._physicsTick || 0) + 1;
@@ -1354,6 +1393,7 @@ class LevelEditor {
             }
 
             this._playerWorldX += horizontalDelta;
+            if (sidewaysStep) this._swapSidewaysFrame();
 
             if (this._isDual && !this._state2.isDead) {
                 this._copyDualInputFlags?.(dualInputState, this._state2);
@@ -1442,8 +1482,11 @@ class LevelEditor {
     this._state.ignorePortals = false;
     this._state2.ignorePortals = false;
 
-    this._cameraX = this._playerWorldX - centerX;
+    this._cameraX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0);
+    this._cameraY += this._level._appliedCameraOffsetY || 0;
     this._updateEditorPlaytestCameraY(quantizedDelta);
+    this._level._appliedCameraOffsetY = this._level.cameraOffsetY || 0;
+    this._cameraY -= this._level._appliedCameraOffsetY;
     this._cameraXRef._v = this._cameraX;
 
     this._level.additiveContainer.x = -this._cameraX;
@@ -1587,10 +1630,10 @@ class LevelEditor {
     this._level.updateObjectDebugIds();
     this._refreshEditorPlaytestGlowVisibility();
 
-    if (this._state.isFlying) {
+    if (this._state.isFlying || this._state.isSwing) {
         this._player.updateShipRotation(quantizedDelta);
     }
-    if (this._isDual && this._state2.isFlying && !this._state2.isDead) {
+    if (this._isDual && (this._state2.isFlying || this._state2.isSwing) && !this._state2.isDead) {
         this._player2.updateShipRotation(quantizedDelta);
     }
 
