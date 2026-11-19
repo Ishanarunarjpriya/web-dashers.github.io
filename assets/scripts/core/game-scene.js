@@ -7999,6 +7999,7 @@ _showwippopup() {
       this._level.updateVisibility(this._cameraX);
       this._level.updateObjectDebugIds();
       this._level.applyEnterEffects(this._cameraX);
+      this._level.applyCustomEnterEffects?.(this._cameraX);
       const _0xde8a1a = this._playerWorldX - this._cameraX;
       this._player.syncSprites(this._cameraX, this._cameraY, 0, this._getMirrorXOffset(_0xde8a1a));
       if (this._level.shakeOffsetX || this._level.shakeOffsetY) {
@@ -8080,6 +8081,31 @@ _showwippopup() {
       tileY = ((tileY % this._bgMirrorTileHeight) + this._bgMirrorTileHeight) % this._bgMirrorTileHeight;
     }
     this._bg.tilePositionY = tileY;
+  }
+  _applyCameraEdges() {
+    const edges = this._level.cameraEdges;
+    if (!edges) return;
+    const level = this._level;
+    const edgePos = gid => {
+      if (!(gid > 0)) return null;
+      const guide = level._cameraGuides?.get(gid);
+      if (guide) return guide;
+      const c = level._getGroupCenter(gid);
+      if (!c.cx && !c.cy) return null;
+      return { x: c.cx, y: T - c.cy };
+    };
+    const zoom = level.cameraZoom || 1;
+    const halfW = screenWidth / 2 / zoom;
+    const halfH = screenHeight / 2 / zoom;
+    const offset = typeof o !== "undefined" ? o : 0;
+    const left = edgePos(edges[1]);
+    const right = edgePos(edges[2]);
+    const top = edgePos(edges[3]);
+    const bottom = edgePos(edges[4]);
+    if (right) this._cameraX = Math.min(this._cameraX, right.x - screenWidth / 2 - halfW);
+    if (left) this._cameraX = Math.max(this._cameraX, left.x - screenWidth / 2 + halfW);
+    if (top) this._cameraY = Math.min(this._cameraY, top.y + offset - 320 - halfH);
+    if (bottom) this._cameraY = Math.max(this._cameraY, bottom.y + offset - 320 + halfH);
   }
   _applyStaticCamera(delta) {
     const cam = this._level.staticCamera;
@@ -8362,6 +8388,7 @@ _showwippopup() {
     level.setGroundColor(this._colorManager.getHex(gs));
     level.setGround2Color?.(this._colorManager.getHex(1009));
     level.applyEnterEffects(this._cameraX);
+    level.applyCustomEnterEffects?.(this._cameraX);
     this._stepBeastAnimations(deltaTime);
   }
   _applyArtChange(type, id) {
@@ -8378,6 +8405,11 @@ _showwippopup() {
       this._applyMirroredBackgroundTexture(bgKey);
       this._releaseUnusedBackgrounds(bgKey);
     });
+  }
+  _applyArtSpeedChange(type, modX, modY) {
+    if (type !== "background") return;
+    this._bgSpeedX = Number.isFinite(modX) ? modX : 0.1;
+    this._bgSpeedY = Number.isFinite(modY) ? modY : 0.1;
   }
   _applyTriggerGravity(p1Scale, p2Scale) {
     if (this._state) this._state.gravityScale = p1Scale;
@@ -8396,6 +8428,8 @@ _showwippopup() {
     const sideways = trig.ground === 3 || trig.ground === 4;
     const flipped = trig.ground === 1 || trig.ground === 4;
     const reversed = trig.move === 2 || trig.move === 3;
+    const sidewaysChanged = !!level.gameplaySideways !== sideways;
+    if (!sidewaysChanged && (level.direction < 0) === reversed && !!state.gravityFlipped === flipped) return;
     let velocity = playerSpeed;
     if (trig.editVelocity) velocity = trig.overrideVelocity ? trig.velocityModY * 2 : velocity * trig.velocityModY;
     level.gameplaySideways = sideways;
@@ -8404,6 +8438,7 @@ _showwippopup() {
       level._directionDirty = true;
     }
     if (!!state.gravityFlipped !== flipped) this._player.flipGravity(flipped, 1);
+    if (!sidewaysChanged) return;
     state.yVelocity = velocity;
     state.onGround = false;
     state.onCeiling = false;
@@ -9241,6 +9276,7 @@ _showwippopup() {
       this._level._appliedCameraOffsetY = this._level.cameraOffsetY || 0;
       this._cameraY += this._level._appliedCameraOffsetY;
       this._applyStaticCamera(quantizedDelta);
+      this._applyCameraEdges();
     }
     this._cameraXRef._v = this._cameraX;
     this._level.applyShakeToOffsets?.(this.time.now);
@@ -9422,6 +9458,7 @@ _showwippopup() {
     this._level.updateObjectDebugIds();
     this._level.checkEnterEffectTriggers(playerX);
     this._level.applyEnterEffects(this._cameraX);
+    this._level.applyCustomEnterEffects?.(this._cameraX);
     this._stepBeastAnimations(deltaTime);
     this._glitterCenterX = this._cameraX + screenWidth / 2;
     this._glitterCenterY = T - this._cameraY;

@@ -22,11 +22,21 @@
     2904: "shader",
     2910: "shader",
     2911: "shader",
+    2912: "shader",
+    2905: "shader",
+    2907: "shader",
+    2909: "shader",
+    2913: "shader",
+    2914: "shader",
+    2915: "shader",
+    2916: "shader",
+    2917: "shader",
     2919: "shader",
     2920: "shader",
     2921: "shader",
     2922: "shader",
     2923: "shader",
+    2924: "shader",
     1917: "reverse",
     2066: "gravity",
     1932: "playerControl",
@@ -36,7 +46,18 @@
     3605: "editSong",
     3603: "editSfx",
     2900: "rotateGameplay",
-    1914: "staticCamera"
+    1914: "staticCamera",
+    2062: "cameraEdge",
+    2925: "cameraMode",
+    3006: "area", 3007: "area", 3008: "area", 3009: "area", 3010: "area",
+    3011: "area", 3012: "area", 3013: "area", 3014: "area", 3015: "area",
+    3024: "area",
+    3017: "area", 3018: "area", 3019: "area", 3020: "area", 3021: "area", 3023: "area",
+    3606: "bgSpeed",
+    3612: "mgSpeed",
+    3662: "linkVisible",
+    3016: "advFollow",
+    3033: "keyframeAnim"
   };
   const HIDDEN_TRIGGER_IDS = [
     1913, 1914, 1916, 1917, 1931, 1932, 1934, 2015, 2016, 2062, 2066, 2899, 2900, 2901, 2903, 2904, 2905, 2907, 2909, 2910,
@@ -59,6 +80,13 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   };
   const rawBool = (raw, key) => String(rawValue(raw, key) ?? "0") === "1";
+  const ART_SPEED_X_KEY = 143;
+  const ART_SPEED_Y_KEY = 144;
+  const rawArtSpeed = (raw, key, fallback) => {
+    const value = rawFloat(raw, key, fallback);
+    if (!Number.isFinite(value) || Math.abs(value) > 999) return fallback;
+    return value;
+  };
   const rawPairs = (raw, key) => {
     const parts = String(rawValue(raw, key) ?? "").split(".").map(part => parseInt(part, 10));
     const pairs = [];
@@ -86,6 +114,10 @@
       const groups = String(levelObj._raw?.[57] ?? "").split(".").map(g => parseInt(g, 10)).filter(g => g > 0);
       this._cameraGuides ||= new Map();
       for (const g of groups) if (!this._cameraGuides.has(g)) this._cameraGuides.set(g, { x: levelObj.x * 2, y: levelObj.y * 2 });
+      return;
+    }
+    if (String(levelObj.id) === "3032") {
+      this._parseKeyframeObject?.(levelObj);
       return;
     }
     const kind = GENERIC_TRIGGER_KINDS[levelObj.id];
@@ -191,6 +223,18 @@
       trig.easingType = rawInt(raw, 30);
       const rotateRate = rawFloat(raw, 85);
       trig.easingRate = rotateRate > 0 ? rotateRate : 2;
+    } else if (kind === "area") {
+      this._parseAreaTrigger?.(trig, raw, parseInt(levelObj.id, 10));
+    } else if (kind === "advFollow" || kind === "keyframeAnim") {
+      this._parseAdvancedTrigger?.(trig, raw, parseInt(levelObj.id, 10));
+    } else if (kind === "cameraEdge") {
+      trig.edge = rawInt(raw, 164);
+      trig.edgeTarget = rawInt(raw, 51);
+    } else if (kind === "cameraMode") {
+      trig.freeMode = rawBool(raw, 111);
+      trig.editSettings = rawBool(raw, 112);
+      trig.easing = Math.max(1, Math.min(40, rawFloat(raw, 113)));
+      trig.padding = Math.max(0, Math.min(1, rawFloat(raw, 114)));
     } else if (kind === "staticCamera") {
       trig.targetGroup = rawInt(raw, 71);
       trig.duration = Math.max(0, rawFloat(raw, 10));
@@ -252,24 +296,39 @@
       trig.fadeIn = Math.max(0, rawInt(raw, 409) / 1000);
       trig.end = Math.max(0, rawInt(raw, 410) / 1000);
       trig.fadeOut = Math.max(0, rawInt(raw, 411) / 1000);
+    } else if (kind === "bgSpeed") {
+      trig.modX = rawArtSpeed(raw, ART_SPEED_X_KEY, 0.1);
+      trig.modY = rawArtSpeed(raw, ART_SPEED_Y_KEY, 0.1);
+    } else if (kind === "mgSpeed") {
+      trig.modX = rawArtSpeed(raw, ART_SPEED_X_KEY, 0.3);
+      trig.modY = rawArtSpeed(raw, ART_SPEED_Y_KEY, 0.5);
+    } else if (kind === "linkVisible") {
+      trig.passive = true;
+      trig.targetGroup = rawInt(raw, 51);
+      if (trig.targetGroup > 0) this._linkVisibleGroups.add(trig.targetGroup);
     }
     this._genericTriggers.push(trig);
   };
 
   proto._initGenericTriggers = function () {
     this._genericTriggers = [];
+    this._keyframes = [];
     this._cameraGuides = new Map();
     this._groupScales = {};
     this._scaledSprites = new Set();
     this._scaledColliders = new Set();
     this._persistentItems = new Set();
     this._persistentTimers = new Set();
+    this._linkVisibleGroups = new Set();
     this.resetGenericTriggers(true);
   };
 
   proto.resetGenericTriggers = function (clearPersistent = false) {
     this.resetParticleObjects?.();
+    this.resetAreaEffects?.();
+    this.resetAdvancedTriggers?.();
     this.staticCamera = null;
+    this.cameraEdges = null;
     this._genericTriggerIdx = 0;
     this._genericFired = new Set();
     this._genericTouching = new Map();
@@ -299,6 +358,11 @@
     this._sidewaysProxies = new Map();
     this.p1GravityScale = 1;
     this.p2GravityScale = 1;
+    this.bgSpeedModX = 0.1;
+    this.bgSpeedModY = 0.1;
+    this.mgSpeedModX = 0.3;
+    this.mgSpeedModY = 0.5;
+    this._scene?._applyArtSpeedChange?.("background", 0.1, 0.1);
     this._preppedSong = null;
     this._directionDirty = false;
     this._reverseIdx = -1;
@@ -424,6 +488,7 @@
   proto._fireGenericTrigger = function (trig, colorManager) {
     if (!trig || !this._isTriggerSaveObjectLive(trig.uid) || this._isTriggerToggledOff(trig)) return;
     const kind = trig.kind;
+    if (trig.passive) return;
     if (kind === "random") {
       this._spawnGroupNow(Math.random() * 100 < trig.chance ? trig.targetGroup : trig.centerGroup);
     } else if (kind === "advRandom") {
@@ -510,6 +575,21 @@
     } else if (kind === "end") {
       if (!this.endTriggered) this.endTriggered = trig;
       this._spawnGroupNow(trig.targetGroup);
+    } else if (kind === "area") {
+      this._fireAreaTrigger?.(trig);
+    } else if (kind === "advFollow" || kind === "keyframeAnim") {
+      this._fireAdvancedTrigger?.(trig);
+    } else if (kind === "cameraEdge") {
+      if (trig.edge >= 1 && trig.edge <= 4) (this.cameraEdges ||= {})[trig.edge] = trig.edgeTarget;
+    } else if (kind === "cameraMode") {
+      if (trig.editSettings) {
+        this.freeCamEasing = trig.easing;
+        this.freeCamPadding = trig.padding;
+      }
+      const state = this._scene?._state;
+      const basic = !state || !(state.isFlying || state.isUfo || state.isWave || state.isBall || state.isSwing || state.isSpider);
+      if (trig.freeMode && !basic && !this._scene?._isDual) this.setFlyMode(false, 0);
+      this.freeModeCamera = trig.freeMode;
     } else if (kind === "staticCamera") {
       const cam = this.staticCamera || (this.staticCamera = { x: null, y: null });
       const axes = trig.axis === 1 ? ["x"] : trig.axis === 2 ? ["y"] : ["x", "y"];
@@ -548,6 +628,13 @@
       this._scene?._audio?.editSfxTrigger?.(trig);
     } else if (kind === "reset") {
       this._fireResetTrigger(trig);
+    } else if (kind === "bgSpeed") {
+      this.bgSpeedModX = trig.modX;
+      this.bgSpeedModY = trig.modY;
+      this._scene?._applyArtSpeedChange?.("background", trig.modX, trig.modY);
+    } else if (kind === "mgSpeed") {
+      this.mgSpeedModX = trig.modX;
+      this.mgSpeedModY = trig.modY;
     }
   };
 
@@ -844,6 +931,7 @@
     const dt = rawDt * (this.timeWarp || 1);
     this._levelTime += dt;
     this.updateParticleObjects?.();
+    this.updateAreaEffects?.(dt);
     if (triggers.length) {
       if (this._genericSortedLength !== triggers.length) {
         triggers.sort((a, b) => a.x - b.x);
@@ -898,10 +986,11 @@
     this._stepTimers(dt, rawDt);
     this._stepScaleTweens(dt);
     this._stepCameraOffsetTweens(dt);
+    this.updateAdvancedTriggers?.(dt);
     this.stepShaders(dt);
   };
 
-  proto._activateSpawnedGenericTriggers = function (targetGroup, colorManager) {
+  proto._activateSpawnedGenericTriggers = function (targetGroup, colorManager, remap = null) {
     const triggers = this._genericTriggers;
     for (let i = 0; i < triggers.length; i++) {
       const trig = triggers[i];
@@ -910,7 +999,7 @@
         if (this._genericFired.has(trig.uid)) continue;
         this._genericFired.add(trig.uid);
       }
-      this._fireGenericTrigger(trig, colorManager);
+      this._fireGenericTrigger(remap ? this._remapTrigger(trig, remap) : trig, colorManager);
     }
   };
 })();

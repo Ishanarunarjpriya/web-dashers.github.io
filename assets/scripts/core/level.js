@@ -802,6 +802,11 @@ window.LevelObject = class LevelObject {
     this._colorChannelSprites = {};
     this._ground2Tint = 0xffffff;
     this._groupSprites = {};
+    this._linkVisibleGroups = new Set();
+    this._mgSpeedX = 1;
+    this._mgSpeedY = 1;
+    this._mgCamOffsetX = 0;
+    this._mgPrevGroundCamX = undefined;
     this._resetobject = {};
     this._resetremovedobject = {};
     this._groupOffsets = {};
@@ -1579,10 +1584,27 @@ window.LevelObject = class LevelObject {
     this._ceilingShadowR.x = screenWidth + 1;
     this._appliedGroundViewPad = undefined;
   }
+  setMGSpeed(modX, modY) {
+    const x = Number.isFinite(modX) && modX > 0 ? modX : 1;
+    const y = Number.isFinite(modY) && modY > 0 ? modY : 1;
+    if (this._mgSpeedX === x && this._mgSpeedY === y) return;
+    this._mgSpeedX = x;
+    this._mgSpeedY = y;
+    this._mgCamOffsetX = this._mgCamOffsetX || 0;
+    this._mgPrevGroundCamX = undefined;
+  }
   updateGroundTiles(cameraY = 0) {
     const viewPad = this.getViewPad();
     if ((this._groundTiles.length - 2) * this._tileW < screenWidth + 2 * viewPad) this.resizeScreen();
-    const cameraX = this._cameraXRef.value - viewPad;
+    const baseCameraX = this._cameraXRef.value;
+    const mgSpeedX = this._mgSpeedX || 1;
+    if (this._mgPrevGroundCamX === undefined) this._mgPrevGroundCamX = baseCameraX;
+    const camDeltaX = baseCameraX - this._mgPrevGroundCamX;
+    this._mgPrevGroundCamX = baseCameraX;
+    this._mgCamOffsetX = (this._mgCamOffsetX || 0) + camDeltaX * (mgSpeedX - 1);
+    const cameraX = baseCameraX - viewPad + this._mgCamOffsetX;
+    const mgSpeedY = this._mgSpeedY || 1;
+    if (mgSpeedY !== 1) cameraY = cameraY * mgSpeedY;
     const shakeX = this.shakeOffsetX || 0;
     const shakeY = this.shakeOffsetY || 0;
     const tileWidth = this._tileW;
@@ -1702,6 +1724,10 @@ window.LevelObject = class LevelObject {
     }
     this._maxGroundWorldX = cameraX + (this._groundTiles.length - 1) * tileWidth;
     this._groundShift = ((cameraX % tileWidth) + tileWidth) % tileWidth;
+    this._mgCamOffsetX = 0;
+    this._mgPrevGroundCamX = undefined;
+    this._mgSpeedX = 1;
+    this._mgSpeedY = 1;
     this.resetGroundState();
   }
   resetGroundState() {
@@ -2399,6 +2425,8 @@ window.LevelObject = class LevelObject {
   }
 
   _spawnObject(levelObj) {
+  this._spawnEnterChannel = parseInt(levelObj?._raw?.[343] ?? 0, 10) || 0;
+  this._spawnParentGroups = String(levelObj?._raw?.[274] ?? "").split(".").map(Number).filter(n => n > 0);
   this.objectSprites = this.objectSprites || [];
 
   const scene = this._scene;
@@ -2552,7 +2580,8 @@ window.LevelObject = class LevelObject {
         touchTriggered: String(_raw?.[11] ?? _raw?.["11"] ?? "0") === "1",
         targetGroup: parseInt(_raw[51] ?? 0, 10),
         delay: Math.max(0, parseFloat(_raw[63] ?? 0) || 0),
-        randomDelay: Math.max(0, parseFloat(_raw[556] ?? _raw["556"] ?? 0) || 0)
+        randomDelay: Math.max(0, parseFloat(_raw[556] ?? _raw["556"] ?? 0) || 0),
+        remap: this._parseSpawnRemap(_raw[442] ?? _raw["442"])
       });
     }
 
@@ -2895,6 +2924,7 @@ window.LevelObject = class LevelObject {
           ch = col1;
         }
         spr._eeColorChannel = ch;
+        spr._eeIsDetail = hasDetailChannel && Number(ch) === Number(col2) && Number(col2) !== Number(col1);
         if (sprHsv) spr._eeHsv = sprHsv;
         if (!this._colorChannelSprites[ch]) this._colorChannelSprites[ch] = [];
         this._colorChannelSprites[ch].push(spr);
@@ -4225,6 +4255,8 @@ window.LevelObject = class LevelObject {
     for (const k of keys) this.setChannelBlending(Number(k), !!this._channelBlendingInitial[k]);
   }
   _addToSection(sliderWidth) {
+    sliderWidth._eeEnterChannel = this._spawnEnterChannel || 0;
+    if (this._spawnParentGroups?.length) sliderWidth._eeParentGroups = this._spawnParentGroups;
     const _0x4ac40a = this._getSectionIndexForWorldX(sliderWidth._eeWorldX);
     this._sections[_0x4ac40a] ||= [];
     this._sections[_0x4ac40a].push(sliderWidth);
@@ -4366,6 +4398,52 @@ window.LevelObject = class LevelObject {
       _0x141e9c.normal.visible = _0x488507;
     }
   }
+  _isLinkVisibleGroup(groupId) {
+    return !!(groupId && this._linkVisibleGroups && this._linkVisibleGroups.has(Number(groupId)));
+  }
+  _isLinkVisibleSprite(sprite) {
+    const groups = sprite?._eeGroups;
+    if (!groups || !groups.length) return false;
+    for (const gid of groups) if (this._isLinkVisibleGroup(gid)) return true;
+    return false;
+  }
+  _isLinkVisibleGroupNear(groupId, minX, maxX) {
+    const sprites = this._groupSprites?.[Number(groupId)];
+    if (!sprites || !sprites.length) return false;
+    for (const spr of sprites) {
+      if (!spr) continue;
+      const wx = Number(spr._eeWorldX ?? spr._origWorldX ?? spr.x);
+      if (!Number.isFinite(wx)) continue;
+      if (wx >= minX && wx <= maxX) return true;
+    }
+    return false;
+  }
+  _expandLinkVisibleSections(minSec, maxSec, lastSec) {
+    let lo = minSec;
+    let hi = maxSec;
+    for (const gid of this._linkVisibleGroups) {
+      const sprites = this._groupSprites?.[gid];
+      if (!sprites || !sprites.length) continue;
+      let groupLo = Infinity;
+      let groupHi = -Infinity;
+      let visibleMember = false;
+      for (const spr of sprites) {
+        if (!spr) continue;
+        const wx = Number(spr._eeWorldX ?? spr._origWorldX ?? spr.x);
+        if (!Number.isFinite(wx)) continue;
+        const sec = Math.floor(wx / 400);
+        if (sec < groupLo) groupLo = sec;
+        if (sec > groupHi) groupHi = sec;
+        if (sec >= minSec && sec <= maxSec) visibleMember = true;
+      }
+      if (!visibleMember || groupHi < groupLo) continue;
+      if (groupLo < lo) lo = groupLo;
+      if (groupHi > hi) hi = groupHi;
+    }
+    if (lo < 0) lo = 0;
+    if (hi > lastSec) hi = lastSec;
+    return [lo, hi];
+  }
   _cullEmitters(cameraX) {
     const emitters = this._cullableEmitters;
     if (!emitters || !emitters.length) return;
@@ -4377,7 +4455,17 @@ window.LevelObject = class LevelObject {
       if (!em || !em.scene) continue;
       const x = em._eeWorldX ?? em.x;
       const toggledOff = em._eeToggledOffGroups && em._eeToggledOffGroups.size > 0;
-      const wantActive = !toggledOff && x >= minX && x <= maxX;
+      let wantActive = !toggledOff && x >= minX && x <= maxX;
+      if (!wantActive && !toggledOff && this._isLinkVisibleSprite(em)) {
+        const groups = em._eeGroups || [];
+        for (const gid of groups) {
+          if (!this._isLinkVisibleGroup(gid)) continue;
+          if (this._isLinkVisibleGroupNear(gid, minX - 400, maxX + 400)) {
+            wantActive = true;
+            break;
+          }
+        }
+      }
       if (em.active !== wantActive) em.active = wantActive;
     }
   }
@@ -4433,6 +4521,11 @@ window.LevelObject = class LevelObject {
       const margin = cd === 2 ? 100 : 0;
       particleScale = Math.max(0, Math.floor((_0xa5f1e1 - margin) / 400));
       sliderHeight = Math.min(_0x1dce22, Math.floor((_0xa5f1e1 + viewWidth + margin) / 400));
+    }
+    if (this._linkVisibleGroups && this._linkVisibleGroups.size) {
+      const range = this._expandLinkVisibleSections(particleScale, sliderHeight, _0x1dce22);
+      particleScale = range[0];
+      sliderHeight = range[1];
     }
     const _0x1800fc = this._visMinSec;
     const _0xc31046 = this._visMaxSec;
@@ -5057,14 +5150,39 @@ window.LevelObject = class LevelObject {
     const randomizedDelay = randomDelay > 0
       ? Math.max(0, baseDelay + ((Math.random() * 2) - 1) * randomDelay)
       : baseDelay;
+    const remap = trig.remap || null;
     for (const pending of this._activeSpawnDelays) {
-      if (pending.targetGroup === targetGroup && Math.abs((pending.delay - pending.elapsed) - randomizedDelay) < 1e-6) return;
+      if (pending.targetGroup === targetGroup && pending.remap === remap && Math.abs((pending.delay - pending.elapsed) - randomizedDelay) < 1e-6) return;
     }
     this._activeSpawnDelays.push({
       targetGroup,
       delay: randomizedDelay,
-      elapsed: 0
+      elapsed: 0,
+      remap
     });
+  }
+
+  _parseSpawnRemap(value) {
+    if (value === undefined || value === null || value === "") return null;
+    const parts = String(value).split(".").map(v => parseInt(v, 10));
+    const map = new Map();
+    for (let i = 0; i + 1 < parts.length; i += 2) {
+      if (Number.isFinite(parts[i]) && Number.isFinite(parts[i + 1])) map.set(parts[i], parts[i + 1]);
+    }
+    return map.size ? map : null;
+  }
+
+  _remapTrigger(trig, remap) {
+    if (!remap) return trig;
+    let copy = null;
+    for (const key in trig) {
+      if (!/group(id)?$/i.test(key)) continue;
+      const value = trig[key];
+      if (typeof value !== "number" || !remap.has(value)) continue;
+      copy ||= { ...trig, _remapSource: trig };
+      copy[key] = remap.get(value);
+    }
+    return copy || trig;
   }
 
   checkSpawnTriggers(playerX) {
@@ -5076,7 +5194,7 @@ window.LevelObject = class LevelObject {
     }
   }
 
-  _activateSpawnedGroup(groupId, colorManager) {
+  _activateSpawnedGroup(groupId, colorManager, remap = null) {
     const targetGroup = parseInt(groupId ?? 0, 10);
     if (!Number.isFinite(targetGroup) || targetGroup <= 0) return;
 
@@ -5090,7 +5208,8 @@ window.LevelObject = class LevelObject {
         fired.add(trig.uid);
         firedNow.add(trig.uid);
         return true;
-      });
+      })
+      .map(trig => this._remapTrigger(trig, remap));
 
     for (const trig of spawnMatches(this._colorTriggers)) {
       if (colorManager && typeof colorManager.triggerColor === "function") {
@@ -5113,14 +5232,22 @@ window.LevelObject = class LevelObject {
     for (const trig of spawnMatches(this._shakeTriggers)) this._executeShakeTrigger(trig);
     for (const trig of spawnMatches(this._playerVisTriggers)) this.playerHidden = trig.hide;
     for (const trig of spawnMatches(this._pulseTriggers)) this._startPulseTrigger(trig);
-    for (const trig of spawnMatches(this._spawnTriggers)) this._queueSpawnTrigger(trig);
+    for (const trig of spawnMatches(this._spawnTriggers)) {
+      if (!remap) {
+        this._queueSpawnTrigger(trig);
+        continue;
+      }
+      const merged = new Map(remap);
+      if (trig.remap) for (const [from, to] of trig.remap) merged.set(from, to);
+      this._queueSpawnTrigger({ ...trig, remap: merged });
+    }
     for (const trig of spawnMatches(this._onDeathTriggers)) this._armOnDeathTrigger(trig);
     for (const trig of spawnMatches(this._touchTriggers)) this._armTouchTrigger(trig);
     for (const trig of spawnMatches(this._pickupTriggers)) this._executePickupTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._countTriggers)) this._armCountTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._instantCountTriggers)) this._executeInstantCountTrigger(trig, colorManager);
     for (const trig of spawnMatches(this._collisionTriggers)) this._armCollisionTrigger(trig);
-    this._activateSpawnedGenericTriggers(targetGroup, colorManager);
+    this._activateSpawnedGenericTriggers(targetGroup, colorManager, remap);
   }
 
   checkTouchSpawnTriggers(playerX, playerY) {
@@ -5150,7 +5277,7 @@ window.LevelObject = class LevelObject {
       item.elapsed += dt;
       if (item.elapsed >= item.delay) {
         this._activeSpawnDelays.splice(i, 1);
-        this._activateSpawnedGroup(item.targetGroup, colorManager);
+        this._activateSpawnedGroup(item.targetGroup, colorManager, item.remap);
       } else {
         i++;
       }
@@ -5335,6 +5462,7 @@ window.LevelObject = class LevelObject {
     this._activeRotateTweens = this._activeRotateTweens.filter(anim => anim?.trig?.targetGroup !== targetGroup);
     this._activeFollowPlayerYTweens = this._activeFollowPlayerYTweens.filter(anim => anim?.trig?.targetGroup !== targetGroup);
     this._activeFollowTweens = this._activeFollowTweens.filter(anim => anim?.trig?.targetGroup !== targetGroup);
+    this.stopAdvancedTriggers?.(targetGroup);
   }
 
   checkStopTriggers(playerX) {
