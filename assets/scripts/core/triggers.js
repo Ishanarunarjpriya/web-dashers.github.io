@@ -359,6 +359,9 @@ class ColorManager {
     if (id === 1005) return channelHexToRgb(window.mainColor);
     if (id === 1006) return channelHexToRgb(window.secondaryColor);
     if (id === 1007) return lightBgColor(this.getColor(fs), depth < 8 ? this.getColor(1005, depth + 1) : channelHexToRgb(window.mainColor));
+    if (id === 1) return channelHexToRgb(window.mainColor ?? 0xffffff);
+    if (id === 2) return channelHexToRgb(window.secondaryColor ?? 0xffffff);
+    if (id === 1009) return { ...this.getColor(gs, depth + 1) };
     return {
       r: 255,
       g: 255,
@@ -374,7 +377,7 @@ class ColorManager {
   }
   getHex(index) {
     let color = this.getColor(index);
-    return (color.r << 16) | (color.g << 8) | color.b;
+    return ((color.r << 16) | (color.g << 8) | color.b) >>> 0;
   }
 }
 

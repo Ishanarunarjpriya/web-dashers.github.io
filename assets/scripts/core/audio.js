@@ -351,6 +351,10 @@ class AudioManager {
     const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     source.loop = true;
+    const currentSpeed = window.speedHack ? Math.sqrt(window.speedHack) : 1;
+    if (source && source.playbackRate) {
+    source.playbackRate.setValueAtTime(currentSpeed, ctx.currentTime);
+    }
     source.connect(gainNode);
     source.start(0, safeOffset);
     this._onlineSource = source;

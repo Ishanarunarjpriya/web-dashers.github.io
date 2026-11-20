@@ -236,7 +236,11 @@ class BootScene extends Phaser.Scene {
       "Nicest game ever!",
       "S-slopes!~",
       "Anything but slopes",
-      "Laggiest game ever."
+      "Laggiest game ever.",
+      "GeometFree Dash!",
+      "I AM a fricking dasher.",
+      "web dash is steal all your level",
+      "Have you ever wanted levels free?"
     ];
     const sliderOriginX = cx - 105;
     const sliderOriginY = cy + 110;
@@ -244,11 +248,12 @@ class BootScene extends Phaser.Scene {
 
     this.load.image("game_bg_01", "assets/game-bg/game_bg_01_001-hd.png");
     this.load.image("sliderBar", "assets/sprites/sliderBar.png");
-    this.load.image("GJ_MenuBeta", "assets/sprites/GJ_MenuBeta.png");
+    this.load.image("sliderBar2", "assets/sprites/sliderBar2.png?v=3");
+    this.load.image("GJ_MenuBeta", "assets/sprites/GJ_MenuBeta.png?v=3");
     this.load.image("Phaserlogo", "assets/sprites/Phaserlogo.png");
     this.load.image("ishyLogo", "assets/sprites/ishy_logo.png");
     this.load.image("gravityLine_001", "assets/sprites/gravityLine_001.png");
-    this.load.atlas("GJ_WebSheet", "assets/sheets/GJ_WebSheet.png", "assets/sheets/GJ_WebSheet.json");
+    this.load.atlas("GJ_WebSheet", "assets/sheets/GJ_WebSheet.png?v=3", "assets/sheets/GJ_WebSheet.json?v=3");
     this.load.atlas("GJ_LaunchSheet", "assets/sheets/GJ_LaunchSheet.png", "assets/sheets/GJ_LaunchSheet.json");
     this.load.image("goldFont", "assets/fonts/goldFont.png");
     this.load.text("goldFontFnt", "assets/fonts/goldFont.fnt");
@@ -299,11 +304,13 @@ class BootScene extends Phaser.Scene {
 
       this.load.atlas("GJ_GameSheet", "assets/sheets/GJ_GameSheet.png", "assets/sheets/GJ_GameSheet.json");
       this.load.atlas("GJ_GameSheet02", "assets/sheets/GJ_GameSheet02.png", "assets/sheets/GJ_GameSheet02.json");
+      this.load.atlas("SecretSheet", "assets/sheets/SecretSheet.png?v=3", "assets/sheets/SecretSheet.json?v=3");
       this.load.atlas("GJ_GameSheet03", "assets/sheets/GJ_GameSheet03.png", "assets/sheets/GJ_GameSheet03.json");
-      this.load.atlas("GJ_GameSheet04", "assets/sheets/GJ_GameSheet04.png", "assets/sheets/GJ_GameSheet04.json");
+      this.load.atlas("GJ_GameSheet04", "assets/sheets/GJ_GameSheet04.png?v=3", "assets/sheets/GJ_GameSheet04.json?v=3");
       this.load.atlas("GJ_GameSheetEditor", "assets/sheets/GJ_GameSheetEditor.png", "assets/sheets/GJ_GameSheetEditor.json");
       this.load.atlas("GJ_GameSheetGlow", "assets/sheets/GJ_GameSheetGlow.png", "assets/sheets/GJ_GameSheetGlow.json");
       this.load.atlas("GJ_GameSheetIcons", "assets/sheets/GJ_GameSheetIcons.png", "assets/sheets/GJ_GameSheetIcons.json");
+      queueIconAtlases(this, window.iconPreloadAll === false ? getEquippedIconBases() : getAllIconBases());
       this.load.atlas("Wavesheet", "assets/sheets/Wavesheet.png", "assets/sheets/Wavesheet.json");
       this.load.json("Spider_AnimDesc", "assets/sheets/Spider_AnimDesc.json");
       this.load.json("Robot_AnimDesc", "assets/sheets/Robot_AnimDesc.json");
@@ -317,12 +324,17 @@ class BootScene extends Phaser.Scene {
       this.load.atlas("player_dart_00", "assets/sheets/player_dart_00.png", "assets/sheets/player_dart_00.json");
       this.load.atlas("PixelSheet_01-hd", "assets/sheets/PixelSheet_01.png?v=2", "assets/sheets/PixelSheet_01.json?v=2");
       this.load.atlas("FireSheet_01-hd", "assets/sheets/FireSheet_01-hd.png", "assets/sheets/FireSheet_01-hd.json");
-      this.load.atlas("GJ_ParticleSheet-uhd", "assets/sheets/GJ_ParticleSheet.png", "assets/sheets/GJ_ParticleSheet.json");
+      this.load.atlas("GJ_ParticleSheet-uhd", "assets/sheets/GJ_ParticleSheet.png?v=3", "assets/sheets/GJ_ParticleSheet.json?v=3");
       this.load.image("bigFont", "assets/fonts/bigFont.png");
       this.load.text("bigFontFnt", "assets/fonts/bigFont.fnt");
       this.load.image("square04_001", "assets/sprites/square04_001.png");
       this.load.image("GJ_square02", "assets/sprites/GJ_square02.png");
       this.load.image("GJ_square01", "assets/sprites/GJ_square01.png");
+      this.load.image("GJ_square05", "assets/sprites/GJ_square05.png?v=3");
+      this.load.image("GJ_square07", "assets/sprites/GJ_square07.png?v=3");
+      this.load.image("GJ_square04", "assets/sprites/GJ_square04.png?v=3");
+      this.load.image("GJ_square06", "assets/sprites/GJ_square06.png?v=3");
+      this.load.image("GJ_square67", "assets/sprites/GJ_square67.png?v=3");
       this.load.image("square01_001", "assets/sprites/square01_001.png");
       this.load.image("loadingCircle", "assets/sprites/loadingCircle.png");
       this.load.image("GJ_button01", "assets/sprites/GJ_button_01.png");
@@ -331,8 +343,7 @@ class BootScene extends Phaser.Scene {
       this.load.image("GJ_button04", "assets/sprites/GJ_button_04.png");
       this.load.image("GJ_button05", "assets/sprites/GJ_button_05.png");
       this.load.image("GJ_button06", "assets/sprites/GJ_button_06.png");
-      this.load.image("import", "assets/sprites/import.png");
-      this.load.image("export", "assets/sprites/export.png");
+      this.load.image("ImportanIcon", "assets/sprites/ImportanIcon.png?v=3");
       this.load.image("tutorial_01", "assets/sprites/tutorial_01.png");
       this.load.image("tutorial_02", "assets/sprites/tutorial_02.png");
       this.load.image("tutorial_03", "assets/sprites/tutorial_03.png");
@@ -367,6 +378,9 @@ class BootScene extends Phaser.Scene {
       }
 
       this.load.audio("menu_music", "assets/music/menuLoop.mp3");
+      this.load.audio("StayInsideMe", "assets/music/StayInsideMe.mp3");
+      this.load.audio("secretLoop", "assets/music/secretLoop.mp3");
+      this.load.audio("secretLoop2", "assets/music/secretLoop02.mp3");
 
       /*for (const lvlarray of window.allLevels) {
         this.load.text(lvlarray[2], "assets/levels/" + lvlarray[2].split("_")[1] + ".txt");

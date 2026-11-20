@@ -57,6 +57,7 @@
     3612: "mgSpeed",
     3662: "linkVisible",
     3016: "advFollow",
+    2903: "gradient",
     3033: "keyframeAnim"
   };
   const HIDDEN_TRIGGER_IDS = [
@@ -227,6 +228,8 @@
       this._parseAreaTrigger?.(trig, raw, parseInt(levelObj.id, 10));
     } else if (kind === "advFollow" || kind === "keyframeAnim") {
       this._parseAdvancedTrigger?.(trig, raw, parseInt(levelObj.id, 10));
+    } else if (kind === "gradient") {
+      this._parseGradientTrigger?.(trig, raw);
     } else if (kind === "cameraEdge") {
       trig.edge = rawInt(raw, 164);
       trig.edgeTarget = rawInt(raw, 51);
@@ -256,6 +259,7 @@
       trig.noSFX = rawBool(raw, 461);
       trig.instant = rawBool(raw, 487);
     } else if (kind === "rotateGameplay") {
+      trig.realTouch = trig.touchTriggered;
       trig.touchTriggered = true;
       trig.ground = rawInt(raw, 166, 2);
       trig.move = rawInt(raw, 167, 4);
@@ -264,6 +268,8 @@
       trig.velocityModX = rawFloat(raw, 582);
       trig.velocityModY = rawFloat(raw, 583);
       trig.channelOnly = rawBool(raw, 172);
+      trig.changeChannel = rawBool(raw, 171);
+      trig.targetChannel = rawInt(raw, 173);
       trig.dontSlide = rawBool(raw, 585);
     } else if (kind === "gravity") {
       const gravityValue = rawFloat(raw, 148, 1);
@@ -327,6 +333,8 @@
     this.resetParticleObjects?.();
     this.resetAreaEffects?.();
     this.resetAdvancedTriggers?.();
+    this.resetTriggerChannels?.();
+    this.resetGradients?.();
     this.staticCamera = null;
     this.cameraEdges = null;
     this._genericTriggerIdx = 0;
@@ -579,6 +587,8 @@
       this._fireAreaTrigger?.(trig);
     } else if (kind === "advFollow" || kind === "keyframeAnim") {
       this._fireAdvancedTrigger?.(trig);
+    } else if (kind === "gradient") {
+      this._fireGradientTrigger?.(trig);
     } else if (kind === "cameraEdge") {
       if (trig.edge >= 1 && trig.edge <= 4) (this.cameraEdges ||= {})[trig.edge] = trig.edgeTarget;
     } else if (kind === "cameraMode") {
@@ -602,6 +612,7 @@
         }
       }
     } else if (kind === "rotateGameplay") {
+      if (trig.changeChannel) this.setActiveTriggerChannel?.(trig.targetChannel, trig.move === 2 || trig.move === 3);
       if (!trig.channelOnly) this._scene?._rotateGameplay?.(trig);
     } else if (kind === "reverse") {
       this.direction = (this.direction || 1) * -1;
@@ -987,6 +998,9 @@
     this._stepScaleTweens(dt);
     this._stepCameraOffsetTweens(dt);
     this.updateAdvancedTriggers?.(dt);
+    this.stepTriggerChannels?.(colorManager);
+    this.updateGradients?.();
+    this.stepTriggerAnims?.(dt);
     this.stepShaders(dt);
   };
 

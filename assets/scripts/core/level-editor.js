@@ -158,15 +158,15 @@ class LevelEditor {
         this._isDraggingSlider = false;
     });
 
-    this.input.keyboard.on('keydown-ONE', () => {
+    window.kbOnPress("editorTab1", () => {
         if (this._editorTextInputFocused) return;
         this._setEditorTab("build");
     });
-    this.input.keyboard.on('keydown-TWO', () => {
+    window.kbOnPress("editorTab2", () => {
         if (this._editorTextInputFocused) return;
         this._setEditorTab("edit");
     });
-    this.input.keyboard.on('keydown-THREE', () => {
+    window.kbOnPress("editorTab3", () => {
         if (this._editorTextInputFocused) return;
         this._setEditorTab("delete");
     });
@@ -176,26 +176,26 @@ class LevelEditor {
         this._moveObject(dx, dy);
     };
 
-    this.input.keyboard.on('keydown-W', (event) => {
+    window.kbOnPress("editorMoveUp", (event) => {
         event?.preventDefault?.();
         const amount = event.shiftKey ? 1 : 60;
         moveSelectedObjectsWithKey(0, -amount);
-    });
-    this.input.keyboard.on('keydown-A', (event) => {
+    }, true);
+    window.kbOnPress("editorMoveLeft", (event) => {
         event?.preventDefault?.();
         const amount = event.shiftKey ? 1 : 60;
         moveSelectedObjectsWithKey(-amount, 0);
-    });
-    this.input.keyboard.on('keydown-S', (event) => {
+    }, true);
+    window.kbOnPress("editorMoveDown", (event) => {
         event?.preventDefault?.();
         const amount = event.shiftKey ? 1 : 60;
         moveSelectedObjectsWithKey(0, amount);
-    });
-    this.input.keyboard.on('keydown-D', (event) => {
+    }, true);
+    window.kbOnPress("editorMoveRight", (event) => {
         event?.preventDefault?.();
         const amount = event.shiftKey ? 1 : 60;
         moveSelectedObjectsWithKey(amount, 0);
-    });
+    }, true);
 
     this._createEditorGui();
   }
@@ -1325,7 +1325,7 @@ class LevelEditor {
         obj === this._editorPlaytestPlayBtn
     );
     const pointerHeld = pointer.isDown && !overPlaytestControls;
-    const jumpHeld = this._spaceKey.isDown || this._upKey.isDown || this._wKey.isDown || this._lKey.isDown || pointerHeld;
+    const jumpHeld = window.kbIsDown("jump") || pointerHeld;
 
     if (jumpHeld && !this._spaceWasDown) {
         this._editorPlaytestPress();
@@ -1435,10 +1435,10 @@ class LevelEditor {
                     this._player.updateBallRoll(horizontalDelta, ballOnSurface);
                 } else if (this._state.onGround) {
                     this._player.updateGroundRotation(verticalDelta);
-                } else if (this._player.rotateActionActive) {
-                    this._player.updateRotateAction(u);
                 } else if (this._state.isDashing) {
                     this._player.updateDashRotation(u);
+                } else if (this._player.rotateActionActive) {
+                    this._player.updateRotateAction(u);
                 }
             }
 
@@ -1448,10 +1448,10 @@ class LevelEditor {
                     this._player2.updateBallRoll(horizontalDelta, ball2OnSurface);
                 } else if (this._state2.onGround) {
                     this._player2.updateGroundRotation(verticalDelta);
-                } else if (this._player2.rotateActionActive) {
-                    this._player2.updateRotateAction(u);
                 } else if (this._state2.isDashing) {
                     this._player2.updateDashRotation(u);
+                } else if (this._player2.rotateActionActive) {
+                    this._player2.updateRotateAction(u);
                 }
             }
 
@@ -1985,7 +1985,7 @@ class LevelEditor {
     if (this._categoryContainer) this._categoryContainer.destroy();
 
     const OBJECT_CATEGORIES = [
-        { id: "blocks",  icon: "tab1", types: ["solid", "soliddeco"] },
+        { id: "blocks",  icon: "tab1", types: ["solid", "soliddeco", "dblock"] },
         { id: "slopes",  icon: "tab6", types: ["slope"] },
         { id: "hazards", icon: "tab2", types: ["hazard", "spike"] },
         { id: "orbs",    icon: "tab3", types: ["ring", "pad", "portal", "speed", "coin"] },
@@ -4327,7 +4327,7 @@ class LevelEditor {
     if (!this.textures.exists(pickerSheet)) {
       if (this._colourPickerSheetLoading) return;
       this._colourPickerSheetLoading = true;
-      this.load.atlas(pickerSheet, "assets/sheets/" + pickerSheet + ".png", "assets/sheets/" + pickerSheet + ".json");
+      this.load.atlas(pickerSheet, "assets/sheets/" + pickerSheet + ".png?v=3", "assets/sheets/" + pickerSheet + ".json?v=3");
       this.load.once("filecomplete-atlasjson-" + pickerSheet, () => {
         this._colourPickerSheetLoading = false;
         this._openEditorColorPickerPopup(channelId, labelText, onColorChanged, pickerOptions);
@@ -8781,9 +8781,42 @@ _serializeObject(object) {
   objectData[3] = String(object.y ?? 0);
   objectData[4] = object.flipX ? "1" : "0";
   objectData[5] = object.flipY ? "1" : "0";
-  objectData[6] = String(object.rot ?? 0);
 
-  objectData[32] = String(object.scale ?? 1);
+  const dropKey = (key) => {
+    delete objectData[key];
+    delete objectData[String(key)];
+  };
+  const numberOr = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const rotation = numberOr(object.rot, 0);
+  const warp = numberOr(object.warp, 0);
+  if (warp) {
+    dropKey(6);
+    objectData[131] = String(rotation - warp / 2);
+    objectData[132] = String(rotation + warp / 2);
+  } else {
+    objectData[6] = String(rotation);
+    dropKey(131);
+    dropKey(132);
+  }
+
+  const uniformScale = numberOr(object.scale, 1);
+  const scaleX = numberOr(object.scaleX, uniformScale);
+  const scaleY = numberOr(object.scaleY, uniformScale);
+  const hadAxisScale = object._raw?.[128] !== undefined || object._raw?.["128"] !== undefined
+    || object._raw?.[129] !== undefined || object._raw?.["129"] !== undefined;
+  if (scaleX !== scaleY || hadAxisScale) {
+    dropKey(32);
+    objectData[128] = String(scaleX);
+    objectData[129] = String(scaleY);
+  } else {
+    objectData[32] = String(scaleX);
+    dropKey(128);
+    dropKey(129);
+  }
 
   objectData[20] = String(object.editorLayer ?? object._raw?.[20] ?? object._raw?.["20"] ?? 0);
   objectData[24] = String(object.zLayer ?? 0);
