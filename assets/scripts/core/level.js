@@ -274,6 +274,8 @@ const sBlockType = "sblock";
 const hBlockType = "hblock";
 const fBlockType = "fblock";
 const jBlockType = "jblock";
+const forceBlockType = "forceblock";
+const FORCE_BLOCK_IDS = new Set([2069, 3645]);
 const J_BLOCK_OBJECT_ID = 1813;
 const S_BLOCK_OBJECT_ID = 1829;
 const H_BLOCK_OBJECT_ID = 1859;
@@ -2620,7 +2622,7 @@ window.LevelObject = class LevelObject {
     return null;
   }
 
-  if (objectDef && objectDef.type === triggerType && parseInt(levelObj.id, 10) !== J_BLOCK_OBJECT_ID) {
+  if (objectDef && objectDef.type === triggerType && parseInt(levelObj.id, 10) !== J_BLOCK_OBJECT_ID && !FORCE_BLOCK_IDS.has(parseInt(levelObj.id, 10))) {
     if (this._nextObjectId === undefined) {
       this._nextObjectId = 0;
     }
@@ -3200,7 +3202,7 @@ window.LevelObject = class LevelObject {
       sprite._eeZDepth = objZDepth;
       sprite._eeOrigAlpha = objectDef?.alpha ?? 1;
       if (sprite._eeOrigAlpha !== 1) sprite.setAlpha(sprite._eeOrigAlpha);
-      if (objectDef?.type === dBlockType || LETTER_BLOCK_IDS.has(parseInt(levelObj.id, 10))) {
+      if (objectDef?.type === dBlockType || LETTER_BLOCK_IDS.has(parseInt(levelObj.id, 10)) || FORCE_BLOCK_IDS.has(parseInt(levelObj.id, 10))) {
         sprite._eeEditorOnly = true;
         sprite.setVisible(!!window.isEditor);
       }
@@ -3721,6 +3723,26 @@ window.LevelObject = class LevelObject {
       const h = objectDef.gridH * a * hitScaleY;
       const collider = new Collider(dBlockType, worldX, worldY, w, h, levelObj.rot || 0);
       collider.objid = levelObj.id;
+      registerCollider(collider);
+      this.objects.push(collider);
+      hasCollisionEntry = true;
+      this._addCollisionToSection(collider);
+    } else if (!noTouch && FORCE_BLOCK_IDS.has(parseInt(levelObj.id, 10))) {
+      const fraw = levelObj._raw || {};
+      const fnum = (k, d = 0) => {
+        const v = parseFloat(fraw[k] ?? d);
+        return Number.isFinite(v) ? v : d;
+      };
+      const collider = new Collider(forceBlockType, worldX, worldY, objectDef.gridW * a * hitScaleX, objectDef.gridH * a * hitScaleY, levelObj.rot || 0);
+      collider.objid = levelObj.id;
+      if (objectDef.hitbox_radius) collider.hitbox_radius = objectDef.hitbox_radius * 2 * hitScaleMean;
+      collider.force = fnum(149);
+      collider.forceMin = fnum(526);
+      collider.forceMax = fnum(527);
+      collider.forceRadial = String(fraw[528] ?? "0") === "1";
+      collider.forceRange = String(fraw[529] ?? "0") === "1";
+      collider.forceId = parseInt(fraw[530] ?? 0, 10) || 0;
+      collider.forceFlipY = String(fraw[5] ?? "0") === "1";
       registerCollider(collider);
       this.objects.push(collider);
       hasCollisionEntry = true;

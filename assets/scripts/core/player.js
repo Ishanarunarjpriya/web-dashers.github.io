@@ -2678,6 +2678,50 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
     }
     this._setGamemodeFlyBounds(false, 0);
   }
+  _addBlockForce(obj, px, py) {
+    if (obj.forceId >= 1) {
+      this._forceIds ||= new Set();
+      if (this._forceIds.has(obj.forceId)) return;
+      this._forceIds.add(obj.forceId);
+    }
+    const radius = obj.hitbox_radius > 0 ? obj.hitbox_radius : Math.max(obj.w, obj.h) / 2;
+    let force = obj.force;
+    let ang;
+    if (obj.forceRadial) {
+      ang = Math.atan2(obj.y - py, obj.x - px) + (obj.forceFlipY ? 0 : Math.PI);
+    } else {
+      ang = (90 - (obj.rotationDegrees || 0) + (obj.forceFlipY ? 180 : 0)) * Math.PI / 180;
+    }
+    if (obj.forceRange) {
+      let t;
+      if (obj.forceRadial) {
+        const dist = Math.hypot(obj.x - px, obj.y - py);
+        t = dist < radius ? 1 - dist / radius : 0;
+      } else {
+        t = ((radius + (obj.x - px) * Math.cos(ang) + (obj.y - py) * Math.sin(ang)) / radius) * 0.5;
+      }
+      t = Math.max(0, Math.min(1, t));
+      force = obj.forceMin + t * (obj.forceMax - obj.forceMin);
+    }
+    const acc = this._forceAccum ||= { x: 0, y: 0 };
+    acc.x += force * Math.cos(ang);
+    acc.y += force * Math.sin(ang);
+    const len = Math.hypot(acc.x, acc.y);
+    if (len > 10000) {
+      acc.x *= 10000 / len;
+      acc.y *= 10000 / len;
+    }
+    this.p.forceTicks = 2;
+  }
+  _forceModeFactor() {
+    const p = this.p;
+    if (p.isFlying) return p.isMini ? 0.5875 : 0.47;
+    if (p.isUfo) return p.isMini ? 0.725 : 0.58;
+    if (p.isSwing) return p.isMini ? 0.6154 : 0.4;
+    if (p.isBall || p.isSpider) return p.isMini ? 0.725 : 0.6;
+    if (p.isRobot) return p.isMini ? 0.725 : 0.9;
+    return p.isMini ? 0.725 : 1;
+  }
   _releaseJumpHold() {
     this.p.upKeyDown = false;
     this.p.upKeyPressed = false;
@@ -4103,6 +4147,18 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       this.p.yVelocity = this.p.pendingVelocity;
       this.p.pendingVelocity = null;
     }
+    if (this.p.forceTicks > 0) {
+      this.p.forceTicks--;
+      const fy = this._forceAccum?.y || 0;
+      if (fy !== 0) {
+        this.p.yVelocity += 2 * 0.9 * this._forceModeFactor() * _0x3d1c6f * fy;
+        if (this.p.gravityFlipped ? fy < 0 : fy > 0) this.p.onGround = false;
+      }
+    }
+    if (this._forceAccum) {
+      this._forceAccum.x = 0;
+      this._forceAccum.y = 0;
+    }
     if (this.p.isDashing) {
       if (!this.p.upKeyDown || this.p.onGround) {
         this.p.isDashing = false;
@@ -4804,6 +4860,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
     if (this.p.safeHeadTicks > 0) this.p.safeHeadTicks--;
     if (this.p.flipHeadTicks > 0) this.p.flipHeadTicks--;
     if (this.p.jBlockTicks > 0) this.p.jBlockTicks--;
+    this._forceIds = null;
     if (this.p._spiderTeleportNoclipDeathPending) {
       this.p.diedThisFrame = true;
       this.p._spiderTeleportNoclipDeathPending = false;
@@ -5608,6 +5665,8 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           this.p.flipHeadTicks = 2;
         } else if (_colType === jBlockType) {
           this.p.jBlockTicks = 2;
+        } else if (_colType === forceBlockType) {
+          this._addBlockForce(gameObj, pieceWidth, playersY);
         } else if (_colType === sBlockType) {
           if (this.p.isDashing) {
             this.p.isDashing = false;

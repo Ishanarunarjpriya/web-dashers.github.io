@@ -554,6 +554,7 @@ class GameScene extends Phaser.Scene {
     }
     this._syncBeastAnimDescs();
     let _0x591888 = this.cache.text.get(window.currentlevel[2]);
+    if (typeof _0x591888 === "string" && _0x591888.includes("\0")) _0x591888 = _0x591888.replace(/\0/g, "").trim();
     if (!_0x591888 && window._onlineLevelString && window.currentlevel[2] === window._onlineLevelId) {
       _0x591888 = window._onlineLevelString;
     }
@@ -4620,7 +4621,7 @@ const startY = containerY + marginY + iconSize / 2;
     const arrowL = this.add.image(55, cy - 25, "GJ_GameSheet03", "navArrowBtn_001.png").setScrollFactor(0).setDepth(154).setScale(1.1).setFlipX(true).setInteractive();
     const arrowR = this.add.image(sw - 55, cy - 25, "GJ_GameSheet03", "navArrowBtn_001.png").setScrollFactor(0).setDepth(154).setScale(1.1).setFlipX(false).setInteractive();
     const allLevels = window.allLevels || [];
- const _hiddenLevels = ["level_22", "level_67"];
+ const _hiddenLevels = ["level_67"];
  const visibleLevels = allLevels.filter(level => !(level && _hiddenLevels.includes(level[2])));
     const pageCount = visibleLevels.length + 1;
     let currentPageIndex = visibleLevels.findIndex(l => l[2] === window.currentlevel[2]);
