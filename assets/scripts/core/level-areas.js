@@ -159,6 +159,8 @@
     if (spr._areaBaseAlpha !== undefined) spr.alpha = spr._areaBaseAlpha;
     if (spr._areaBaseTint !== undefined && spr.setTint) spr.setTint(spr._areaBaseTint);
     spr._areaBaseRot = spr._areaBaseScaleX = spr._areaBaseScaleY = spr._areaBaseAlpha = spr._areaBaseTint = undefined;
+    (this._alphaPendingSprites ||= new Set()).add(spr);
+    (this._colorPendingSprites ||= new Set()).add(spr);
     if (!spr._beastManaged) {
       spr.x = spr._eeWorldX ?? spr.x;
       spr.y = spr._eeBaseY ?? spr.y;
@@ -212,6 +214,11 @@
       maxLen = Math.max(maxLen, Math.abs(2 * (effect.params[222] + Math.abs(effect.params[223]))) + Math.abs(2 * (effect.params[220] + Math.abs(effect.params[221]))));
     }
     const pad = this.getViewPad ? this.getViewPad() : 0;
+    const edgeLimit = Math.max(maxLen, 140 + pad);
+    const sideLists = new Map();
+    for (const [ch, list] of byChannel) {
+      sideLists.set(ch, [list.filter(e => e.side === 0 || e.side === 2), list.filter(e => e.side === 0 || e.side === 1)]);
+    }
     const minSec = Math.max(0, Math.floor((leftEdge - pad) / 400));
     const maxSec = Math.min(this._sections.length - 1, Math.floor((rightEdge + pad) / 400));
     const seen = new Set();
@@ -220,14 +227,14 @@
       if (!list) continue;
       for (const spr of list) {
         if (!spr || !spr.active) continue;
-        const channelEffects = byChannel.get(spr._eeEnterChannel || 0);
-        if (!channelEffects) continue;
         const x = spr._eeWorldX;
+        if (!(x - leftEdge <= edgeLimit || rightEdge - x <= edgeLimit)) continue;
+        const sides = sideLists.get(spr._eeEnterChannel || 0);
+        if (!sides) continue;
         if (!Number.isFinite(x)) continue;
         const rightSide = x > centerX;
-        const sideEffects = channelEffects.filter(e => e.side === 0 || e.side === (rightSide ? 1 : 2));
+        const sideEffects = sides[rightSide ? 1 : 0];
         if (!sideEffects.length) continue;
-        if (Math.min(x - leftEdge, rightEdge - x) > Math.max(maxLen, 140 + pad)) continue;
         spr._areaSeedX ??= x;
         spr._areaSeedY ??= spr._eeBaseY;
         let dx = 0, dy = 0, rot = 0, sx = 1, sy = 1, alpha = 1, tint = null, any = false;
@@ -304,6 +311,41 @@
     }
   };
 
+  proto._areaBucketsFor = function (target, list) {
+    const m = this._areaBuckets || (this._areaBuckets = new Map());
+    let c = m.get(target);
+    if (c && c.list === list && c.len === list.length) return c;
+    c = { list, len: list.length, secs: new Map(), loose: [] };
+    for (const spr of list) {
+      if (!spr) continue;
+      const sec = spr._eeSectionIndex;
+      if (Number.isInteger(sec) && sec >= 0) {
+        let bucket = c.secs.get(sec);
+        if (!bucket) c.secs.set(sec, bucket = []);
+        bucket.push(spr);
+      } else c.loose.push(spr);
+    }
+    m.set(target, c);
+    return c;
+  };
+
+  proto._areaMoveBucket = function (spr, from, to) {
+    const m = this._areaBuckets;
+    if (!m || !spr._eeGroups) return;
+    for (const g of spr._eeGroups) {
+      const c = m.get(g);
+      if (!c) continue;
+      const a = c.secs.get(from);
+      const i = a ? a.indexOf(spr) : -1;
+      if (i === -1) continue;
+      a[i] = a[a.length - 1];
+      a.pop();
+      let bucket = c.secs.get(to);
+      if (!bucket) c.secs.set(to, bucket = []);
+      bucket.push(spr);
+    }
+  };
+
   proto.updateAreaEffects = function (dt) {
     const effects = this._areaEffects;
     if (!effects || !effects.length) {
@@ -318,21 +360,33 @@
         if (progress >= 1) effect.tweens.delete(key);
       }
     }
-    const spriteState = new Map();
-    const colliderState = new Map();
-    const stateFor = (map, obj) => {
-      let s = map.get(obj);
-      if (!s) {
-        s = { dx: 0, dy: 0, rot: 0, sx: 0, sy: 0, alpha: null, tint: null };
-        map.set(obj, s);
+    const stamp = this._areaStamp = (this._areaStamp || 0) + 1;
+    const spriteList = this._areaSpriteList || (this._areaSpriteList = []);
+    const colliderList = this._areaColliderList || (this._areaColliderList = []);
+    spriteList.length = 0;
+    colliderList.length = 0;
+    const stateFor = (isCollider, obj) => {
+      let s = obj._areaSt;
+      if (obj._areaStamp !== stamp) {
+        if (!s) s = obj._areaSt = { dx: 0, dy: 0, rot: 0, sx: 0, sy: 0, alpha: null, tint: null };
+        else {
+          s.dx = 0; s.dy = 0; s.rot = 0; s.sx = 0; s.sy = 0; s.alpha = null; s.tint = null;
+        }
+        obj._areaStamp = stamp;
+        (isCollider ? colliderList : spriteList).push(obj);
       }
       return s;
     };
+    const camX = Number(this._scene?._cameraX) || 0;
+    const viewW = screenWidth / (this.cameraZoom || 1) + (this.getViewPad?.() || 0) * 2;
     for (const effect of effects) {
       if (!effect.target) continue;
       const center = this._areaCenter(effect.center);
       if (!center) continue;
       const p = effect.params;
+      const reach = 2 * (Math.abs(p[218] || 0) + Math.abs(p[219] || 0) + Math.abs(p[237] || 0) + Math.abs(p[238] || 0) + Math.abs(p[239] || 0) + Math.abs(p[240] || 0)) + 240;
+      const minX = camX - reach;
+      const maxX = camX + viewW + reach;
       const sprites = this._dedupeGroupList("_groupSpriteDedupe", this._groupSprites?.[effect.target]) || [];
       const colliders = this._dedupeGroupList("_groupColliderDedupe", this._groupColliders?.[effect.target]) || [];
       const apply = (obj, x, y, isCollider) => {
@@ -340,7 +394,7 @@
         obj._areaSeedY ??= y;
         const v = this._areaValue(effect, x, y, center, obj);
         if (effect.type === 3) {
-          const s = stateFor(isCollider ? colliderState : spriteState, obj);
+          const s = stateFor(isCollider, obj);
           s.alpha = p[286] + v * (p[275] - p[286]);
           return;
         }
@@ -349,12 +403,12 @@
           if (isCollider) return;
           if (effect.mainOnly && obj._eeIsDetail) return;
           if (effect.detailOnly && !obj._eeIsDetail) return;
-          const s = stateFor(spriteState, obj);
+          const s = stateFor(false, obj);
           s.tint = { amount: (1 - v) * (p[265] || 1), channel: effect.channel };
           return;
         }
         const e = this._areaEase(effect, v);
-        const s = stateFor(isCollider ? colliderState : spriteState, obj);
+        const s = stateFor(isCollider, obj);
         if (effect.type === 0) {
           let mx = 0, my = 0;
           if (effect.xyMode) {
@@ -390,14 +444,26 @@
           s.sy += (p[235] + objectRandom(obj, 9) * p[236] - 1) * (1 - e);
         }
       };
-      for (const spr of sprites) {
-        if (!spr || !spr.active) continue;
+      const visit = (spr) => {
+        if (!spr || !spr.active) return;
         const bx = spr._eeWorldX ?? spr.x;
+        if (bx < minX || bx > maxX) return;
         const by = spr._eeBaseY ?? spr.y;
         apply(spr, bx, T - by, false);
+      };
+      if (sprites.length) {
+        const buckets = this._areaBucketsFor(Number(effect.target), sprites);
+        for (const spr of buckets.loose) visit(spr);
+        const secHi = Math.floor(maxX / 400);
+        for (let sec = Math.max(0, Math.floor(minX / 400)); sec <= secHi; sec++) {
+          const bucket = buckets.secs.get(sec);
+          if (bucket) for (let i = 0; i < bucket.length; i++) visit(bucket[i]);
+        }
       }
       for (const col of colliders) {
         if (!col) continue;
+        const cbx = col._areaApplied ? col._areaBaseX : col.x;
+        if (cbx < minX || cbx > maxX) continue;
         if (!col._areaApplied) {
           col._areaBaseX = col.x;
           col._areaBaseY = col.y;
@@ -411,12 +477,14 @@
     }
     const touchedSprites = this._areaTouchedSprites;
     for (const spr of touchedSprites) {
-      if (!spriteState.has(spr)) {
+      if (spr._areaStamp !== stamp) {
         this._restoreAreaSprite(spr);
         touchedSprites.delete(spr);
       }
     }
-    for (const [spr, s] of spriteState) {
+    for (let si = 0; si < spriteList.length; si++) {
+      const spr = spriteList[si];
+      const s = spr._areaSt;
       if (!spr._areaApplied) {
         spr._areaApplied = true;
         spr._areaBaseRot = spr.rotation;
@@ -427,12 +495,22 @@
         touchedSprites.add(spr);
       }
       if (!spr._beastManaged) {
-        spr.x = (spr._eeWorldX ?? spr.x) + s.dx;
-        spr.y = (spr._eeBaseY ?? spr.y) - s.dy;
+        const nx = (spr._eeWorldX ?? spr.x) + s.dx;
+        const ny = (spr._eeBaseY ?? spr.y) - s.dy;
+        if (spr.x !== nx) spr.x = nx;
+        if (spr.y !== ny) spr.y = ny;
       }
-      spr.rotation = spr._areaBaseRot + s.rot * Math.PI / 180;
-      if (s.sx || s.sy) spr.setScale?.(spr._areaBaseScaleX + s.sx * Math.sign(spr._areaBaseScaleX || 1), spr._areaBaseScaleY + s.sy * Math.sign(spr._areaBaseScaleY || 1));
-      if (s.alpha !== null) spr.alpha = Math.max(0, Math.min(1, s.alpha));
+      const nr = spr._areaBaseRot + s.rot * Math.PI / 180;
+      if (spr.rotation !== nr) spr.rotation = nr;
+      if (s.sx || s.sy) {
+        const tx = spr._areaBaseScaleX + s.sx * Math.sign(spr._areaBaseScaleX || 1);
+        const ty = spr._areaBaseScaleY + s.sy * Math.sign(spr._areaBaseScaleY || 1);
+        if (spr.scaleX !== tx || spr.scaleY !== ty) spr.setScale?.(tx, ty);
+      }
+      if (s.alpha !== null) {
+        const na = Math.max(0, Math.min(1, s.alpha));
+        if (spr.alpha !== na) spr.alpha = na;
+      }
       if (s.tint && spr.setTint) {
         const color = this._scene?._colorManager?.getColor?.(s.tint.channel);
         if (color) {
@@ -441,18 +519,21 @@
           const r = ((base >> 16) & 255) + (color.r - ((base >> 16) & 255)) * t;
           const g = ((base >> 8) & 255) + (color.g - ((base >> 8) & 255)) * t;
           const b = (base & 255) + (color.b - (base & 255)) * t;
-          spr.setTint((Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b));
+          const nt = (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
+          if (spr.tintTopLeft !== nt) spr.setTint(nt);
         }
       }
     }
     const touchedColliders = this._areaTouchedColliders;
     for (const col of touchedColliders) {
-      if (!colliderState.has(col)) {
+      if (col._areaStamp !== stamp) {
         this._restoreAreaCollider(col);
         touchedColliders.delete(col);
       }
     }
-    for (const [col, s] of colliderState) {
+    for (let ci = 0; ci < colliderList.length; ci++) {
+      const col = colliderList[ci];
+      const s = col._areaSt;
       if (!col._areaApplied) {
         col._areaApplied = true;
         col._areaBaseRot = col.rotationDegrees;

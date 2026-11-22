@@ -631,6 +631,145 @@ const flyPortal = "fly";
 const cubePortal = "cube";
 const portalWaveType = "portal_wave";
 const portalUfoType = "portal_ufo";
+for (const Cls of [Phaser.GameObjects.Image, Phaser.GameObjects.Sprite]) {
+  const baseWillRender = Cls.prototype.willRender;
+  Cls.prototype.willRender = function (camera) {
+    if (this._eeOffscreen) return false;
+    return baseWillRender.call(this, camera);
+  };
+}
+const _emptySpawnIndex = new Map();
+const _flatImageWillRender = Phaser.GameObjects.Image.prototype.willRender;
+const _flatSpriteWillRender = Phaser.GameObjects.Sprite.prototype.willRender;
+const _flatContainerRender = Phaser.GameObjects.Container.prototype.renderWebGL;
+const _flatImageRender = Phaser.GameObjects.Image.prototype.renderWebGL;
+const _flatSpriteRender = Phaser.GameObjects.Sprite.prototype.renderWebGL;
+const _flatCamMatrix = new Phaser.GameObjects.Components.TransformMatrix();
+const _fround = Math.fround;
+function _batchFlatSprite(pipe, child, camera, cm) {
+  camera.addToRenderList(child);
+  const frame = child.frame;
+  const ox = child._displayOriginX;
+  const oy = child._displayOriginY;
+  let qx = -ox + frame.x;
+  let qy = -oy + frame.y;
+  let flipX = 1, flipY = 1;
+  if (child.flipX) {
+    if (!frame.customPivot) qx += -frame.realWidth + 2 * ox;
+    flipX = -1;
+  }
+  if (child.flipY) {
+    if (!frame.customPivot) qy += -frame.realHeight + 2 * oy;
+    flipY = -1;
+  }
+  let px = child.x, py = child.y;
+  if (camera.roundPixels) {
+    px = Math.floor(px);
+    py = Math.floor(py);
+  }
+  const rot = child._rotation;
+  const sin = Math.sin(rot), cos = Math.cos(rot);
+  const sx = child._scaleX * flipX, sy = child._scaleY * flipY;
+  const sa = _fround(cos * sx), sb = _fround(sin * sx), sc = _fround(-sin * sy), sd = _fround(cos * sy);
+  px = _fround(px);
+  py = _fround(py);
+  const c0 = cm[0], c1 = cm[1], c2 = cm[2], c3 = cm[3], c4 = cm[4], c5 = cm[5];
+  const a = _fround(sa * c0 + sb * c2), b = _fround(sa * c1 + sb * c3);
+  const c = _fround(sc * c0 + sd * c2), d = _fround(sc * c1 + sd * c3);
+  const e = _fround(px * c0 + py * c2 + c4), f = _fround(px * c1 + py * c3 + c5);
+  const qr = qx + frame.cutWidth, qb = qy + frame.cutHeight;
+  let x0 = qx * a + qy * c + e, y0 = qx * b + qy * d + f;
+  let x1 = qx * a + qb * c + e, y1 = qx * b + qb * d + f;
+  let x2 = qr * a + qb * c + e, y2 = qr * b + qb * d + f;
+  let x3 = qr * a + qy * c + e, y3 = qr * b + qy * d + f;
+  if (camera.renderRoundPixels) {
+    const rx = Math.floor(x0 + 0.5), ry = Math.floor(y0 + 0.5);
+    const dx = rx - x0, dy = ry - y0;
+    x0 = rx;
+    y0 = ry;
+    x1 += dx;
+    y1 += dy;
+    x2 += dx;
+    y2 += dy;
+    x3 += dx;
+    y3 += dy;
+  }
+  const alpha = camera.alpha;
+  const tl = ((255 & (255 * (alpha * child._alphaTL) | 0)) << 24 | child.tintTopLeft) >>> 0;
+  const tr = ((255 & (255 * (alpha * child._alphaTR) | 0)) << 24 | child.tintTopRight) >>> 0;
+  const bl = ((255 & (255 * (alpha * child._alphaBL) | 0)) << 24 | child.tintBottomLeft) >>> 0;
+  const br = ((255 & (255 * (alpha * child._alphaBR) | 0)) << 24 | child.tintBottomRight) >>> 0;
+  if (pipe.shouldFlush(6)) pipe.flush();
+  const unit = pipe.setGameObject(child, frame);
+  pipe.batchQuad(child, x0, y0, x1, y1, x2, y2, x3, y3, frame.u0, frame.v0, frame.u1, frame.v1, tl, tr, bl, br, child.tintFill, frame.glTexture, unit);
+}
+function _renderFlatContainer(renderer, container, camera, parentMatrix) {
+  if (container.alpha !== 1 || container.scrollFactorX !== 1 || container.scrollFactorY !== 1) {
+    return _flatContainerRender.call(this, renderer, container, camera, parentMatrix);
+  }
+  camera.addToRenderList(container);
+  const list = container.list;
+  const len = list.length;
+  if (!len) return;
+  const m = container.localTransform;
+  if (parentMatrix) {
+    m.loadIdentity();
+    m.multiply(parentMatrix);
+    m.translate(container.x, container.y);
+    m.rotate(container.rotation);
+    m.scale(container.scaleX, container.scaleY);
+  } else {
+    m.applyITRS(container.x, container.y, container.rotation, container.scaleX, container.scaleY);
+  }
+  renderer.pipelines.preBatch(container);
+  const ownBlend = container.blendMode !== -1;
+  if (!ownBlend) renderer.setBlendMode(0);
+  const renderMask = Phaser.GameObjects.GameObject.RENDER_MASK;
+  const camId = camera.id;
+  const manager = renderer.pipelines;
+  const multi = manager.MULTI_PIPELINE || null;
+  let cm = null;
+  let needSet = true;
+  for (let i = 0; i < len; i++) {
+    const child = list[i];
+    const wr = child.willRender;
+    if (wr === _flatImageWillRender || wr === _flatSpriteWillRender) {
+      if (child._eeOffscreen || child.renderFlags !== renderMask || (child.cameraFilter !== 0 && (child.cameraFilter & camId))) continue;
+    } else if (!wr.call(child, camera)) continue;
+    if (!ownBlend) {
+      let bm = child._blendMode;
+      if (bm === undefined) bm = child.blendMode;
+      if (bm !== renderer.currentBlendMode) renderer.setBlendMode(bm);
+    }
+    const mask = child.mask;
+    if (mask) mask.preRenderWebGL(renderer, child, camera);
+    const type = child.type;
+    if (type !== renderer.currentType) {
+      renderer.newType = true;
+      renderer.currentType = type;
+    }
+    renderer.nextTypeMatch = i < len - 1 && list[i + 1].type === type;
+    const rw = child.renderWebGL;
+    if (!mask && multi && (rw === _flatImageRender || rw === _flatSpriteRender) && child.pipeline === multi && !child.hasPostPipeline && !child.isCropped && child.scrollFactorX === 1 && child.scrollFactorY === 1) {
+      if (!cm) {
+        _flatCamMatrix.copyFrom(camera.matrix);
+        _flatCamMatrix.multiplyWithOffset(m, -camera.scrollX, -camera.scrollY);
+        cm = _flatCamMatrix.matrix;
+      }
+      if (needSet || manager.current !== multi) {
+        manager.set(multi, child);
+        needSet = false;
+      }
+      _batchFlatSprite(multi, child, camera, cm);
+    } else {
+      rw.call(child, renderer, child, camera, m, container);
+      needSet = true;
+    }
+    if (mask) mask.postRenderWebGL(renderer, camera);
+    renderer.newType = false;
+  }
+  renderer.pipelines.postBatch(container);
+}
 const allObjects = window.allobjects();
 for (const [objId, objectDef] of Object.entries(allObjects || {})) {
   if (!objectDef || typeof objectDef !== "object") continue;
@@ -4410,6 +4549,8 @@ window.LevelObject = class LevelObject {
       };
       this._flatContainers.additive._eeMirrorGroup = true;
       this._flatContainers.normal._eeMirrorGroup = true;
+      this._flatContainers.additive.renderWebGL = _renderFlatContainer;
+      this._flatContainers.normal.renderWebGL = _renderFlatContainer;
       this.additiveContainer.add(this._flatContainers.additive);
       this.container.add(this._flatContainers.normal);
     }
@@ -4440,6 +4581,7 @@ window.LevelObject = class LevelObject {
     if (!spr.scene) return;
     const target = this._getFlatTarget(spr, shown);
     if (!target || spr.parentContainer === target) return;
+    if (!shown) spr._eeOffscreen = false;
     target.add(spr);
     if (shown) this._flatNeedsSort = true;
   }
@@ -4543,7 +4685,8 @@ window.LevelObject = class LevelObject {
     this._sections[nextSection] ||= [];
     if (!this._sections[nextSection].includes(sprite)) this._sections[nextSection].push(sprite);
     sprite._eeSectionIndex = nextSection;
-    this._colorDirty = true;
+    if (this._areaBuckets) this._areaMoveBucket(sprite, prevSection, nextSection);
+    (this._colorPendingSprites ||= new Set()).add(sprite);
     if (this._flatDepth) {
       this._placeFlatSprite(sprite, this._isFlatSectionShown(nextSection));
       return;
@@ -4597,6 +4740,10 @@ window.LevelObject = class LevelObject {
     if (this._flatDepth) {
       const section = this._sections[_0x2b0fa1];
       if (!section) return;
+      if (_0x488507) {
+        const stale = section.filter(spr => spr && spr._eeXformDirty);
+        for (const spr of stale) this._applyGroupedSpriteTransform(spr);
+      }
       const moving = new Set();
       const sources = new Set();
       for (let i = 0; i < section.length; i++) {
@@ -4705,8 +4852,42 @@ window.LevelObject = class LevelObject {
       if (em.active !== wantActive) em.active = wantActive;
     }
   }
+  _cullFlatSprites() {
+    const list = this._flatContainers?.normal?.list;
+    if (!list || !list.length) return;
+    const zoom = this.cameraZoom || 1;
+    const angle = (this.cameraAngle || 0) * Math.PI / 180;
+    let halfW = screenWidth / 2 / zoom;
+    let halfH = screenHeight / 2 / zoom;
+    if (angle) halfW = halfH = Math.hypot(halfW, halfH);
+    const cx = -this.container.x + screenWidth / 2;
+    const cy = -this.container.y + screenHeight / 2;
+    this._cullFrame = (this._cullFrame || 0) + 1;
+    const moved = this._cullCx === undefined || Math.abs(cx - this._cullCx) > 24 || Math.abs(cy - this._cullCy) > 24 || this._cullHalfW !== halfW;
+    if (!moved && this._cullFrame % 3 !== 0) return;
+    this._cullCx = cx;
+    this._cullCy = cy;
+    this._cullHalfW = halfW;
+    const x0 = cx - halfW - 60, x1 = cx + halfW + 60;
+    const y0 = cy - halfH - 60, y1 = cy + halfH + 60;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      let r = o._eeCullR;
+      const osx = o._scaleX, osy = o._scaleY;
+      if (r === undefined || o._eeCullSX !== osx || o._eeCullSY !== osy) {
+        o._eeCullSX = osx;
+        o._eeCullSY = osy;
+        const fr = o.frame;
+        r = o._eeCullR = fr ? Math.max(Math.abs(osx * fr.realWidth), Math.abs(osy * fr.realHeight)) * 0.75 : 0;
+      }
+      const x = o.x, y = o.y;
+      o._eeOffscreen = x + r < x0 || x - r > x1 || y + r < y0 || y - r > y1;
+    }
+  }
+
   updateVisibility(_0xa5f1e1) {
     this.updateTriggerEditorVisuals();
+    if (this._flatDepth && !window.isEditor) this._cullFlatSprites();
     this._cullEmitters(_0xa5f1e1);
     if (window.enableLDM) {
       try {
@@ -5004,6 +5185,54 @@ window.LevelObject = class LevelObject {
     pending.clear();
   }
 
+  _skipFarSpriteTransform(spr) {
+    if (!spr || !spr.active || spr._beastManaged || spr._coinWorldX !== undefined) return false;
+    const lo = this._visMinSec - 1;
+    const hi = this._visMaxSec + 1;
+    const cur = spr._eeSectionIndex;
+    if (!Number.isInteger(cur) || (cur >= lo && cur <= hi)) return false;
+    const ids = this._getObjectGroupIds(spr);
+    const offsets = this._groupOffsets;
+    let x = spr._eeInitialWorldX !== undefined ? spr._eeInitialWorldX : (spr._origWorldX ?? spr.x);
+    let y = spr._eeInitialBaseY !== undefined ? spr._eeInitialBaseY : (spr._origBaseY ?? spr.y);
+    for (let i = 0; i < ids.length; i++) {
+      const off = offsets && offsets[ids[i]];
+      if (off) {
+        x += Number(off.x) || 0;
+        y += Number(off.y) || 0;
+      }
+    }
+    const rotations = this._groupRotations;
+    if (rotations) {
+      for (let i = 0; i < ids.length; i++) {
+        const r = rotations[ids[i]];
+        if (!r || r.totalRad === 0 || !(r.centerGroupId > 0)) continue;
+        const { cx, cy } = this._getGroupCenter(r.centerGroupId);
+        const dx = x - cx, dy = y - cy;
+        const c = Math.cos(r.totalRad), sn = Math.sin(r.totalRad);
+        x = cx + dx * c - dy * sn;
+        y = cy + dx * sn + dy * c;
+      }
+    }
+    if (this._hasGroupScales) {
+      const scales = this._groupScales;
+      for (let i = 0; i < ids.length; i++) {
+        const st = scales[ids[i]];
+        if (!st || !(st.centerGroupId > 0)) continue;
+        const center = this._getGroupCenter(st.centerGroupId);
+        x = center.cx + (x - center.cx) * st.sx;
+        y = center.cy + (y - center.cy) * st.sy;
+      }
+    }
+    const sec = this._getSectionIndexForWorldX(x);
+    if (sec >= lo && sec <= hi) return false;
+    spr._eeXformDirty = true;
+    spr._eeWorldX = x;
+    spr._eeBaseY = y;
+    if (sec !== cur) this._refreshSpriteSection(spr);
+    return true;
+  }
+
   _applyGroupTransforms(groupIds) {
     if (this._deferGroupTransforms && groupIds === this._pendingTransformGroups) return;
     if (!groupIds.size) return;
@@ -5020,8 +5249,12 @@ window.LevelObject = class LevelObject {
     const centerCache = this._groupCenterScratch || (this._groupCenterScratch = new Map());
     centerCache.clear();
     this._groupCenterCache = centerCache;
+    const lazy = this._flatDepth && !window.isEditor && this._visMinSec >= 0;
     try {
-      for (const spr of sprites) this._applyGroupedSpriteTransform(spr);
+      for (const spr of sprites) {
+        if (lazy && this._skipFarSpriteTransform(spr)) continue;
+        this._applyGroupedSpriteTransform(spr);
+      }
       for (const col of colliders) this._applyGroupedColliderTransform(col);
     } finally {
       this._groupCenterCache = null;
@@ -5069,6 +5302,7 @@ window.LevelObject = class LevelObject {
 
   _applyGroupedSpriteTransform(spr) {
     if (!spr || !spr.active) return;
+    spr._eeXformDirty = false;
     const initialX = spr._eeInitialWorldX !== undefined ? spr._eeInitialWorldX : (spr._origWorldX ?? spr.x);
     const initialY = spr._eeInitialBaseY !== undefined ? spr._eeInitialBaseY : (spr._origBaseY ?? spr.y);
     const ids = this._getObjectGroupIds(spr);
@@ -5486,15 +5720,43 @@ window.LevelObject = class LevelObject {
     }
   }
 
+  _spawnGroupIndex(groupId) {
+    const lists = [this._colorTriggers, this._enterEffectTriggers, this._moveTriggers, this._alphaTriggers, this._rotateTriggers, this._stopTriggers, this._followPlayerYTriggers, this._followTriggers, this._toggleTriggers, this._animationTriggers, this._shakeTriggers, this._playerVisTriggers, this._pulseTriggers, this._spawnTriggers, this._onDeathTriggers, this._touchTriggers, this._pickupTriggers, this._countTriggers, this._instantCountTriggers, this._collisionTriggers, this._genericTriggers];
+    let cache = this._spawnIndexCache;
+    let valid = !!cache && cache.lists.length === lists.length;
+    for (let i = 0; valid && i < lists.length; i++) {
+      if (cache.lists[i] !== lists[i] || cache.lens[i] !== (Array.isArray(lists[i]) ? lists[i].length : -1)) valid = false;
+    }
+    if (!valid) {
+      cache = this._spawnIndexCache = { lists, lens: lists.map(l => Array.isArray(l) ? l.length : -1), byGroup: new Map() };
+      for (const list of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const trig of list) {
+          if (!trig || !trig.spawnTriggered || !Array.isArray(trig.groups)) continue;
+          for (const g of new Set(trig.groups)) {
+            if (!(g > 0)) continue;
+            let entry = cache.byGroup.get(g);
+            if (!entry) cache.byGroup.set(g, entry = new Map());
+            let arr = entry.get(list);
+            if (!arr) entry.set(list, arr = []);
+            arr.push(trig);
+          }
+        }
+      }
+    }
+    return cache.byGroup.get(groupId) || _emptySpawnIndex;
+  }
+
   _activateSpawnedGroup(groupId, colorManager, remap = null) {
     const targetGroup = parseInt(groupId ?? 0, 10);
     if (!Number.isFinite(targetGroup) || targetGroup <= 0) return;
 
     const fired = this._spawnFiredUids;
     const firedNow = new Set();
-    const spawnMatches = (list) => (Array.isArray(list) ? list : [])
+    const byList = this._spawnGroupIndex(targetGroup);
+    const spawnMatches = (list) => (byList.get(list) || [])
       .filter(trig => {
-        if (!trig || !trig.spawnTriggered || !this._triggerHasGroup(trig, targetGroup) || !this._isTriggerSaveObjectLive(trig.uid)) return false;
+        if (!this._isTriggerSaveObjectLive(trig.uid)) return false;
         if (trig.multiTrigger) return true;
         if (fired.has(trig.uid) && !firedNow.has(trig.uid)) return false;
         fired.add(trig.uid);
@@ -5647,12 +5909,44 @@ window.LevelObject = class LevelObject {
 
     const glowMultiplier = this._getGlowAlphaMultiplier();
     if (glowMultiplier !== this._alphaAppliedGlowMultiplier) fullApply = true;
-    if (!fullApply && !changedGroups.size) return;
+    const pending = this._alphaPendingSprites;
+    if (!fullApply && !changedGroups.size && !pending?.size) return;
     this._alphaForceApply = false;
     this._alphaAppliedSrc = this._groupOpacity;
     this._alphaAppliedGlowMultiplier = glowMultiplier;
 
     const opacities = this._groupOpacity;
+    const applyAlpha = (spr, op) => {
+      const baseAlpha = spr._eeOrigAlpha ?? 1;
+      const targetAlpha = baseAlpha * op * (spr._eeIsGlowSprite ? glowMultiplier : 1) * (spr._eeApproachAlpha ?? 1);
+      if (typeof spr.setAlpha === "function") spr.setAlpha(targetAlpha);
+      if (spr._padParticleEmitter) {
+        if (typeof spr._padParticleEmitter.setAlpha === "function") spr._padParticleEmitter.setAlpha(targetAlpha);
+        if (typeof spr._padParticleEmitter.setVisible === "function") spr._padParticleEmitter.setVisible(targetAlpha > 0.01);
+      }
+    };
+    const topOpacity = (spr, fallback) => {
+      let op = fallback;
+      let lastGid = -Infinity;
+      for (const g of spr._eeGroups) {
+        const n = Number(g);
+        if (opacities[g] !== undefined && n > lastGid) {
+          lastGid = n;
+          op = opacities[g];
+        }
+      }
+      return op;
+    };
+    if (pending?.size) {
+      if (!fullApply) {
+        for (const spr of pending) {
+          if (!spr || !spr.active || spr._eeActive || !spr._eeGroups) continue;
+          const op = topOpacity(spr, undefined);
+          if (op !== undefined) applyAlpha(spr, op);
+        }
+      }
+      pending.clear();
+    }
     const groupIds = fullApply ? Object.keys(opacities) : changedGroups;
     for (const gid of groupIds) {
       const sprites = this._groupSprites[gid];
@@ -5661,24 +5955,8 @@ window.LevelObject = class LevelObject {
       for (const spr of sprites) {
         if (!spr || !spr.active) continue;
         if (spr._eeActive) continue;
-        let op = groupOp;
-        if (!fullApply && spr._eeGroups && spr._eeGroups.length > 1) {
-          let lastGid = -Infinity;
-          for (const g of spr._eeGroups) {
-            const n = Number(g);
-            if (opacities[g] !== undefined && n > lastGid) {
-              lastGid = n;
-              op = opacities[g];
-            }
-          }
-        }
-        const baseAlpha = spr._eeOrigAlpha ?? 1;
-        const targetAlpha = baseAlpha * op * (spr._eeIsGlowSprite ? glowMultiplier : 1) * (spr._eeApproachAlpha ?? 1);
-        if (typeof spr.setAlpha === "function") spr.setAlpha(targetAlpha);
-        if (spr._padParticleEmitter) {
-          if (typeof spr._padParticleEmitter.setAlpha === "function") spr._padParticleEmitter.setAlpha(targetAlpha);
-          if (typeof spr._padParticleEmitter.setVisible === "function") spr._padParticleEmitter.setVisible(targetAlpha > 0.01);
-        }
+        const op = !fullApply && spr._eeGroups && spr._eeGroups.length > 1 ? topOpacity(spr, groupOp) : groupOp;
+        applyAlpha(spr, op);
       }
     }
   }
@@ -6006,8 +6284,6 @@ window.LevelObject = class LevelObject {
     const targetGroup = parseInt(trig.targetGroup ?? 0, 10);
     if (!Number.isFinite(targetGroup) || targetGroup <= 0) return;
     const activate = !!trig.activate;
-    this._alphaForceApply = true;
-    this._colorDirty = true;
     this._groupToggledOff ||= {};
     if (activate) {
       delete this._groupToggledOff[targetGroup];
@@ -6029,6 +6305,10 @@ window.LevelObject = class LevelObject {
       const guideHidden = (spr._eePortalGuide && window.enablePortalGuide === false) || (spr._eeOrbGuide && window.enableOrbGuide === false) || spr._beastStaticHidden === true;
       const isVisible = !guideHidden && spr._eeToggledOffGroups.size === 0;
       if (typeof spr.setVisible === "function") spr.setVisible(isVisible);
+      if (isVisible && !spr.active) {
+        (this._colorPendingSprites ||= new Set()).add(spr);
+        (this._alphaPendingSprites ||= new Set()).add(spr);
+      }
       spr.active = isVisible;
     }
 
@@ -6787,7 +7067,13 @@ window.LevelObject = class LevelObject {
         this._activePulses.splice(i, 1);
       } else { i++; }
     }
-    if (groupOps.size) this._colorDirty = true;
+    if (groupOps.size) {
+      const pend = this._colorPendingSprites ||= new Set();
+      for (const groupId of groupOps.keys()) {
+        const sprites = this._groupSprites[groupId];
+        if (sprites) for (const spr of sprites) if (spr) pend.add(spr);
+      }
+    }
     const pulseBaseByChannel = new Map();
     for (const [groupId, op] of groupOps) {
       const sprites = this._groupSprites[groupId];
@@ -6853,7 +7139,7 @@ window.LevelObject = class LevelObject {
       });
     }
     for (const [channel, op] of channelOps) {
-      if (!op.pulsed) this._colorDirty = true;
+      if (!op.pulsed) (this._colorPendingChannels ||= new Set()).add(String(channel));
       const chSprites = this._colorChannelSprites[channel];
       if (!chSprites) continue;
       for (const spr of chSprites) {
@@ -7019,6 +7305,10 @@ window.LevelObject = class LevelObject {
     let full = dirty;
     const changed = this._colorChangedChannels || (this._colorChangedChannels = []);
     changed.length = 0;
+    const pendSprites = this._colorPendingSprites;
+    const pendChannels = this._colorPendingChannels;
+    if (pendSprites?.size || pendChannels?.size) dirty = true;
+    if (pendChannels) for (const c of pendChannels) changed.push(c);
     const lastHex = this._colorLastHex || (this._colorLastHex = {});
     const lastHas = this._colorLastHas || (this._colorLastHas = {});
     const lastOp = this._colorLastOp || (this._colorLastOp = {});
@@ -7068,6 +7358,7 @@ window.LevelObject = class LevelObject {
       }
       this._applyChannelAlpha(spr, colorManager);
     };
+    const pendSprites = this._colorPendingSprites;
     if (!this._colorFullApply) {
       const byChannel = this._visibleColorByChannel;
       const changed = this._colorChangedChannels;
@@ -7083,8 +7374,15 @@ window.LevelObject = class LevelObject {
           tintSprite(spr);
         }
       }
+      if (pendSprites) {
+        for (const spr of pendSprites) if (!done.has(spr)) tintSprite(spr);
+        pendSprites.clear();
+      }
+      this._colorPendingChannels?.clear();
       return;
     }
+    pendSprites?.clear();
+    this._colorPendingChannels?.clear();
     const byChannel = {};
     const addTo = (chId, spr) => {
       const key = String(chId);

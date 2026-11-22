@@ -13,6 +13,11 @@ window.currentWave   = localStorage.getItem("iconCurrentWave")   || "dart_01";
 window.currentSpider = localStorage.getItem("iconCurrentSpider") || "spider_01";
 window.currentSwing  = localStorage.getItem("iconCurrentSwing")  || "swing_01";
 window.currentBird   = localStorage.getItem("iconCurrentBird")   || "bird_01";
+if (window.glowColor == null) {
+  const storedGlow = localStorage.getItem("iconGlowColor");
+  window.glowColor = storedGlow ? parseInt(storedGlow, 16) : window.secondaryColor;
+}
+window.glowEnabled = localStorage.getItem("iconGlow") === "1";
 const storedUseDirectInternet = localStorage.getItem("gd_useDirectInternet");
 window.useDirectInternet = storedUseDirectInternet === null ? true : storedUseDirectInternet === "true";
 window.getGdApiBase = function () {
@@ -131,9 +136,9 @@ const fs = 1000;
 const gs = 1001;
 
 
-window.ICON_COUNTS = { icon: 485, ship: 169, ball: 119, wave: 96, ufo: 149, robot: 68, spider: 69 };
+window.ICON_COUNTS = { icon: 485, ship: 169, ball: 119, wave: 96, ufo: 149, robot: 68, spider: 69, swing: 43 };
 
-const ICON_BASE_RE = /^((?:player_ball|player|ship|dart|bird|spider|robot)_\d{2,3})(?:_.*)?_001\.png$/;
+const ICON_BASE_RE = /^((?:player_ball|player|ship|dart|bird|spider|robot|swing)_\d{2,3})(?:_.*)?_001\.png$/;
 window._iconAtlasFailed  = window._iconAtlasFailed  || new Set();
 window._iconAtlasPending = window._iconAtlasPending || new Set();
 
@@ -151,7 +156,8 @@ function iconAtlasPath(base) {
 function getEquippedIconBases() {
   const robot = window.currentRobot || localStorage.getItem("iconCurrentRobot") || "robot_01";
   const list = [window.currentPlayer, window.currentShip, window.currentBall,
-                window.currentWave, window.currentBird, window.currentSpider, robot];
+                window.currentWave, window.currentBird, window.currentSpider, robot,
+                window.currentSwing || localStorage.getItem("iconCurrentSwing") || "swing_01"];
   const out = [];
   for (const v of list) {
     const b = iconBaseOf(String(v || "") + "_001.png");
@@ -282,8 +288,8 @@ function _ensureIconLoaderHooks(scene) {
   });
 }
 function getAllIconBases() {
-  const c = Object.assign({ icon: 485, ship: 169, ball: 119, wave: 96, ufo: 149, robot: 68, spider: 69 }, window.ICON_COUNTS || {});
-  const prefixes = { icon: "player", ship: "ship", ball: "player_ball", wave: "dart", ufo: "bird", robot: "robot", spider: "spider" };
+  const c = Object.assign({ icon: 485, ship: 169, ball: 119, wave: 96, ufo: 149, robot: 68, spider: 69, swing: 43 }, window.ICON_COUNTS || {});
+  const prefixes = { icon: "player", ship: "ship", ball: "player_ball", wave: "dart", ufo: "bird", robot: "robot", spider: "spider", swing: "swing" };
   const seen = new Set(getEquippedIconBases());
   const out = Array.from(seen);
   for (const k of Object.keys(prefixes)) {

@@ -14,7 +14,8 @@
   const flag = (raw, key) => String(rv(raw, key) ?? "0") === "1";
   const groupsOf = (raw) => String(rv(raw, 57) ?? "").split(".").map(Number).filter(n => n > 0);
 
-  const ADV_FOLLOW_KEYS = [292, 293, 298, 299, 300, 301, 308, 309, 334, 335, 357, 358, 359, 360, 361, 362, 558, 559, 561, 562];
+  const ADV_FOLLOW_KEYS = [292, 293, 298, 299, 300, 301, 308, 309, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 340, 357, 358, 359, 360, 361, 362, 363, 364, 558, 559, 561, 562, 563, 564, 566, 567, 568, 569];
+  const followTargetOf = (raw) => flag(raw, 138) ? -1 : flag(raw, 200) ? -2 : flag(raw, 201) ? -3 : int(raw, 71);
 
   proto.resetAdvancedTriggers = function () {
     this._advFollows = [];
@@ -48,18 +49,30 @@
       spawnGroup: int(raw, 71),
       spawnDelay,
       rotation: num(raw, 6),
+      direction: int(raw, 536),
+      revolutions: int(raw, 537),
       scaleX: num(raw, 128, 1) * scale,
       scaleY: num(raw, 129, 1) * scale
     });
   };
 
   proto._parseAdvancedTrigger = function (trig, raw, id) {
-    if (id === 3016) {
-      trig.followTarget = flag(raw, 138) ? -1 : flag(raw, 200) ? -2 : flag(raw, 201) ? -3 : int(raw, 71);
+    if (id === 3016 || id === 3660 || id === 3661) {
+      trig.followTarget = followTargetOf(raw);
       trig.p = {};
       for (const k of ADV_FOLLOW_KEYS) trig.p[k] = num(raw, k);
       trig.xOnly = flag(raw, 306);
       trig.yOnly = flag(raw, 307);
+      trig.steerLowOn = flag(raw, 337);
+      trig.steerHighOn = flag(raw, 338);
+      trig.targetDir = flag(raw, 305);
+      trig.rotateDir = flag(raw, 339);
+      trig.startSpeedRef = int(raw, 560);
+      trig.startDirRef = int(raw, 565);
+      trig.startMode = int(raw, 572);
+      trig.controlId = int(raw, 534);
+      trig.useControlId = flag(raw, 535);
+      trig.followId = id;
       trig.mode = int(raw, 367);
       return;
     }
@@ -67,9 +80,20 @@
     trig.timeMod = num(raw, 520);
     trig.posXMod = num(raw, 521);
     trig.posYMod = num(raw, 545) || trig.posXMod;
+    trig.rotMod = num(raw, 522);
+    trig.scaleXMod = num(raw, 523);
+    trig.scaleYMod = num(raw, 546) || trig.scaleXMod;
   };
 
   proto._fireAdvancedTrigger = function (trig) {
+    if (trig.kind === "advFollow" && trig.followId === 3660) {
+      this._editAdvancedFollow(trig);
+      return;
+    }
+    if (trig.kind === "advFollow" && trig.followId === 3661) {
+      this._retargetAdvancedFollow(trig);
+      return;
+    }
     if (trig.kind === "advFollow") {
       if (!(trig.targetGroup > 0)) return;
       const p = trig.p;
@@ -77,8 +101,26 @@
       this._advFollows = this._advFollows.filter(f => !(f.trig === trig));
       this._advFollows.push({
         trig,
+        followTarget: trig.followTarget,
         vx: 0,
         vy: 0,
+        dirX: 0,
+        dirY: 0,
+        angle: 0,
+        steerSmooth: 0,
+        rot: 0,
+        started: false,
+        startSpeed: p[300] + p[301] * r(),
+        startDir: p[563] + p[564] * r(),
+        steer: p[316] + p[317] * r(),
+        steerLow: p[318] + p[319] * r(),
+        steerHigh: p[320] + p[321] * r(),
+        speedLow: p[322] + p[323] * r(),
+        speedHigh: p[324] + p[325] * r(),
+        breakForce: p[326] + p[327] * r(),
+        breakAngle: p[328] + p[329] * r(),
+        breakSteer: p[330] + p[331] * r(),
+        breakLimit: p[332] + p[333] * r(),
         delay: Math.max(0, p[292] + p[293] * r()),
         maxSpeed: p[298] + p[299] * r(),
         maxRange: p[308] + p[309] * r(),
@@ -95,7 +137,7 @@
   };
 
   proto._advTargetPos = function (follow) {
-    const target = follow.trig.followTarget;
+    const target = follow.followTarget;
     if (target === -1 || target === -2) {
       const ticks = Math.round(follow.delay / TICK);
       const hist = this._advHistory;
@@ -145,6 +187,42 @@
     return { x: c.cx, y: T - c.cy };
   };
 
+  proto._followSpeedVal = function (dirDeg, speed, ref1, ref2, objPos) {
+    let ang = (90 - dirDeg) * Math.PI / 180;
+    const refPos = (ref1 > 0 && this._advGroupRef(ref1, true)) || (ref2 > 0 && this._advGroupRef(ref2, true)) || null;
+    if (refPos && objPos) {
+      const vx = objPos.x - refPos.x;
+      const vy = objPos.y - refPos.y;
+      if (vx !== 0 || vy !== 0) ang += Math.atan2(vy, vx) + Math.PI / 2;
+    }
+    return { x: speed * Math.cos(ang), y: speed * Math.sin(ang) };
+  };
+
+  proto._matchFollows = function (trig) {
+    return (this._advFollows || []).filter(f => trig.useControlId
+      ? f.trig.controlId === trig.targetGroup
+      : (trig.followId === 3661 ? f.trig.groups?.includes?.(trig.targetGroup) : f.trig.targetGroup === trig.targetGroup));
+  };
+
+  proto._editAdvancedFollow = function (trig) {
+    const p = trig.p;
+    const r = () => Math.random() * 2 - 1;
+    for (const f of this._matchFollows(trig)) {
+      f.vx *= p[566] + p[567] * r();
+      f.vy *= p[568] + p[569] * r();
+      const speed = p[300] + p[301] * r();
+      if (speed === 0) continue;
+      const add = this._followSpeedVal(p[563] + p[564] * r(), speed, trig.startSpeedRef, trig.startDirRef, this._advGroupRef(f.trig.targetGroup));
+      if (!trig.xOnly) f.vy += add.y;
+      if (!trig.yOnly) f.vx += add.x;
+    }
+  };
+
+  proto._retargetAdvancedFollow = function (trig) {
+    if (!trig.followTarget) return;
+    for (const f of this._matchFollows(trig)) f.followTarget = trig.followTarget;
+  };
+
   proto._stepAdvancedFollow = function (follow, dirty) {
     const trig = follow.trig;
     const target = this._advTargetPos(follow);
@@ -158,25 +236,89 @@
     if (trig.xOnly) dy = 0;
     else if (trig.yOnly) dx = 0;
     if (follow.maxRange !== 0 && dist > follow.maxRange) return;
-    if (trig.mode === 1 || trig.mode === 2) {
-      let accel = follow.accel * 0.01;
-      let friction = follow.friction * 0.01;
-      if (follow.nearDist > 0 && dist < follow.nearDist) {
-        const t = 1 - dist / follow.nearDist;
-        accel += (follow.nearAccel * 0.01 - accel) * t;
-        friction += (follow.nearFriction * 0.01 - friction) * t;
+    if (!follow.started) {
+      follow.started = true;
+      if (follow.startSpeed !== 0) {
+        const sv = this._followSpeedVal(follow.startDir, follow.startSpeed, trig.startSpeedRef, trig.startDirRef, ref);
+        if (trig.startMode === 2) {
+          follow.vx += sv.x;
+          follow.vy += sv.y;
+        } else {
+          follow.vx = sv.x;
+          follow.vy = sv.y;
+        }
       }
-      if (friction !== 0) {
-        if (!trig.xOnly || trig.yOnly) follow.vx -= follow.vx * friction;
-        if (!trig.yOnly || trig.xOnly) follow.vy -= follow.vy * friction;
+    }
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const accelBase = follow.accel * 0.01;
+    if (trig.mode === 2) {
+      if (follow.dirX === 0 && follow.dirY === 0) {
+        follow.dirX = ux;
+        follow.dirY = uy;
       }
-      const len = Math.hypot(dx, dy) || 1;
-      if (!trig.yOnly) follow.vx += (dx / len) * accel;
-      if (!trig.xOnly) follow.vy += (dy / len) * accel;
+      const speed = Math.hypot(follow.vx, follow.vy);
+      let steer;
+      if (trig.steerLowOn && speed <= follow.speedLow) steer = follow.steerLow;
+      else {
+        steer = follow.steer;
+        if (trig.steerHighOn && speed >= follow.speedHigh) steer = follow.steerHigh;
+      }
+      let diff = Math.atan2(uy, ux) - Math.atan2(follow.dirY, follow.dirX);
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const brake = follow.breakForce * 0.01;
+      const brakeAngle = follow.breakAngle * Math.PI / 180;
+      if (brake > 0 && speed > follow.breakLimit && Math.abs(diff) > brakeAngle) steer = follow.breakSteer;
+      follow.steerSmooth += (steer * 0.01 - follow.steerSmooth) / 10;
+      const s = follow.steerSmooth;
+      const turn = diff >= 0 ? Math.min(diff, s) : Math.max(diff, -s);
+      if (turn !== 0) {
+        const c = Math.cos(turn), sn = Math.sin(turn);
+        const vx = follow.vx, vy = follow.vy;
+        if (!trig.yOnly) follow.vx = vx * c - vy * sn;
+        if (!trig.xOnly) follow.vy = vx * sn + vy * c;
+        const da = Math.atan2(follow.dirY, follow.dirX) + turn;
+        follow.dirX = Math.cos(da);
+        follow.dirY = Math.sin(da);
+      }
+      if (brake > 0 && brakeAngle < Math.abs(diff - turn)) {
+        const bx = Math.abs(brake * follow.dirX), by = Math.abs(brake * follow.dirY);
+        if (!trig.xOnly) follow.vy -= Math.max(-by, Math.min(by, follow.vy));
+        if (!trig.yOnly) follow.vx -= Math.max(-bx, Math.min(bx, follow.vx));
+      }
+      const ax = trig.targetDir ? ux : follow.dirX;
+      const ay = trig.targetDir ? uy : follow.dirY;
+      if (!trig.xOnly) follow.vy += accelBase * ay;
+      if (!trig.yOnly) follow.vx += accelBase * ax;
     } else {
-      const div = Math.max(1, follow.easing);
-      if (!trig.yOnly) follow.vx = dx / div;
-      if (!trig.xOnly) follow.vy = dy / div;
+      if (trig.mode === 1) {
+        let accel = accelBase;
+        let friction = follow.friction * 0.01;
+        if (follow.nearDist > 0 && dist < follow.nearDist) {
+          const t = 1 - dist / follow.nearDist;
+          accel += (follow.nearAccel * 0.01 - accel) * t;
+          friction += (follow.nearFriction * 0.01 - friction) * t;
+        }
+        if (friction !== 0) {
+          if (!trig.xOnly) follow.vy -= follow.vy * friction;
+          if (!trig.yOnly) follow.vx -= follow.vx * friction;
+        }
+        if (!trig.yOnly) follow.vx += ux * accel;
+        if (!trig.xOnly) follow.vy += uy * accel;
+      } else {
+        const div = Math.max(1, follow.easing);
+        if (!trig.yOnly) follow.vx = dx / div;
+        if (!trig.xOnly) follow.vy = dy / div;
+      }
+      if (dist >= trig.p[364]) follow.angle = Math.atan2(follow.vy, follow.vx);
+      const cur = Math.atan2(follow.dirY, follow.dirX);
+      let d = follow.angle - cur;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const na = cur + d / Math.max(1, trig.p[363]);
+      follow.dirX = Math.cos(na);
+      follow.dirY = Math.sin(na);
     }
     const maxSpeed = follow.maxSpeed;
     if (maxSpeed > 0) {
@@ -192,8 +334,21 @@
         }
       }
     }
-    let mx = trig.yOnly ? 0 : follow.vx;
-    let my = trig.xOnly ? 0 : follow.vy;
+    if (trig.rotateDir) {
+      let delta = (Math.atan2(follow.dirY, follow.dirX) * -57.29578 + 90 + trig.p[340]) - follow.rot;
+      while (delta > 180) delta -= 360;
+      while (delta < -180) delta += 360;
+      const step = delta * 0.25;
+      if (step !== 0) {
+        follow.rot += step;
+        const rd = this._groupRotations[trig.targetGroup] ||= { totalRad: 0, centerGroupId: trig.targetGroup, lockRotation: false };
+        rd.totalRad += step * Math.PI / 180;
+        if (!rd.centerGroupId) rd.centerGroupId = trig.targetGroup;
+        dirty.add(trig.targetGroup);
+      }
+    }
+    const mx = trig.yOnly ? 0 : follow.vx;
+    const my = trig.xOnly ? 0 : follow.vy;
     if (mx === 0 && my === 0) return;
     const off = this._groupOffsets[trig.targetGroup] ||= { x: 0, y: 0 };
     off.x += mx * 2;
@@ -220,6 +375,19 @@
         isRef: k.refOnly && i > 0 && (k.closeLoop || i < n - 1)
       }));
       if (list[n - 1].closeLoop) entries.push({ k: base, x: base.x, y: base.y, dur: timeMod * base.duration, isRef: false });
+      let absRot = base.rotation;
+      for (let e = 0; e < entries.length; e++) {
+        const k = entries[e].k;
+        if (e > 0) {
+          let d = k.rotation - entries[e - 1].k.rotation;
+          if (d > 180 || (d > 0 && k.direction === 2)) d -= 360;
+          else if (d < -180 || (d < 0 && k.direction === 1)) d += 360;
+          absRot += d + k.revolutions * 360;
+        }
+        entries[e].rot = trig.rotMod * (absRot - base.rotation);
+        entries[e].sx = 1 + trig.scaleXMod * ((base.scaleX ? k.scaleX / base.scaleX : 1) - 1);
+        entries[e].sy = 1 + trig.scaleYMod * ((base.scaleY ? k.scaleY / base.scaleY : 1) - 1);
+      }
       const runs = [];
       let i = 0;
       while (i < entries.length - 1) {
@@ -255,7 +423,7 @@
       }
       if (!runs.length) continue;
       this._keyframeAnims = this._keyframeAnims.filter(a => !(a.animId === animId && a.target === target));
-      this._keyframeAnims.push({ trig, animId, target, runs, run: 0, elapsed: 0, lastX: base.x, lastY: base.y });
+      this._keyframeAnims.push({ trig, animId, target, runs, run: 0, elapsed: 0, lastX: base.x, lastY: base.y, lastRot: 0, lastSx: 1, lastSy: 1 });
     }
   };
 
@@ -269,6 +437,16 @@
     return { x: pts[s].x + (pts[s + 1].x - pts[s].x) * f, y: pts[s].y + (pts[s + 1].y - pts[s].y) * f };
   };
 
+  proto._keyframeRunTransform = function (run, t) {
+    const { times, pts } = run;
+    let s = 0;
+    while (s < times.length - 2 && t > times[s + 1]) s++;
+    const span = times[s + 1] - times[s];
+    const f = span > 0 ? Math.max(0, Math.min(1, (t - times[s]) / span)) : 1;
+    const a = pts[s], b = pts[s + 1];
+    return { rot: a.rot + (b.rot - a.rot) * f, sx: a.sx + (b.sx - a.sx) * f, sy: a.sy + (b.sy - a.sy) * f };
+  };
+
   proto._stepKeyframeAnims = function (dt, dirty) {
     const anims = this._keyframeAnims;
     for (let a = anims.length - 1; a >= 0; a--) {
@@ -276,12 +454,14 @@
       anim.elapsed += dt;
       let run = anim.runs[anim.run];
       let pos;
+      let tf;
       while (true) {
         if (anim.elapsed < run.total) {
           const k = run.main.k;
           const lin = run.total > 0 ? anim.elapsed / run.total : 1;
           const eased = k.easing ? Easing.sample(k.easing, k.rate, lin) : lin;
           pos = this._keyframeRunPos(run, eased * run.total);
+          tf = this._keyframeRunTransform(run, eased * run.total);
           break;
         }
         anim.elapsed -= run.total;
@@ -291,6 +471,7 @@
         if (anim.run >= anim.runs.length) {
           const end = run.pts[run.pts.length - 1];
           pos = { x: end.x, y: end.y };
+          tf = { rot: end.rot, sx: end.sx, sy: end.sy };
           anims.splice(a, 1);
           break;
         }
@@ -300,6 +481,24 @@
       const ddy = pos.y - anim.lastY;
       anim.lastX = pos.x;
       anim.lastY = pos.y;
+      const pivot = anim.trig.centerGroup > 0 ? anim.trig.centerGroup : anim.target;
+      if (tf && tf.rot !== anim.lastRot) {
+        const rot = this._groupRotations[anim.target] ||= { totalRad: 0, centerGroupId: pivot, lockRotation: false };
+        rot.totalRad += (tf.rot - anim.lastRot) * Math.PI / 180;
+        rot.centerGroupId = pivot;
+        anim.lastRot = tf.rot;
+        dirty.add(anim.target);
+      }
+      if (tf && (tf.sx !== anim.lastSx || tf.sy !== anim.lastSy) && anim.lastSx && anim.lastSy) {
+        this._hasGroupScales = true;
+        const sc = this._groupScales[anim.target] ||= { sx: 1, sy: 1, centerGroupId: pivot, onlyMove: false };
+        sc.sx *= tf.sx / anim.lastSx;
+        sc.sy *= tf.sy / anim.lastSy;
+        sc.centerGroupId = pivot;
+        anim.lastSx = tf.sx;
+        anim.lastSy = tf.sy;
+        dirty.add(anim.target);
+      }
       if (ddx === 0 && ddy === 0) continue;
       const off = this._groupOffsets[anim.target] ||= { x: 0, y: 0 };
       off.x += ddx;

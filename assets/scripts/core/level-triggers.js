@@ -57,6 +57,8 @@
     3612: "mgSpeed",
     3662: "linkVisible",
     3016: "advFollow",
+    3660: "advFollow",
+    3661: "advFollow",
     2903: "gradient",
     3033: "keyframeAnim"
   };
@@ -1005,10 +1007,10 @@
   };
 
   proto._activateSpawnedGenericTriggers = function (targetGroup, colorManager, remap = null) {
-    const triggers = this._genericTriggers;
+    const triggers = this._spawnGroupIndex(parseInt(targetGroup ?? 0, 10)).get(this._genericTriggers);
+    if (!triggers) return;
     for (let i = 0; i < triggers.length; i++) {
       const trig = triggers[i];
-      if (!trig.spawnTriggered || !this._triggerHasGroup(trig, targetGroup)) continue;
       if (!trig.multiTrigger) {
         if (this._genericFired.has(trig.uid)) continue;
         this._genericFired.add(trig.uid);

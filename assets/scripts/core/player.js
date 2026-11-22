@@ -373,8 +373,10 @@ function ds(scene, x, y, frameName, depth, isVisible) {
   let image = scene.add.image(x, y, atlasData.atlas, atlasData.frame);
   image.setDepth(depth);
   image.setVisible(isVisible);
+  const kind = /_glow_001\.png$/.test(frameName) ? "glow" : /_2_001\.png$/.test(frameName) ? "overlay" : /_extra_001\.png$/.test(frameName) ? "extra" : "base";
   return {
-    sprite: image
+    sprite: image,
+    kind
   };
 }
 
@@ -399,7 +401,7 @@ function _makeAtlasLayer(scene, x, y, textureKey, frameName, depth, isVisible, t
   image.setDepth(depth);
   image.setVisible(isVisible);
   if (tint !== null && tint !== undefined) image.setTint(tint);
-  if (kind === "glow") image._glowEnabled = false;
+  if (kind === "glow") image._glowEnabled = !!window.glowEnabled;
   return {
     sprite: image,
     kind,
@@ -516,9 +518,27 @@ class PlayerObject {
   _secondaryColor() {
     return this._invertPlayerColors ? window.mainColor : window.secondaryColor;
   }
+  _glowColor() {
+    return window.glowColor ?? this._secondaryColor();
+  }
+  setGlowEnabled(on) {
+    on = !!on;
+    const groups = [this._playerLayers, this._shipLayers, this._ballLayers, this._waveLayers, this._swingLayers, this._spiderLayers, this._robotLayers, this._birdLayers];
+    for (const group of groups) {
+      if (!group) continue;
+      const base = group.find(layer => layer?.sprite && layer.kind !== "glow");
+      for (const layer of group) {
+        if (!layer?.sprite || layer.kind !== "glow") continue;
+        layer.sprite._glowEnabled = on;
+        layer.sprite.setTint(this._glowColor());
+        layer.sprite.setVisible(on && !!base?.sprite?.visible);
+      }
+    }
+  }
   _tintForLayerKind(kind) {
     if (kind === "base") return this._primaryColor();
-    if (kind === "overlay" || kind === "glow") return this._secondaryColor();
+    if (kind === "glow") return this._glowColor();
+    if (kind === "overlay") return this._secondaryColor();
     return null;
   }
   setInvertedColors(inverted) {
@@ -538,21 +558,21 @@ class PlayerObject {
     };
     for (const layer of (this._allLayers || [])) applyLayer(layer);
     if (this._playerSpriteLayer?.sprite && !this._playerSpriteLayer.sprite._customCubeIcon) this._playerSpriteLayer.sprite.setTint(this._primaryColor());
-    if (this._playerGlowLayer?.sprite) this._playerGlowLayer.sprite.setTint(this._secondaryColor());
+    if (this._playerGlowLayer?.sprite) this._playerGlowLayer.sprite.setTint(this._glowColor());
     if (this._playerOverlayLayer?.sprite) this._playerOverlayLayer.sprite.setTint(this._secondaryColor());
     if (this._shipSpriteLayer?.sprite) this._shipSpriteLayer.sprite.setTint(this._primaryColor());
-    if (this._shipGlowLayer?.sprite) this._shipGlowLayer.sprite.setTint(this._secondaryColor());
+    if (this._shipGlowLayer?.sprite) this._shipGlowLayer.sprite.setTint(this._glowColor());
     if (this._shipOverlayLayer?.sprite) this._shipOverlayLayer.sprite.setTint(this._secondaryColor());
     if (this._swingSpriteLayer?.sprite) this._swingSpriteLayer.sprite.setTint(this._primaryColor());
     if (this._swingOverlayLayer?.sprite) this._swingOverlayLayer.sprite.setTint(this._secondaryColor());
     if (this._ballSpriteLayer?.sprite) this._ballSpriteLayer.sprite.setTint(this._primaryColor());
-    if (this._ballGlowLayer?.sprite) this._ballGlowLayer.sprite.setTint(this._secondaryColor());
+    if (this._ballGlowLayer?.sprite) this._ballGlowLayer.sprite.setTint(this._glowColor());
     if (this._ballOverlayLayer?.sprite) this._ballOverlayLayer.sprite.setTint(this._secondaryColor());
     if (this._waveSpriteLayer?.sprite) this._waveSpriteLayer.sprite.setTint(this._primaryColor());
-    if (this._waveGlowLayer?.sprite) this._waveGlowLayer.sprite.setTint(this._secondaryColor());
+    if (this._waveGlowLayer?.sprite) this._waveGlowLayer.sprite.setTint(this._glowColor());
     if (this._waveOverlayLayer?.sprite) this._waveOverlayLayer.sprite.setTint(this._secondaryColor());
     if (this._birdSpriteLayer?.sprite) this._birdSpriteLayer.sprite.setTint(this._primaryColor());
-    if (this._birdGlowLayer?.sprite) this._birdGlowLayer.sprite.setTint(this._secondaryColor());
+    if (this._birdGlowLayer?.sprite) this._birdGlowLayer.sprite.setTint(this._glowColor());
     if (this._birdOverlayLayer?.sprite) this._birdOverlayLayer.sprite.setTint(this._secondaryColor());
     if (this._particleEmitter) this._particleEmitter.tint = this._primaryColor();
     if (this._landEmitter1) this._landEmitter1.tint = this._primaryColor();
@@ -846,17 +866,51 @@ class PlayerObject {
     }
     return true;
   }
+  _frameDelta(dx, dy) {
+    const level = this._scene?._level;
+    if (level?.direction < 0) dx = -dx;
+    if (level?.gameplaySideways) return [-dy, -dx];
+    return [dx, dy];
+  }
+  _frameAngleRange(min, max) {
+    const level = this._scene?._level;
+    let lo = min, hi = max;
+    if (level?.direction < 0) [lo, hi] = [180 - hi, 180 - lo];
+    if (level?.gameplaySideways) [lo, hi] = [270 - hi, 270 - lo];
+    return { min: lo, max: hi };
+  }
+  _framePointToScreen(frameX, gameY) {
+    if (this._scene?._inSidewaysStep) return [gameY, b(frameX)];
+    return [frameX, b(gameY)];
+  }
+  _applyParticleFrame() {
+    const setup = [
+      [this._particleEmitter, 225, 315, 600],
+      [this._flyParticleEmitter, 225, 315, 600],
+      [this._flyParticle2Emitter, 180, 360, 600],
+      [this._landEmitter1, 210, 330, 1000],
+      [this._landEmitter2, 210, 330, 1000]
+    ];
+    for (const [emitter, min, max, gravity] of setup) {
+      if (!emitter) continue;
+      emitter.particleAngle = this._frameAngleRange(min, max);
+      const [gx, gy] = this._frameDelta(0, gravity);
+      emitter.gravityX = gx;
+      emitter.gravityY = gy;
+    }
+  }
   _spawnSpiderTeleportEffects(oldGameY, newGameY) {
     if (this._scene?._editorPlaytestActive || !this.p.isSpider) return;
     const duration = 0.5;
     const circleDuration = 0.4;
     const teleportTint = _mixColors(0xffffff, this._primaryColor(), 0.42);
-    const worldX = Number.isFinite(Number(this._scene?._playerWorldX)) ? Number(this._scene._playerWorldX) : 0;
-    const oldWorldY = b(oldGameY);
-    const newWorldY = b(newGameY);
+    const frameX = Number.isFinite(Number(this._scene?._playerWorldX)) ? Number(this._scene._playerWorldX) : 0;
+    const [oldX, oldWorldY] = this._framePointToScreen(frameX, oldGameY);
+    const [newX, newWorldY] = this._framePointToScreen(frameX, newGameY);
+    const midX = (oldX + newX) * 0.5;
     const midWorldY = (oldWorldY + newWorldY) * 0.5;
-    const goingUpOnScreen = newWorldY < oldWorldY;
-    const oldCircle = this._scene.add.circle(worldX, oldWorldY, 30, teleportTint, 0.45);
+    const goingUpInFrame = b(newGameY) < b(oldGameY);
+    const oldCircle = this._scene.add.circle(oldX, oldWorldY, 30, teleportTint, 0.45);
     oldCircle.setDepth(7.5);
     oldCircle.setBlendMode(S);
     oldCircle.setScale(0.85);
@@ -876,7 +930,8 @@ class PlayerObject {
       }
     });
 
-    const circle = this._scene.add.circle(worldX, newWorldY, 44, teleportTint, 1);
+    const circle = this._scene.add.circle(newX, newWorldY, 44, teleportTint, 1);
+    const [trailX, trailY] = this._frameDelta(this.p.mirrored ? 28 : -28, 0);
     circle.setDepth(7.55);
     circle.setBlendMode(S);
     circle.setScale(1.25);
@@ -884,7 +939,8 @@ class PlayerObject {
     this._spiderTeleportCircles.push(circle);
     this._scene.tweens.add({
       targets: circle,
-      x: worldX + (this.p.mirrored ? 28 : -28),
+      x: newX + trailX,
+      y: newWorldY + trailY,
       scaleX: 0.05,
       scaleY: 0.05,
       alpha: 0,
@@ -901,14 +957,18 @@ class PlayerObject {
       this._spiderDashEffectTimer = duration;
       this._spiderDashEffectDuration = duration;
       this._spiderDashEffectSprite.setTexture("GJ_GameSheet04", "spiderDash_001.png");
-      this._spiderDashEffectSprite.x = worldX;
+      this._spiderDashEffectSprite.x = midX;
       this._spiderDashEffectSprite.y = midWorldY;
-      this._spiderDashEffectSprite.rotation = Phaser.Math.DegToRad(goingUpOnScreen ? 90 : -90);
+      const dashAngle = goingUpInFrame ? 90 : -90;
+      const framedAngle = this._frameAngleRange(dashAngle, dashAngle).min;
+      this._spiderDashEffectSprite.rotation = Phaser.Math.DegToRad(framedAngle);
       const baseLength = 400;
-      const teleportDistance = Math.abs(newWorldY - oldWorldY);
+      const teleportDistance = Math.abs(newGameY - oldGameY);
       const dashLength = Math.max(0.12, teleportDistance / baseLength);
+      const level = this._scene?._level;
+      const reflections = (level?.direction < 0 ? 1 : 0) + (level?.gameplaySideways ? 1 : 0);
       this._spiderDashEffectSprite.scaleX = dashLength;
-      this._spiderDashEffectSprite.scaleY = 0.8;
+      this._spiderDashEffectSprite.scaleY = reflections % 2 ? -0.8 : 0.8;
       this._spiderDashEffectSprite.setTint(teleportTint);
       this._spiderDashEffectSprite.setAlpha(1);
       this._spiderDashEffectSprite.setVisible(true);
@@ -1307,8 +1367,8 @@ class PlayerObject {
     this._playerOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentPlayer}_2_001.png`, 8, true);
     this._playerExtraLayer = ds(spriteY, particleY, spriteX, `${window.currentPlayer}_extra_001.png`, 12, true);
     if (this._playerGlowLayer) {
-      this._playerGlowLayer.sprite.setTint(this._secondaryColor());
-      this._playerGlowLayer.sprite._glowEnabled = false;
+      this._playerGlowLayer.sprite.setTint(this._glowColor());
+      this._playerGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
     }
     if (this._playerSpriteLayer) {
       this._playerSpriteLayer.sprite.setTint(this._primaryColor());
@@ -1327,8 +1387,8 @@ class PlayerObject {
     this._shipOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentShip}_2_001.png`, 8, false);
     this._shipExtraLayer = ds(spriteY, particleY, spriteX, `${window.currentShip}_extra_001.png`, 12, false);
     if (this._shipGlowLayer) {
-      this._shipGlowLayer.sprite.setTint(this._secondaryColor());
-      this._shipGlowLayer.sprite._glowEnabled = false;
+      this._shipGlowLayer.sprite.setTint(this._glowColor());
+      this._shipGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
     }
     if (this._shipSpriteLayer) {
       this._shipSpriteLayer.sprite.setTint(this._primaryColor());
@@ -1358,8 +1418,8 @@ class PlayerObject {
     this._ballSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentBall}_001.png`, 10, false);
     this._ballOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentBall}_2_001.png`, 8, false);
     if (this._ballGlowLayer) {
-      this._ballGlowLayer.sprite.setTint(this._secondaryColor());
-      this._ballGlowLayer.sprite._glowEnabled = false;
+      this._ballGlowLayer.sprite.setTint(this._glowColor());
+      this._ballGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
     }
     if (this._ballSpriteLayer) {
       this._ballSpriteLayer.sprite.setTint(this._primaryColor());
@@ -1372,8 +1432,8 @@ class PlayerObject {
     this._waveExtraLayer = null;
     this._waveSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentWave}_001.png`, 10, false);
     if (this._waveGlowLayer) {
-      this._waveGlowLayer.sprite.setTint(this._secondaryColor());
-      this._waveGlowLayer.sprite._glowEnabled = false;
+      this._waveGlowLayer.sprite.setTint(this._glowColor());
+      this._waveGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
     }
     if (this._waveSpriteLayer) {
       this._waveSpriteLayer.sprite.setTint(this._primaryColor());
@@ -1385,12 +1445,17 @@ class PlayerObject {
     this.shipSprite = this._shipSpriteLayer.sprite;
     this._playerLayers = [this._playerSpriteLayer, this._playerGlowLayer, this._playerOverlayLayer, this._playerExtraLayer];
     this._shipLayers = [this._shipSpriteLayer, this._shipGlowLayer, this._shipOverlayLayer, this._shipExtraLayer];
+    this._swingGlowLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_glow_001.png`, 9, false);
+    if (this._swingGlowLayer) {
+      this._swingGlowLayer.sprite.setTint(this._glowColor());
+      this._swingGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
+    }
     this._swingSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_001.png`, 10, false);
     this._swingOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_2_001.png`, 8, false);
     this._swingExtraLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_extra_001.png`, 12, false);
     if (this._swingSpriteLayer) this._swingSpriteLayer.sprite.setTint(this._primaryColor());
     if (this._swingOverlayLayer) this._swingOverlayLayer.sprite.setTint(this._secondaryColor());
-    this._swingLayers = [this._swingSpriteLayer, this._swingOverlayLayer, this._swingExtraLayer].filter(_0x37ad93 => !!_0x37ad93);
+    this._swingLayers = [this._swingSpriteLayer, this._swingGlowLayer, this._swingOverlayLayer, this._swingExtraLayer].filter(_0x37ad93 => !!_0x37ad93);
     this._ballLayers = [this._ballSpriteLayer, this._ballGlowLayer, this._ballOverlayLayer].filter(_0x37ad93 => !!_0x37ad93);
     this._waveLayers = [this._waveSpriteLayer, this._waveOverlayLayer, this._waveExtraLayer, this._waveGlowLayer].filter(_0x37ad93 => !!_0x37ad93);
     this._initSpiderAnimationParts(spriteY, particleY, spriteX);
@@ -1411,8 +1476,8 @@ class PlayerObject {
       this._birdSpriteLayer.sprite.setTint(this._primaryColor());
     }
     if (this._birdGlowLayer) {
-      this._birdGlowLayer.sprite.setTint(this._secondaryColor());
-      this._birdGlowLayer.sprite._glowEnabled = false;
+      this._birdGlowLayer.sprite.setTint(this._glowColor());
+      this._birdGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
     }
     if (this._birdOverlayLayer) {
       this._birdOverlayLayer.sprite.setTint(this._secondaryColor());
@@ -1698,10 +1763,11 @@ class PlayerObject {
       const lit = this.p.gravityFlipped ? burst.offsetY > 0 : burst.offsetY < 0;
       const lx = -9.5 * mini * mirror;
       const ly = burst.offsetY * mini;
-      burst.emitter.particleX = worldX + lx * cos - ly * sin;
-      burst.emitter.particleY = worldY + lx * sin + ly * cos;
+      const [bx, by] = this._frameDelta(lx * cos - ly * sin, lx * sin + ly * cos);
+      burst.emitter.particleX = worldX + bx;
+      burst.emitter.particleY = worldY + by;
       const angle = (this.p.mirrored ? 180 - burst.baseAngle : burst.baseAngle) + rotation * 180 / Math.PI;
-      burst.emitter.particleAngle = { min: angle - 10, max: angle + 10 };
+      burst.emitter.particleAngle = this._frameAngleRange(angle - 10, angle + 10);
       if (lit && !burst.active) burst.emitter.start();
       else if (!lit && burst.active) burst.emitter.stop();
       burst.active = lit;
@@ -1746,8 +1812,14 @@ class PlayerObject {
     }
     const _0x119eb7 = this._scene._playerWorldX;
     const _0x519d38 = b(this.p.y);
-    this._particleEmitter.particleX = _0x119eb7 - 20;
-    this._particleEmitter.particleY = _0x519d38 + (this.p.gravityFlipped ? (-26 + (this.p.isUfo ? -5 : 0)) : (26 + (this.p.isUfo ? 5 : 0)));
+    const frameKey = (this._scene?._level?.direction < 0 ? 1 : 0) + (this._scene?._level?.gameplaySideways ? 2 : 0);
+    if (frameKey !== this._particleFrameKey) {
+      this._particleFrameKey = frameKey;
+      this._applyParticleFrame();
+    }
+    const [dustX, dustY] = this._frameDelta(-20, this.p.gravityFlipped ? (-26 + (this.p.isUfo ? -5 : 0)) : (26 + (this.p.isUfo ? 5 : 0)));
+    this._particleEmitter.particleX = _0x119eb7 + dustX;
+    this._particleEmitter.particleY = _0x519d38 + dustY;
     const _0x4436ac = this.p.onGround && !this.p.isFlying && !this.p.isWave;
     if (_0x4436ac && !this._particleActive) {
       this._particleEmitter.start();
@@ -1761,14 +1833,16 @@ class PlayerObject {
       const _0x26ec65 = Math.sin(this._rotation);
       const _0x216018 = this.p.isSwing ? -10 * (this.p.isMini ? 0.6 : 1) : (this.p.isWave ? 0 : (this.p.isUfo ? 0 : -24));
       const _0x2baeac = this.p.isSwing ? 0 : (this.p.isWave ? 4 : (this.p.isUfo ? 5 : 18)) * (this.p.gravityFlipped ? -1 : 1);
-      const _0x75c380 = _0x119eb7 + _0x216018 * _0xe76a85 - _0x2baeac * _0x26ec65;
-      const _0x2b31d7 = _0x519d38 + _0x216018 * _0x26ec65 + _0x2baeac * _0xe76a85;
+      const fireDX = _0x216018 * _0xe76a85 - _0x2baeac * _0x26ec65;
+      const fireDY = _0x216018 * _0x26ec65 + _0x2baeac * _0xe76a85;
       const _0x5d66f4 = (Math.random() * 2 - 1) * 2 * 2;
-      this._flyParticleEmitter.particleX = _0x75c380;
-      this._flyParticleEmitter.particleY = _0x2b31d7 + _0x5d66f4;
-      this._flyParticle2Emitter.particleX = _0x75c380;
-      this._flyParticle2Emitter.particleY = _0x2b31d7 + _0x5d66f4;
-      this._streak.setPosition(this.p.isWave || this.p.isUfo || this.p.isSwing ? _0x75c380 : _0x75c380 + 8, _0x2b31d7);
+      const [flyX, flyY] = this._frameDelta(fireDX, fireDY + _0x5d66f4);
+      this._flyParticleEmitter.particleX = _0x119eb7 + flyX;
+      this._flyParticleEmitter.particleY = _0x519d38 + flyY;
+      this._flyParticle2Emitter.particleX = _0x119eb7 + flyX;
+      this._flyParticle2Emitter.particleY = _0x519d38 + flyY;
+      const [streakX, streakY] = this._frameDelta(this.p.isWave || this.p.isUfo || this.p.isSwing ? fireDX : fireDX + 8, fireDY);
+      this._streak.setPosition(_0x119eb7 + streakX, _0x519d38 + streakY);
       this._waveTrail.setPosition(_0x119eb7, _0x519d38);
     }
     this._streak.update(_0x5af874);
@@ -1891,7 +1965,7 @@ class PlayerObject {
   setSwingVisible(_0x9b2d71) {
     for (const layer of (this._swingLayers || [])) {
       if (!layer?.sprite) continue;
-      layer.sprite.setVisible(_0x9b2d71);
+      layer.sprite.setVisible(layer.kind === "glow" ? _0x9b2d71 && !!layer.sprite._glowEnabled : _0x9b2d71);
     }
     if (!_0x9b2d71 && this._swingFires) {
       for (const fire of Object.values(this._swingFires)) fire.sprite.setVisible(false);
@@ -1994,16 +2068,32 @@ class PlayerObject {
   }
   syncSprites(cameraX, cameraY, _0x3afedf, mirrorOffset) {
     const result = this._syncSpritesInner(cameraX, cameraY, _0x3afedf, mirrorOffset);
-    if (this._scene?._level?.gameplaySideways) this._reflectSidewaysSprites();
+    const level = this._scene?._level;
+    if (level?.direction < 0) this._reflectReversedSprites();
+    if (level?.gameplaySideways) this._reflectSidewaysSprites();
     return result;
+  }
+  _framedSprites() {
+    const sprites = (this._allLayers || []).map(layer => layer?.sprite);
+    if (this._swingFires) for (const fire of Object.values(this._swingFires)) sprites.push(fire.sprite);
+    if (this._robotJumpFlameSprite) sprites.push(this._robotJumpFlameSprite);
+    return sprites;
+  }
+  _reflectReversedSprites() {
+    const px = this._lastScreenX;
+    if (!Number.isFinite(px)) return;
+    for (const sprite of this._framedSprites()) {
+      if (!sprite || !sprite.visible) continue;
+      sprite.x = 2 * px - sprite.x;
+      sprite.rotation = -sprite.rotation;
+      sprite.scaleX = -sprite.scaleX;
+    }
   }
   _reflectSidewaysSprites() {
     const px = this._lastScreenX;
     const py = this._lastScreenY;
     if (!Number.isFinite(px) || !Number.isFinite(py)) return;
-    const sprites = (this._allLayers || []).map(layer => layer?.sprite);
-    if (this._swingFires) for (const fire of Object.values(this._swingFires)) sprites.push(fire.sprite);
-    if (this._robotJumpFlameSprite) sprites.push(this._robotJumpFlameSprite);
+    const sprites = this._framedSprites();
     for (const sprite of sprites) {
       if (!sprite || !sprite.visible) continue;
       const dx = sprite.x - px;
@@ -2761,9 +2851,9 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       if (!window.enableLDM) {
         this._landIdx = !this._landIdx;
         const _0x31584b = this._landIdx ? this._landEmitter1 : this._landEmitter2;
-        const _0x2248d5 = this._scene._playerWorldX;
-        const _0x17e0bb = this.p.gravityFlipped ? b(this.p.y) - 30 : b(this.p.y) + 30;
-        _0x31584b.explode(10, _0x2248d5, _0x17e0bb);
+        const [baseX, baseY] = this._framePointToScreen(this._scene._playerWorldX, this.p.y);
+        const [landX, landY] = this._frameDelta(0, this.p.gravityFlipped ? -30 : 30);
+        _0x31584b.explode(10, baseX + landX, baseY + landY);
       }
     }
   }
@@ -5181,7 +5271,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           if (!this._isObjectActivated(gameObj)) {
             this._setObjectActivated(gameObj, true);
             this._playPortalShine(gameObj);
-            this._scene._disableDualMode();
+            this._scene._disableDualMode(this);
           }
         } else if (_colType === speedType) {
           if (!this._isObjectActivated(gameObj)) {
