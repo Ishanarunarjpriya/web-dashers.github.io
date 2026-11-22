@@ -3572,6 +3572,15 @@ window.LevelObject = class LevelObject {
           }
 
           const childObjectData = { ...levelObj, rot: childrotated };
+          const childRot = Number(childDef.rot) || 0;
+          const childQuarterTurns = Math.round(childRot / 90);
+          if (childQuarterTurns % 2 !== 0 && Math.abs(childRot - childQuarterTurns * 90) < 0.01 && !gdObjectWarp(levelObj)) {
+            const parentScale = gdObjectScale(levelObj);
+            if (parentScale.x !== parentScale.y) {
+              childObjectData.scaleX = parentScale.y;
+              childObjectData.scaleY = parentScale.x;
+            }
+          }
           const childVisualDef = {
             ...childDef,
             can_color: (childDef.black === true || childDef.tint === 0)

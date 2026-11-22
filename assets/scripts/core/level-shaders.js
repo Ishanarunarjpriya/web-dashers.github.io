@@ -583,6 +583,36 @@ void main()
     }
   }
   window.GDShaderPipeline = GDShaderPipeline;
+  window.ensureShaderProgramCache = function (renderer) {
+    if (!renderer || renderer._eeProgramCache || typeof renderer.createProgram !== "function") return;
+    const cache = renderer._eeProgramCache = new Map();
+    const create = renderer.createProgram;
+    const remove = renderer.deleteProgram;
+    function programKey(vs, fs) { return vs + "\u0000" + fs; }
+    renderer.createProgram = function (vs, fs) {
+      const key = programKey(vs, fs);
+      const hit = cache.get(key);
+      if (hit && hit.webGLProgram) return hit;
+      const program = create.call(this, vs, fs);
+      cache.set(key, program);
+      return program;
+    };
+    renderer.deleteProgram = function (program) {
+      if (program && cache.get(programKey(program.vertexSource, program.fragmentSource)) === program) return this;
+      return remove.call(this, program);
+    };
+  };
+  window.prewarmGDShader = function (scene) {
+    const renderer = scene?.renderer;
+    if (!renderer || !renderer.pipelines || renderer._eeGDShaderWarm) return;
+    window.ensureShaderProgramCache(renderer);
+    try {
+      const pipeline = new GDShaderPipeline(scene.game);
+      pipeline.boot();
+      pipeline.destroy();
+      renderer._eeGDShaderWarm = true;
+    } catch (e) {}
+  };
 
   const SHADER_DEFAULTS = {
     grayscale: 0,

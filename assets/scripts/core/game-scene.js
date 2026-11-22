@@ -518,6 +518,7 @@ class GameScene extends Phaser.Scene {
     };
     this._state = new PlayerState();
     this._level = new window.LevelObject(this, this._cameraXRef);
+    window.prewarmGDShader?.(this);
     this._levelEditor = new window.LevelEditor(this);
     this._orbGfx = null;
     this._orbGfxTimer = 0;
@@ -3191,29 +3192,26 @@ const startY = containerY + marginY + iconSize / 2;
  0x54367F, 0x432A63, 0xFCB5FF, 0xAF57AE, 0x824382, 0x5E315E, 0x808080, 0x66003E, 0x470034, 0xD2FF31, 0x76BDFF,
       ];
 
+      const _refreshAfterIconColorChange = () => {
+        if (this._player?._applyPlayerTints) this._player._applyPlayerTints();
+        _refreshPreview(_currentTab, _getPreviewFrame(_currentTab));
+        if (window.iconGridColored && this._rebuildIconGrid) this._rebuildIconGrid();
+      };
       const _applyMainColor = (color) => {
         window.mainColor = color;
         localStorage.setItem("iconMainColor", hexadecimalToHex(color));
-        if (this._player) {
-          if (this._player._particleEmitter) {
-            try { this._player._particleEmitter.tint = color; } catch (e) {}
-          }
-          if (this._player._applyPlayerTints) this._player._applyPlayerTints();
+        if (this._player?._particleEmitter) {
+          try { this._player._particleEmitter.tint = color; } catch (e) {}
         }
-        _refreshPreview(_currentTab, _getPreviewFrame(_currentTab));
-        if (window.iconGridColored && this._rebuildIconGrid) this._rebuildIconGrid();
+        _refreshAfterIconColorChange();
       };
       const _applySecondaryColor = (color) => {
         window.secondaryColor = color;
         localStorage.setItem("iconSecondaryColor", hexadecimalToHex(color));
-        if (this._player) {
-          if (this._player._streak) {
-            try { this._player._streak._color = color; } catch (e) {}
-          }
-          if (this._player._applyPlayerTints) this._player._applyPlayerTints();
+        if (this._player?._streak) {
+          try { this._player._streak._color = color; } catch (e) {}
         }
-        _refreshPreview(_currentTab, _getPreviewFrame(_currentTab));
-        if (window.iconGridColored && this._rebuildIconGrid) this._rebuildIconGrid();
+        _refreshAfterIconColorChange();
       };
       const _applyGlowColor = (color) => {
         window.glowColor = color;
@@ -3222,10 +3220,13 @@ const startY = containerY + marginY + iconSize / 2;
         _refreshPreview(_currentTab, _getPreviewFrame(_currentTab));
       };
 
+      const _destroyOverlayObjs = (objs) => {
+        for (const o of objs) { if (o && o.destroy) o.destroy(); }
+        this._iconOverlayObjects = this._iconOverlayObjects.filter(o => !objs.includes(o));
+      };
       let colorPageObjs = [];
       const _closeColorPage = () => {
-        for (const o of colorPageObjs) { if (o && o.destroy) o.destroy(); }
-        this._iconOverlayObjects = this._iconOverlayObjects.filter(o => !colorPageObjs.includes(o));
+        _destroyOverlayObjs(colorPageObjs);
         colorPageObjs = [];
       };
       const _openColorPage = () => {
@@ -3266,8 +3267,7 @@ const startY = containerY + marginY + iconSize / 2;
         const tabs = ["icon", "ship", "ball", "ufo", "wave", "robot", "spider", "swing"];
         let previewObjs = [];
         const _refreshColorPreview = () => {
-          for (const o of previewObjs) { if (o && o.destroy) o.destroy(); }
-          this._iconOverlayObjects = this._iconOverlayObjects.filter(o => !previewObjs.includes(o));
+          _destroyOverlayObjs(previewObjs);
           colorPageObjs = colorPageObjs.filter(o => !previewObjs.includes(o));
           previewObjs = [];
           const step = boxW / tabs.length;
@@ -3324,10 +3324,14 @@ const startY = containerY + marginY + iconSize / 2;
         grays.forEach((c, i) => posMap.set(c, { x: boxX + boxW - (grays.length - i - 0.5) * cell, y: grayY }));
 
         const sel = add(this.add.image(0, 0, "GJ_GameSheet03", "GJ_select_001.png").setScrollFactor(0).setDepth(D + 3).setScale(0.6 * btn / 30).setVisible(false));
+        const _modeColor = () => {
+          if (mode === "glow") return window.glowColor;
+          if (mode === "secondary") return window.secondaryColor;
+          return window.mainColor;
+        };
         const _refreshMarks = () => {
           for (const m of modeBtns) drawModeBtn(m, m.key === mode);
-          const cur = mode === "glow" ? window.glowColor : mode === "secondary" ? window.secondaryColor : window.mainColor;
-          const pos = posMap.get(cur);
+          const pos = posMap.get(_modeColor());
           if (pos) sel.setPosition(pos.x, pos.y).setVisible(true); else sel.setVisible(false);
           check.setTexture("GJ_GameSheet03", window.glowEnabled ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png");
           _refreshColorPreview();
@@ -3375,6 +3379,18 @@ const startY = containerY + marginY + iconSize / 2;
       const selectedIconGlow = this.add.image(sw / 2, previewY, _iconAtlas[startTab], null).setScrollFactor(0).setDepth(101.5).setVisible(false);
       const selectedIconDome = this.add.image(sw / 2, previewY, _iconAtlas[startTab], null).setScrollFactor(0).setDepth(101.8).setVisible(false);
       const selectedIcon = this.add.image(sw / 2, previewY, _iconAtlas[startTab], null).setScrollFactor(0).setDepth(103);
+      const _hidePreviewLayers = () => {
+        for (const img of [selectedIconExtra, selectedIconDetail, selectedIconGlow, selectedIconDome]) img.setVisible(false);
+      };
+      const _showPreviewLayer = (img, info, scale, y, tint) => {
+        if (!info) {
+          img.setVisible(false);
+          return;
+        }
+        img.setTexture(info.atlas, info.frame).setVisible(true).setScale(scale).setY(y);
+        if (tint === null) img.clearTint();
+        else img.setTint(tint);
+      };
       let selectedSegmentedPreview = null;
 
       const _destroySegmentedPreview = () => {
@@ -3464,19 +3480,13 @@ const startY = containerY + marginY + iconSize / 2;
  selectedIcon.setVisible(true).setTexture(this.textures.exists("custom_cube_icon_hd") ? "custom_cube_icon_hd" : "custom_cube_icon").setTint(0xffffff);
  const cs = Math.min(80 / (selectedIcon.width || 80), 80 / (selectedIcon.height || 80)) * 0.85;
  selectedIcon.setScale(cs);
- selectedIconExtra.setVisible(false);
- selectedIconDetail.setVisible(false);
- selectedIconGlow.setVisible(false);
- selectedIconDome.setVisible(false);
+ _hidePreviewLayers();
  return;
  }
         if (_isSegmentedIconTab(tab)) {
           _destroySegmentedPreview();
           selectedIcon.setVisible(false);
-          selectedIconExtra.setVisible(false);
-          selectedIconDetail.setVisible(false);
-          selectedIconGlow.setVisible(false);
-          selectedIconDome.setVisible(false);
+          _hidePreviewLayers();
  const _pb = iconBaseOf(frame);
  if (_pb && !iconAtlasReady(this, _pb) && !window._iconAtlasFailed.has(_pb)) {
  loadIconAtlases(this, [_pb], () => {
@@ -3505,24 +3515,10 @@ const startY = containerY + marginY + iconSize / 2;
         } else {
           selectedIconExtra.setVisible(false);
         }
-        const detailInfo = getAtlasFrame(this, frame.replace("_001.png", "_extra_001.png"));
-        if (detailInfo) {
-          selectedIconDetail.setTexture(detailInfo.atlas, detailInfo.frame).setVisible(true).setScale(s).setY(previewY + _pv(tab).y).clearTint();
-        } else {
-          selectedIconDetail.setVisible(false);
-        }
-        const glowInfo = window.glowEnabled ? getAtlasFrame(this, frame.replace("_001.png", "_glow_001.png")) : null;
-        if (glowInfo) {
-          selectedIconGlow.setTexture(glowInfo.atlas, glowInfo.frame).setVisible(true).setScale(s).setY(previewY + _pv(tab).y).setTint(window.glowColor);
-        } else {
-          selectedIconGlow.setVisible(false);
-        }
-        const domeInfo = getAtlasFrame(this, frame.replace("_001.png", "_3_001.png"));
-        if (domeInfo) {
-          selectedIconDome.setTexture(domeInfo.atlas, domeInfo.frame).setVisible(true).setScale(s).setY(previewY + _pv(tab).y).clearTint();
-        } else {
-          selectedIconDome.setVisible(false);
-        }
+        const layerY = previewY + _pv(tab).y;
+        _showPreviewLayer(selectedIconDetail, getAtlasFrame(this, frame.replace("_001.png", "_extra_001.png")), s, layerY, null);
+        _showPreviewLayer(selectedIconGlow, window.glowEnabled ? getAtlasFrame(this, frame.replace("_001.png", "_glow_001.png")) : null, s, layerY, window.glowColor);
+        _showPreviewLayer(selectedIconDome, getAtlasFrame(this, frame.replace("_001.png", "_3_001.png")), s, layerY, null);
       };
 
       _refreshPreview(startTab, _getPreviewFrame(startTab));
@@ -9815,6 +9811,7 @@ _showwippopup() {
       return;
     }
     const pipelines = this.renderer.pipelines;
+    window.ensureShaderProgramCache?.(this.renderer);
     if (!pipelines.postPipelineClasses.has("GDShaderPipeline")) pipelines.addPostPipeline("GDShaderPipeline", window.GDShaderPipeline);
     let pipeline = camera.getPostPipeline("GDShaderPipeline");
     if (!pipeline || Array.isArray(pipeline)) {

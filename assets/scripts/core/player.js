@@ -373,11 +373,17 @@ function ds(scene, x, y, frameName, depth, isVisible) {
   let image = scene.add.image(x, y, atlasData.atlas, atlasData.frame);
   image.setDepth(depth);
   image.setVisible(isVisible);
-  const kind = /_glow_001\.png$/.test(frameName) ? "glow" : /_2_001\.png$/.test(frameName) ? "overlay" : /_extra_001\.png$/.test(frameName) ? "extra" : "base";
   return {
     sprite: image,
-    kind
+    kind: _layerKindForFrame(frameName)
   };
+}
+
+function _layerKindForFrame(frameName) {
+  if (/_glow_001\.png$/.test(frameName)) return "glow";
+  if (/_2_001\.png$/.test(frameName)) return "overlay";
+  if (/_extra_001\.png$/.test(frameName)) return "extra";
+  return "base";
 }
 
 function _textureHasFrameSafe(scene, textureKey, frameName) {
@@ -520,6 +526,11 @@ class PlayerObject {
   }
   _glowColor() {
     return window.glowColor ?? this._secondaryColor();
+  }
+  _initGlowLayer(layer) {
+    if (!layer) return;
+    layer.sprite.setTint(this._glowColor());
+    layer.sprite._glowEnabled = !!window.glowEnabled;
   }
   setGlowEnabled(on) {
     on = !!on;
@@ -1366,10 +1377,7 @@ class PlayerObject {
     this._playerSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentPlayer}_001.png`, 10, true);
     this._playerOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentPlayer}_2_001.png`, 8, true);
     this._playerExtraLayer = ds(spriteY, particleY, spriteX, `${window.currentPlayer}_extra_001.png`, 12, true);
-    if (this._playerGlowLayer) {
-      this._playerGlowLayer.sprite.setTint(this._glowColor());
-      this._playerGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
-    }
+    this._initGlowLayer(this._playerGlowLayer);
     if (this._playerSpriteLayer) {
       this._playerSpriteLayer.sprite.setTint(this._primaryColor());
     } else {
@@ -1386,10 +1394,7 @@ class PlayerObject {
     this._shipSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentShip}_001.png`, 10, false);
     this._shipOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentShip}_2_001.png`, 8, false);
     this._shipExtraLayer = ds(spriteY, particleY, spriteX, `${window.currentShip}_extra_001.png`, 12, false);
-    if (this._shipGlowLayer) {
-      this._shipGlowLayer.sprite.setTint(this._glowColor());
-      this._shipGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
-    }
+    this._initGlowLayer(this._shipGlowLayer);
     if (this._shipSpriteLayer) {
       this._shipSpriteLayer.sprite.setTint(this._primaryColor());
     } else {
@@ -1417,10 +1422,7 @@ class PlayerObject {
     this._ballGlowLayer = ds(spriteY, particleY, spriteX, `${window.currentBall}_glow_001.png`, 9, false);
     this._ballSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentBall}_001.png`, 10, false);
     this._ballOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentBall}_2_001.png`, 8, false);
-    if (this._ballGlowLayer) {
-      this._ballGlowLayer.sprite.setTint(this._glowColor());
-      this._ballGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
-    }
+    this._initGlowLayer(this._ballGlowLayer);
     if (this._ballSpriteLayer) {
       this._ballSpriteLayer.sprite.setTint(this._primaryColor());
     }
@@ -1431,10 +1433,7 @@ class PlayerObject {
     this._waveOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentWave}_2_001.png`, 8, false);
     this._waveExtraLayer = null;
     this._waveSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentWave}_001.png`, 10, false);
-    if (this._waveGlowLayer) {
-      this._waveGlowLayer.sprite.setTint(this._glowColor());
-      this._waveGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
-    }
+    this._initGlowLayer(this._waveGlowLayer);
     if (this._waveSpriteLayer) {
       this._waveSpriteLayer.sprite.setTint(this._primaryColor());
     }
@@ -1446,10 +1445,7 @@ class PlayerObject {
     this._playerLayers = [this._playerSpriteLayer, this._playerGlowLayer, this._playerOverlayLayer, this._playerExtraLayer];
     this._shipLayers = [this._shipSpriteLayer, this._shipGlowLayer, this._shipOverlayLayer, this._shipExtraLayer];
     this._swingGlowLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_glow_001.png`, 9, false);
-    if (this._swingGlowLayer) {
-      this._swingGlowLayer.sprite.setTint(this._glowColor());
-      this._swingGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
-    }
+    this._initGlowLayer(this._swingGlowLayer);
     this._swingSpriteLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_001.png`, 10, false);
     this._swingOverlayLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_2_001.png`, 8, false);
     this._swingExtraLayer = ds(spriteY, particleY, spriteX, `${window.currentSwing}_extra_001.png`, 12, false);
@@ -1475,10 +1471,7 @@ class PlayerObject {
     if (this._birdSpriteLayer) {
       this._birdSpriteLayer.sprite.setTint(this._primaryColor());
     }
-    if (this._birdGlowLayer) {
-      this._birdGlowLayer.sprite.setTint(this._glowColor());
-      this._birdGlowLayer.sprite._glowEnabled = !!window.glowEnabled;
-    }
+    this._initGlowLayer(this._birdGlowLayer);
     if (this._birdOverlayLayer) {
       this._birdOverlayLayer.sprite.setTint(this._secondaryColor());
     }
