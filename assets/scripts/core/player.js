@@ -5458,7 +5458,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           const _orbId = gameObj.orbId;
           const _isDash = (_orbId === 1704 || _orbId === 1751);
           const justPressed = this.p.upKeyDown && !this.p.wasUpKeyDown;
-          const _needsClick = !_orbInputConsumedThisStep && !this.p._orbActivationConsumedForPress && ((this.p.isFlying || this.p.isUfo) ? justPressed : (justPressed || (this.p.queuedHold && this.p.upKeyDown)));
+          const _needsClick = !_orbInputConsumedThisStep && !this.p._orbActivationConsumedForPress && ((this.p.isFlying || this.p.isUfo || this.p.isWave || this.p.isSwing) ? justPressed : (justPressed || (this.p.queuedHold && this.p.upKeyDown)));
           this.p.touchingRing = true;
           if ((gameObj.multiActivate || !this._isObjectActivated(gameObj)) && _needsClick) {
             this._orbpadHitEffect(gameObj, true);
