@@ -60,7 +60,9 @@
     3660: "advFollow",
     3661: "advFollow",
     2903: "gradient",
-    3033: "keyframeAnim"
+    3033: "keyframeAnim",
+    3604: "event",
+    3609: "instantCollision"
   };
   const HIDDEN_TRIGGER_IDS = [
     1913, 1914, 1916, 1917, 1931, 1932, 1934, 2015, 2016, 2062, 2066, 2899, 2900, 2901, 2903, 2904, 2905, 2907, 2909, 2910,
@@ -232,6 +234,16 @@
       this._parseAdvancedTrigger?.(trig, raw, parseInt(levelObj.id, 10));
     } else if (kind === "gradient") {
       this._parseGradientTrigger?.(trig, raw);
+    } else if (kind === "event") {
+      trig.events = String(rawValue(raw, 430) ?? "").split(".").map(v => parseInt(v, 10)).filter(v => v > 0);
+      trig.extraId = rawInt(raw, 447);
+      trig.extraId2 = rawInt(raw, 525);
+    } else if (kind === "instantCollision") {
+      trig.blockA = rawInt(raw, 80);
+      trig.blockB = rawInt(raw, 95);
+      trig.p1 = rawBool(raw, 138);
+      trig.p2 = rawBool(raw, 200);
+      trig.playerPair = rawBool(raw, 201);
     } else if (kind === "cameraEdge") {
       trig.edge = rawInt(raw, 164);
       trig.edgeTarget = rawInt(raw, 51);
@@ -339,6 +351,8 @@
     this.resetGradients?.();
     this.staticCamera = null;
     this.cameraEdges = null;
+    this._eventLinks = [];
+    this._eventStamps = new Map();
     this._genericTriggerIdx = 0;
     this._genericFired = new Set();
     this._genericTouching = new Map();
@@ -410,6 +424,46 @@
       col.h = col._eeInitialH;
     }
     this._scaledColliders.clear();
+  };
+
+  proto.gameEvent = function (eventId, extraId = 0, extraId2 = 0) {
+    const links = this._eventLinks;
+    if (!links || !links.length) return;
+    const stamp = this._scene?._physicsTick ?? 0;
+    const stamps = this._eventStamps;
+    const key = eventId * 100000000 + extraId * 10000 + extraId2;
+    if (stamps?.get(key) === stamp) return;
+    (this._eventStamps ||= new Map()).set(key, stamp);
+    for (const link of links) {
+      if (link.extraId !== extraId || (link.extraId2 !== extraId2 && link.extraId2 !== 0)) continue;
+      if (!link.events.includes(eventId) || this._isTriggerToggledOff(link)) continue;
+      this._spawnGroupNow(link.targetGroup);
+    }
+  };
+
+  proto._playerCollisionBox = function (blockId) {
+    if (blockId !== 10000 && blockId !== 10001) return null;
+    const scene = this._scene;
+    const state = blockId === 10000 ? scene?._state : (scene?._isDual ? scene._state2 : null);
+    if (!state) return null;
+    return { x: Number(scene._playerWorldX) || 0, y: Number(state.y) || 0, half: typeof playerSize === "number" ? playerSize : 20 };
+  };
+
+  proto._collisionIdsTouch = function (idA, idB) {
+    const pa = this._playerCollisionBox(idA);
+    const pb = this._playerCollisionBox(idB);
+    if (!pa && !pb) return this._collisionBlocksTouch(idA, idB);
+    if (pa && pb) return Math.abs(pa.x - pb.x) < pa.half + pb.half && Math.abs(pa.y - pb.y) < pa.half + pb.half;
+    const player = pa || pb;
+    const otherId = pa ? idB : idA;
+    const scratch = this._collisionScratch || (this._collisionScratch = { x: 0, y: 0 });
+    for (const block of this._collisionBlocks) {
+      if (block.blockId !== otherId || !this._isCollisionBlockEnabled(block)) continue;
+      this._getCombinedGroupOffset(block, scratch);
+      const reach = block.half + player.half;
+      if (Math.abs(block.x + scratch.x - player.x) < reach && Math.abs(block.y + scratch.y - player.y) < reach) return true;
+    }
+    return false;
   };
 
   proto._spawnGroupNow = function (groupId) {
@@ -591,6 +645,17 @@
       this._fireAdvancedTrigger?.(trig);
     } else if (kind === "gradient") {
       this._fireGradientTrigger?.(trig);
+    } else if (kind === "event") {
+      if (trig.targetGroup > 0 && trig.events.length && !(this._eventLinks ||= []).includes(trig)) this._eventLinks.push(trig);
+    } else if (kind === "instantCollision") {
+      let hit;
+      if (trig.playerPair) {
+        hit = this._collisionIdsTouch(10000, 10001);
+      } else {
+        hit = this._collisionIdsTouch(trig.p1 ? 10000 : trig.p2 ? 10001 : trig.blockA, trig.blockB);
+        if (!hit && trig.p1 && trig.p2) hit = this._collisionIdsTouch(10001, trig.blockB);
+      }
+      this._spawnGroupNow(hit ? trig.targetGroup : trig.centerGroup);
     } else if (kind === "cameraEdge") {
       if (trig.edge >= 1 && trig.edge <= 4) (this.cameraEdges ||= {})[trig.edge] = trig.edgeTarget;
     } else if (kind === "cameraMode") {
@@ -618,6 +683,7 @@
       if (!trig.channelOnly) this._scene?._rotateGameplay?.(trig);
     } else if (kind === "reverse") {
       this.direction = (this.direction || 1) * -1;
+      this.gameEvent(75);
       this._directionDirty = true;
     } else if (kind === "gravity") {
       if (trig.p1) this.p1GravityScale = trig.gravity;

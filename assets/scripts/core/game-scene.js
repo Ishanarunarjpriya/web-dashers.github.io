@@ -167,6 +167,7 @@ class PracticeMode {
       timestamp: Date.now()
     };
     this.checkpoints.push(checkpoint);
+    scene._level?.gameEvent?.(60);
     const checkpointSprite = scene.add.image(playerWorldX, b(playerState.y), "GJ_GameSheet02", "checkpoint_01_001.png")
       .setOrigin(0.5, 0.5)
       .setScrollFactor(1)
@@ -8421,6 +8422,7 @@ _showwippopup() {
     const p2Disabled = !!this._level?.p2ControlsDisabled;
     if (p1Disabled && (!this._isDual || p2Disabled)) return;
     if (!this._slideIn && !this._state.isDead && !cancelInput) {
+      this._level?.gameEvent?.(69);
       this._state.upKeyDown = true;
       this._state.upKeyPressed = true;
       this._state.queuedHold = true;
@@ -8482,6 +8484,7 @@ _showwippopup() {
 
   }
   _releaseButton(ignoreMacro = false) {
+    if (this._state.upKeyDown) this._level?.gameEvent?.(70);
     this._state.robotTouchedPad = true;
     this._state2.robotTouchedPad = true;
     this._state.upKeyDown = false;
@@ -8859,6 +8862,7 @@ _showwippopup() {
       this._restartLevel();
       return;
     }
+    this._level?.gameEvent?.(64);
     this._deathTimer = 0;
     this._deathSoundPlayed = false;
     this._newBestShown = false;

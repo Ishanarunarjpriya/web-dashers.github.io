@@ -3,6 +3,12 @@ class PlayerState {
     this.reset();
   }
   reset() {
+    this._gdFallStartY = null;
+    this._gdLandFlag = true;
+    this._gdPrevFallVel = undefined;
+    this._gdWasFalling = false;
+    this._gdPrevHeld = undefined;
+    this._gdPrevCeiling = false;
     this.y = 30;
     this.lastY = 30;
     this.lastGroundPosY = 30;
@@ -454,6 +460,14 @@ function _mixColors(colorA, colorB, amount) {
   const rb = Math.round(ab + (bb - ab) * t);
   return (rr << 16) | (gg << 8) | rb;
 }
+
+const PAD_EVENTS = { 35: 45, 140: 46, 1332: 47, 67: 48, 3005: 49 };
+const ORB_EVENTS = { 36: 34, 141: 35, 1333: 36, 84: 37, 1022: 38, 1330: 39, 1594: 40, 1704: 41, 1751: 42, 3004: 43, 3027: 44 };
+const PORTAL_EVENTS = {
+  portal_cube: 26, portal_fly: 27, portal_ball: 28, portal_robot: 31, portal_spider: 32, portal_swing: 33,
+  portal_gravity_toggle: 50, portal_gravity_down: 52, portal_gravity_up: 51, portal_mirror_on: 53, portal_mirror_off: 54,
+  portal_mini_off: 55, portal_mini_on: 56, portal_dual_on: 57, portal_dual_off: 58, portal_teleport: 59
+};
 
 class PlayerObject {
   constructor(scene, _0x3f50cc, _0x2811e1) {
@@ -2815,6 +2829,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
     if (this.p.jBlockTicks > 0 && !this.p.onGround) this._releaseJumpHold();
     this._slopeLaunchSpin = false;
     const _0x4a38a5 = !skipBurst && !this.p.onGround;
+    if (!this.p.onGround) this._landingGameEvent();
     if (!this.p.isFlying && !this.p.isWave && !this.p.isUfo) {
       this.p.lastGroundY = this.p.y;
     }
@@ -2871,6 +2886,67 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       1751: 0xff00ff
     };
     return colororb[Number(gameObj?.padId ?? gameObj?.orbId)] ?? this._primaryColor();
+  }
+
+  _stepGameEvents() {
+    const p = this.p;
+    const v = (p.gravityFlipped ? -1 : 1) * p.yVelocity / 2;
+    const prev = p._gdPrevFallVel;
+    p._gdPrevFallVel = v;
+    const falling = this.playerIsFalling();
+    if (p.onGround) p._gdFallStartY = p.y;
+    else if (falling && !p._gdWasFalling) p._gdFallStartY = p.y;
+    p._gdWasFalling = falling;
+    const held = !!p.upKeyDown;
+    const heldChanged = p._gdPrevHeld !== undefined && p._gdPrevHeld !== held;
+    p._gdPrevHeld = held;
+    const ceiling = !!p.onCeiling;
+    const hitCeiling = ceiling && !p._gdPrevCeiling;
+    p._gdPrevCeiling = ceiling;
+    const level = this._scene?._level;
+    if (!level?.gameEvent) return;
+    if (heldChanged && p.isFlying) level.gameEvent(held ? 16 : 17);
+    if (heldChanged && p.isWave) level.gameEvent(held ? 21 : 22);
+    if (hitCeiling && !p.gravityFlipped) level.gameEvent(6);
+    if (prev === undefined || this._slopeRiding) return;
+    if (v < -2 && prev > -2) level.gameEvent(76);
+    if (v < -7 && prev > -7) level.gameEvent(77);
+    if (v < -14 && prev > -14) level.gameEvent(78);
+  }
+
+  _landingGameEvent() {
+    const level = this._scene?._level;
+    if (!level?.gameEvent) return;
+    if (this.p.isWave) return;
+    const start = this.p._gdFallStartY;
+    if (start !== undefined && start !== null) {
+      const d = Math.abs(start - this.p.y) / 2;
+      if (d > 7.5) level.gameEvent(d > 450 ? 68 : d > 300 ? 67 : d > 150 ? 66 : 65);
+      this.p._gdFallStartY = null;
+    }
+    const v = (this.p.gravityFlipped ? 1 : -1) * this.p.yVelocity / 2;
+    const id = v > 14 ? 5 : v > 8 ? 4 : v > 4 ? 3 : v > 1 ? (this.p._gdLandFlag !== false ? 1 : 2) : 0;
+    this.p._gdLandFlag = true;
+    if (id) level.gameEvent(id);
+  }
+
+  _objectGameEvent(gameObj, colType) {
+    this.p._gdLandFlag = false;
+    const level = this._scene?._level;
+    if (!level?.gameEvent) return;
+    if (colType === jumpPadType) {
+      level.gameEvent(9);
+      const pad = PAD_EVENTS[gameObj.padId];
+      if (pad) level.gameEvent(pad);
+    } else if (colType === jumpRingType) {
+      level.gameEvent(8);
+      const orb = ORB_EVENTS[gameObj.orbId];
+      if (orb) level.gameEvent(orb);
+    } else {
+      const portal = colType === portalUfoType ? 29 : colType === portalWaveType ? 30 : PORTAL_EVENTS[colType];
+      if (portal) level.gameEvent(portal);
+      if (colType === "portal_teleport") level.gameEvent(25);
+    }
   }
 
   _orbpadHitEffect(gameObj) {
@@ -4031,6 +4107,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       }
       this.p.gravityFlipped = flipped;
       this._gdFlipTick = this._scene?._physicsTick;
+      this._scene?._level?.gameEvent?.(flipped ? 10 : 11);
       if (this.p.isSwing) this._updateSwingFireSide();
       this.p.yVelocity *= _0x11bbde;
       this.p.onGround = false;
@@ -4167,7 +4244,9 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
     if (parseInt(gameObj.objid ?? 0, 10) !== 143) return false;
     const linkedObjectId = Number.isInteger(gameObj._eeObjectId) ? gameObj._eeObjectId : null;
     if (linkedObjectId === null) return false;
-    return this._gameLayer?._breakblock?.(linkedObjectId) ?? false;
+    const broke = this._gameLayer?._breakblock?.(linkedObjectId) ?? false;
+    if (broke) this._scene?._level?.gameEvent?.(61);
+    return broke;
   }
 
   playerIsFalling() {
@@ -4226,6 +4305,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
     return 1.922398;
   }
   updateJump(_0x3d1c6f) {
+    this._stepGameEvents();
     if (this.p.pendingVelocity !== null) {
       this.p.yVelocity = this.p.pendingVelocity;
       this.p.pendingVelocity = null;
@@ -4246,6 +4326,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       if (!this.p.upKeyDown || this.p.onGround) {
         this.p.isDashing = false;
         this.p.dashYVelocity = 0;
+        this._scene?._level?.gameEvent?.(24);
       } else {
         this.p.yVelocity = this.p.dashYVelocity;
         return;
@@ -4267,6 +4348,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       this._updateSwingJump(_0x3d1c6f);
     } else if (this.p.upKeyDown && this.p.canJump) {
       this.p.isJumping = true;
+      this.p._gdLandFlag = false;
       this.p.onGround = false;
       this.p.canJump = false;
       this.p.upKeyPressed = false;
@@ -4274,6 +4356,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       this.p.yVelocity = this._gdTrunc(this.flipMod() * this._gdSpeedConsts().yStart * (this.p.isMini ? 0.8 : 1));
       this._applySlopeJumpBoost();
       this.runRotateAction();
+      this._scene?._level?.gameEvent?.(12);
     } else if (this.p.isJumping) {
       this.p.yVelocity = this._gdTrunc(this.p.yVelocity - this._gdSpeedConsts().grav * _0x3d1c6f * this.flipMod());
       if (this.playerIsFalling()) {
@@ -4388,6 +4471,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       this.p.onGround = false;
       this.flipGravity(!this.p.gravityFlipped, 0.8);
       this.p.yVelocity = this._gdTrunc(this.p.yVelocity);
+      this._scene?._level?.gameEvent?.(20);
     }
     const flip = this.flipMod();
     const gravityScale = this.p.gravityScale > 0 ? this.p.gravityScale : 1;
@@ -4471,6 +4555,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
         this.p.onGround = false;
         this.p.canJump = false;
         this.p.yVelocity *= 0.6;
+        this._scene?._level?.gameEvent?.(19);
          this._skipSlopeExit = true;
         return;
       }
@@ -4529,6 +4614,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
     if (this.p.upKeyPressed && this.p.canJump) {
       this.p.upKeyPressed = false;
       this.p.isJumping = true;
+      this.p._gdLandFlag = false;
       this.p.onGround = false;
       this.p.canJump = false;
       this.p.queuedHold = false;
@@ -4536,6 +4622,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       this.p.robotTouchedPad = false;
       this.p.yVelocity = this._gdTrunc(flip * c.yStart * 0.5 * (this.p.isMini ? 0.8 : 1));
       this._applySlopeJumpBoost();
+      this._scene?._level?.gameEvent?.(13);
       this.p._robotHold = true;
       this._robotJumpFlameActive = true;
       this._robotJumpFlamePulse = 0;
@@ -4584,6 +4671,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
         this.p.queuedHold = false;
       } else {
         const _ufoJump = this.p.isMini ? 13.6 : 14;
+        this._scene?._level?.gameEvent?.(15);
         if (this.p.yVelocity * flip < _ufoJump) {
           this.p.yVelocity = this._gdTrunc(_ufoJump * flip);
           if (this._slopeExitVel !== null && this._slopeExitVel !== undefined) {
@@ -4598,6 +4686,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
         this.p.onGround = false;
         this.p.canJump = false;
         this.p.isJumping = true;
+        this.p._gdLandFlag = false;
         try {
           if (!window.enableLDM) {
             this._flyParticle2Emitter.explode(6, this._scene._playerWorldX, b(this.p.y) + (this.p.gravityFlipped ? -18 : 18));
@@ -4757,6 +4846,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
       this.p.canJump = false;
       this.p.isJumping = false;
     }
+    this._scene?._level?.gameEvent?.(18);
     return true;
   }
   _updateSpiderJump(dt) {
@@ -5058,6 +5148,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
         const makeportalguide = (_colType.startsWith("portal_") || _colType === "speed") && !this._isObjectActivated(gameObj) && window.enablePortalGuide !== false;
         if (this._isPortalCollisionType(_colType) && !this._isObjectActivated(gameObj)) {
           this._orbpadHitEffect(gameObj);
+          this._objectGameEvent(gameObj, _colType);
         }
         if (_colType === "portal_teleport") {
           if (!this._isObjectActivated(gameObj)) {
@@ -5281,6 +5372,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           if (!this._isObjectActivated(gameObj)) {
             this._setObjectActivated(gameObj, true);
             this._orbpadHitEffect(gameObj);
+            this._objectGameEvent(gameObj, _colType);
             const _padId = gameObj.padId;
             if (_padId === 67) {
               const physicsTick = this._scene?._physicsTick;
@@ -5324,6 +5416,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
               this.p.gdAccel = _padId === 1332;
               if (this.p.isRobot && String(window.settingsMap?.["kA34"] ?? "0") === "1") this.p.robotTouchedPad = true;
               this.p.isJumping = true;
+              this.p._gdLandFlag = false;
               this.p.onGround = false;
               this.p.canJump = false;
               this.p.yVelocity = this._gdTrunc(_fm * _padVel);
@@ -5369,6 +5462,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           this.p.touchingRing = true;
           if ((gameObj.multiActivate || !this._isObjectActivated(gameObj)) && _needsClick) {
             this._orbpadHitEffect(gameObj, true);
+            this._objectGameEvent(gameObj, _colType);
             if (_isDash) {
               const dashHoldTicks = this._getDashHoldTicks(gameObj) + 1;
               this._setDashHoldTicks(gameObj, dashHoldTicks);
@@ -5388,6 +5482,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
                   this._syncOtherDualGravityForBlueBoost();
                 }
                 this.p.isDashing = true;
+                this._scene?._level?.gameEvent?.(23);
                 this.p.dashYVelocity = _dashVelY;
                 this.p.yVelocity = _dashVelY;
                 this.p.onGround = false;
@@ -5464,6 +5559,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
                   if (_oBall || _oSpider) _orbVel *= 0.7;
                 }
                 this.p.isJumping = true;
+                this.p._gdLandFlag = false;
                 this.p.onGround = false;
                 this.p.canJump = false;
                 if (_flipBefore) {
@@ -5515,6 +5611,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
             }
             this._setObjectActivated(gameObj, true);
             this._orbpadHitEffect(gameObj);
+            if (gameObj.userCoinId !== undefined) this._scene?._level?.gameEvent?.(62);
             try {
               const _coinSpr = this._gameLayer._coinSprites.find(s => s && s.active && Math.abs(s._coinWorldX - gameObj.x) < 2 && Math.abs(s._coinWorldY - gameObj.y) < 2);
               if (_coinSpr && _coinSpr.scene) {
@@ -5754,6 +5851,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           if (this.p.isDashing) {
             this.p.isDashing = false;
             this.p.dashYVelocity = 0;
+            this._scene?._level?.gameEvent?.(24);
           }
         }
       }
