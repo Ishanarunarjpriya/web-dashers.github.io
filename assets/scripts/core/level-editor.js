@@ -1482,11 +1482,14 @@ class LevelEditor {
     this._state.ignorePortals = false;
     this._state2.ignorePortals = false;
 
-    this._cameraX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0);
+    this._cameraX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0) + (this._level.gameplayOffsetX || 0);
     this._cameraY += this._level._appliedCameraOffsetY || 0;
+    this._cameraY += this._level._appliedGameplayOffsetY || 0;
     this._updateEditorPlaytestCameraY(quantizedDelta);
     this._level._appliedCameraOffsetY = this._level.cameraOffsetY || 0;
     this._cameraY -= this._level._appliedCameraOffsetY;
+    this._level._appliedGameplayOffsetY = this._level.gameplayOffsetY || 0;
+    this._cameraY -= this._level._appliedGameplayOffsetY;
     this._cameraXRef._v = this._cameraX;
 
     this._level.additiveContainer.x = -this._cameraX;

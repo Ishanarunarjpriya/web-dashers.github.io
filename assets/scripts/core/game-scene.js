@@ -8423,6 +8423,8 @@ _showwippopup() {
     if (p1Disabled && (!this._isDual || p2Disabled)) return;
     if (!this._slideIn && !this._state.isDead && !cancelInput) {
       this._level?.gameEvent?.(69);
+      this._state._pressCount = (this._state._pressCount || 0) + 1;
+      if (this._state2) this._state2._pressCount = (this._state2._pressCount || 0) + 1;
       this._state.upKeyDown = true;
       this._state.upKeyPressed = true;
       this._state.queuedHold = true;
@@ -9162,7 +9164,7 @@ _showwippopup() {
     this._level.resizeScreen();
     if (!this._menuActive) {
       const _0x56287b = this._cameraX;
-      this._cameraX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0);
+      this._cameraX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0) + (this._level.gameplayOffsetX || 0);
       this._cameraXRef._v = this._cameraX;
       this._level.applyShakeToOffsets?.(this.time.now);
       this._level.additiveContainer.x = -this._cameraX + (this._level.shakeOffsetX || 0);
@@ -10442,7 +10444,7 @@ _showwippopup() {
     this._state.ignorePortals = false;
     this._state2.ignorePortals = false;
     if (!this._endCameraOverride) {
-      const cameraOffsetX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0);
+      const cameraOffsetX = this._playerWorldX - centerX + (this._level.cameraOffsetX || 0) + (this._level.gameplayOffsetX || 0);
       if (this._level.endXPos > 0) {
         const maxCameraX = this._level.endXPos - screenWidth;
         if (cameraOffsetX >= maxCameraX - 200) {
@@ -10479,9 +10481,12 @@ _showwippopup() {
     if (!this._endCameraOverride) {
       if (this._followCameraY !== undefined && this._level.staticCamera) this._cameraY = this._followCameraY;
       this._cameraY -= this._level._appliedCameraOffsetY || 0;
+      this._cameraY -= this._level._appliedGameplayOffsetY || 0;
       this._updateCameraY(quantizedDelta);
       this._level._appliedCameraOffsetY = this._level.cameraOffsetY || 0;
       this._cameraY += this._level._appliedCameraOffsetY;
+      this._level._appliedGameplayOffsetY = this._level.gameplayOffsetY || 0;
+      this._cameraY += this._level._appliedGameplayOffsetY;
       this._applyStaticCamera(quantizedDelta);
       this._applyCameraEdges();
     }

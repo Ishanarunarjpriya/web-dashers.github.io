@@ -4403,6 +4403,7 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
 
     for (const gameObj of nearbyObjects) {
       if (!gameObj || gameObj.type !== jumpRingType || (!gameObj.multiActivate && this._isObjectActivated(gameObj))) continue;
+      if (gameObj.orbId === 3643 && !gameObj.claimTouch) continue;
 
       const hasCircleHitbox = gameObj.hitbox_radius !== undefined && gameObj.hitbox_radius !== null;
       if (hasCircleHitbox) {
@@ -5459,7 +5460,19 @@ if (this.p.isFlying || this.p.isUfo || this.p.isSwing) {
           const _isDash = (_orbId === 1704 || _orbId === 1751);
           const justPressed = this.p.upKeyDown && !this.p.wasUpKeyDown;
           const _needsClick = !_orbInputConsumedThisStep && !this.p._orbActivationConsumedForPress && ((this.p.isFlying || this.p.isUfo || this.p.isWave || this.p.isSwing) ? justPressed : (justPressed || (this.p.queuedHold && this.p.upKeyDown)));
-          this.p.touchingRing = true;
+          if (_orbId !== 3643 || gameObj.claimTouch) this.p.touchingRing = true;
+          if (_orbId === 3643) {
+            if (_needsClick && (gameObj.multiActivate || !this._isObjectActivated(gameObj)) && gameObj._eeTogglePress !== this.p._pressCount) {
+              gameObj._eeTogglePress = this.p._pressCount;
+              this._setObjectActivated(gameObj, true);
+              if (gameObj.claimTouch) {
+                _orbInputConsumedThisStep = true;
+                this._consumeOrbActivationInput();
+              }
+              this._scene?._level?.activateToggleBlock?.(gameObj);
+            }
+            continue;
+          }
           if ((gameObj.multiActivate || !this._isObjectActivated(gameObj)) && _needsClick) {
             this._orbpadHitEffect(gameObj, true);
             this._objectGameEvent(gameObj, _colType);

@@ -3143,6 +3143,7 @@ window.LevelObject = class LevelObject {
       }
     }
 
+    if (parseInt(levelObj.id, 10) === 3643 && !window.isEditor) this._spawnToggleBlock?.(levelObj, linkedObjectId);
     this._spawnTriggerEditorVisual(levelObj, objectDef, linkedObjectId);
     return objectDef;
   }

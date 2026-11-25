@@ -14,6 +14,7 @@
     3600: "end",
     3618: "reset",
     1916: "cameraOffset",
+    2901: "gameplayOffset",
     1913: "cameraZoom",
     2015: "cameraRotate",
     2899: "options",
@@ -206,6 +207,12 @@
       trig.easingType = rawInt(raw, 30);
       const rate = rawFloat(raw, 85);
       trig.easingRate = rate > 0 ? rate : 2;
+    } else if (kind === "gameplayOffset") {
+      trig.offsetX = Math.trunc(rawFloat(raw, 28)) * 2;
+      trig.offsetY = Math.trunc(rawFloat(raw, 29)) * 2;
+      trig.applyX = rawBool(raw, 58);
+      trig.applyY = rawBool(raw, 59);
+      trig.mode = rawInt(raw, 101);
     } else if (kind === "shader") {
       trig.objectId = levelObj.id;
       this._parseShaderTrigger(trig, raw);
@@ -365,7 +372,10 @@
     this.endTriggered = null;
     this.cameraOffsetX = 0;
     this.cameraOffsetY = 0;
+    this.gameplayOffsetX = 0;
+    this.gameplayOffsetY = 0;
     this._appliedCameraOffsetY = 0;
+    this._appliedGameplayOffsetY = 0;
     this._cameraOffsetTweens = { x: null, y: null };
     this.cameraZoom = 1;
     this._cameraZoomTween = null;
@@ -424,6 +434,31 @@
       col.h = col._eeInitialH;
     }
     this._scaledColliders.clear();
+  };
+
+  proto._spawnToggleBlock = function (levelObj, linkedObjectId) {
+    const raw = levelObj._raw || {};
+    const size = 60 * (Number(levelObj.scale) || 1);
+    const col = new Collider(jumpRingType, levelObj.x * 2, levelObj.y * 2, size, size, 0);
+    col.orbId = 3643;
+    col.multiActivate = rawBool(raw, 99);
+    col.toggleGroup = rawInt(raw, 51);
+    col.toggleActivate = rawBool(raw, 56);
+    col.claimTouch = rawBool(raw, 445);
+    col.spawnOnly = rawBool(raw, 504);
+    col._eeObjectId = linkedObjectId;
+    col._baseX = col.x;
+    col._baseY = col.y;
+    this.objects.push(col);
+    this._addCollisionToSection(col);
+  };
+
+  proto.activateToggleBlock = function (obj) {
+    const group = obj.toggleGroup;
+    if (!(group > 0)) return;
+    if (obj.spawnOnly) this._spawnGroupNow(group);
+    else if (obj.toggleActivate) this._toggleGroupTriggered(group, true, this._scene?._colorManager);
+    else this._executeToggleTrigger({ targetGroup: group, activate: false });
   };
 
   proto.gameEvent = function (eventId, extraId = 0, extraId2 = 0) {
@@ -610,6 +645,9 @@
     } else if (kind === "cameraOffset") {
       if (trig.axis !== 2) this._startCameraOffsetTween("x", trig.offsetX, trig);
       if (trig.axis !== 1) this._startCameraOffsetTween("y", trig.offsetY, trig);
+    } else if (kind === "gameplayOffset") {
+      if (trig.mode !== 2 && trig.applyX) this.gameplayOffsetX = trig.offsetX;
+      if (trig.mode !== 1 && trig.applyY) this.gameplayOffsetY = trig.offsetY;
     } else if (kind === "shader") {
       this._fireShaderTrigger(trig);
     } else if (kind === "changeBackground" || kind === "changeGround") {
