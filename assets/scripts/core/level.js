@@ -3582,16 +3582,17 @@ window.LevelObject = class LevelObject {
               childObjectData.scaleY = parentScale.x;
             }
           }
+          const childCanColor = childDef.can_color ?? (objectDef.frame === "none" && childDef.audioScale ? objectDef.can_color : undefined);
           const childVisualDef = {
             ...childDef,
             can_color: (childDef.black === true || childDef.tint === 0)
               ? (childDef.can_color ?? objectDef.can_color)
-              : childDef.can_color
+              : childCanColor
           };
            this._applyVisualProps(scene, childSprite, childDef.frame, childObjectData, childVisualDef);
            childSprite._cantColor = childDef.Cant_Color === true;
           registerAnimatedSprite(childSprite, childDef);
-          if (childDef.can_color === true) childSprite._canColor = true;
+          if (childCanColor === true) childSprite._canColor = true;
           
           const showguide = childDef.portalGuide ? (!window.isEditor && window.enablePortalGuide !== false) : true;
           const showguide2 = childDef.orbGuide ? (!window.isEditor && window.enableOrbGuide !== false) : true;
@@ -3603,7 +3604,7 @@ window.LevelObject = class LevelObject {
             childSprite.setScale(0.1);
             childSprite.setAlpha(0.9);
             childSprite._eeAudioScale = true;
-            if (childDef.can_color === true) childSprite._eeAudioTintable = true;
+            if (childCanColor === true) childSprite._eeAudioTintable = true;
             this._audioScaleSprites.push(childSprite);
           }
           if (childDef.audioPulse) {
@@ -3751,7 +3752,7 @@ window.LevelObject = class LevelObject {
     }
   }
 
-  if (objectDef && objectDef.portalParticle && frameName && !window.enableLDM && !window.isEditor && !scene?._editorPlaytestActive) {
+  if (objectDef && objectDef.portalParticle && frameName && !window.enableLDM && !window.isEditor && !scene?._editorPlaytestActive && String(levelObj._raw?.[135] ?? levelObj._raw?.["135"] ?? "0") !== "1") {
     const particleWorldX = worldX;
     const particleWorldY = b(worldY);
     const radiusFactor = 2;
@@ -3813,6 +3814,14 @@ window.LevelObject = class LevelObject {
     particles._eeBaseY = particleY;
     this._addToSection(particles);
     (this._cullableEmitters ||= []).push(particles);
+    const portalGids = levelObj.groups ? [...new Set(String(levelObj.groups).split(".").map(Number).filter(n => n > 0))] : null;
+    if (portalGids && portalGids.length) {
+      particles._eeGroups = portalGids;
+      for (const gid of portalGids) {
+        if (!this._groupSprites[gid]) this._groupSprites[gid] = [];
+        this._groupSprites[gid].push(particles);
+      }
+    }
   }
 
   if (objectDef) {
