@@ -581,7 +581,7 @@ window.allobjects = function() {
     "default_z_order": 12
   },
   "39": {
-    "can_color": false,
+    "can_color": true,
     "type": "hazard",
     "frame": "spike_02_001.png",
     "gridW": 1,
@@ -605,7 +605,8 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "plank_01_color_001.png",
-        "tint": 0
+        "tint": 0,
+        "can_color": false
       }
     ],
     "default_detail_color_channel": -1,
@@ -1453,10 +1454,11 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "90": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "block005b_05_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
@@ -1475,10 +1477,11 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "91": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "block005b_05_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
@@ -1497,10 +1500,11 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "92": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "block005b_05_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
@@ -1519,10 +1523,11 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "93": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "block005b_05_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
@@ -1554,10 +1559,11 @@ window.allobjects = function() {
     "default_z_order": 1
   },
   "95": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "block005b_05_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
@@ -1576,16 +1582,18 @@ window.allobjects = function() {
     "default_z_order": 2
   },
   "96": {
-    "can_color": false,
+    "can_color": true,
     "children": [
       {
         "frame": "block005b_05_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
       },
       {
         "frame": "blockOutline_05_001.png",
+        "can_color": true,
         "localDy": 0,
         "z": 1,
         "rot": 180
@@ -1657,7 +1665,7 @@ window.allobjects = function() {
     "portalParticleColor": 16711935,
   },
   "103": {
-    "can_color": false,
+    "can_color": true,
     "type": "hazard",
     "frame": "spike_03_001.png",
     "gridW": 0.5,
@@ -4955,6 +4963,7 @@ window.allobjects = function() {
     "children": [
       {
         "frame": "lighttriangle_01_04_color_001.png",
+        "can_color": false,
         "localDy": 0,
         "tint": 0,
         "z": -1
@@ -5380,7 +5389,7 @@ window.allobjects = function() {
   },
   "363": {
     "black": true,
-    "can_color": true,
+    "can_color": false,
     "children": [
       {
         "frame": "pit_01_slope_01_001.png",
@@ -5714,7 +5723,7 @@ window.allobjects = function() {
     "default_z_order": 9
   },
   "392": {
-    "can_color": false,
+    "can_color": true,
     "type": "hazard",
     "frame": "spike_04_001.png",
     "gridW": 0.5,

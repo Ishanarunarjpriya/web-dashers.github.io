@@ -886,15 +886,20 @@ function calculateSongOffsetForX(targetX, startSpeedKey = 0, sourceObjects = nul
   for (const obj of objects) {
     if (!obj) continue;
     const speedPixelsPerSecond = getSpeedPixelsPerSecondForPortalId(obj.id);
-    if (speedPixelsPerSecond === null) continue;
-
     const raw = obj._raw || {};
+    const isTimeWarp = Number(obj.id) === 1935 && String(raw[11]) !== "1" && String(raw[62]) !== "1";
+    if (speedPixelsPerSecond === null && !isTimeWarp) continue;
     const rawX = Number(raw[2] ?? raw["2"] ?? obj.x ?? 0);
     if (!Number.isFinite(rawX)) continue;
 
     const worldX = rawX * 2;
     if (worldX < 0 || worldX > targetWorldX) continue;
-    speedEvents.push({ x: worldX, speedPixelsPerSecond });
+    if (isTimeWarp) {
+      const timeWarp = Number(raw[120] ?? 1);
+      if (Number.isFinite(timeWarp)) speedEvents.push({ x: worldX, timeWarp: Math.max(0.1, Math.min(2, timeWarp)) });
+    } else {
+      speedEvents.push({ x: worldX, speedPixelsPerSecond });
+    }
   }
 
   speedEvents.sort((a, b) => a.x - b.x);
@@ -902,17 +907,19 @@ function calculateSongOffsetForX(targetX, startSpeedKey = 0, sourceObjects = nul
   let currentX = 0;
   let currentPixelsPerSecond = getSpeedPixelsPerSecondFromKey(startSpeedKey);
   let offsetSeconds = 0;
+  let timeWarp = 1;
 
   const addSegment = (nextX) => {
     const dx = Math.max(0, nextX - currentX);
-    offsetSeconds += dx / Math.max(0.000001, currentPixelsPerSecond);
+    offsetSeconds += dx / Math.max(0.000001, currentPixelsPerSecond * timeWarp);
     currentX = nextX;
   };
 
   for (const event of speedEvents) {
     const nextX = Math.max(0, Math.min(targetWorldX, event.x));
     addSegment(nextX);
-    currentPixelsPerSecond = event.speedPixelsPerSecond;
+    if (event.timeWarp !== undefined) timeWarp = event.timeWarp;
+    else currentPixelsPerSecond = event.speedPixelsPerSecond;
   }
 
   addSegment(targetWorldX);
@@ -964,6 +971,7 @@ window.LevelObject = class LevelObject {
     this.endXPos = 0;
     this._groundY = 0;
     this._ceilingY = null;
+    this._portalFreeMode = false;
     this._flyGroundActive = false;
     this._groundAnimFrom = 0;
     this._groundAnimTo = 0;
@@ -981,6 +989,8 @@ window.LevelObject = class LevelObject {
     this.freeCamEasing = 10;
     this.freeCamPadding = 0.5;
     this._colorTriggers = [];
+    this._timeWarpTriggers = [];
+    this.resetTimeWarpTriggers();
     this._colorTriggerIdx = 0;
     this._touchColorTriggers = [];
     this._touchColorTriggerActivated = new Set();
@@ -1345,6 +1355,51 @@ window.LevelObject = class LevelObject {
     return target > 0 && Array.isArray(trigger?.groups) && trigger.groups.includes(target);
   }
 
+  resetTimeWarpTriggers() {
+    this._timeWarp = 1;
+    this._timeWarpTriggerIdx = 0;
+    this._timeWarpTouchActivated = new Set();
+    this._timeWarpTriggers.sort((a, b) => a.x - b.x);
+  }
+
+  _executeTimeWarpTrigger(trig) {
+    if (!this._isTriggerSaveObjectLive(trig.uid) || this._isTriggerToggledOff(trig)) return;
+    const value = Number(trig.raw?.[120] ?? 1);
+    if (Number.isFinite(value)) this._timeWarp = Math.max(0.1, Math.min(2, value));
+  }
+
+  checkTimeWarpTriggers(playerX, playerY = null, secondaryY = null) {
+    while (this._timeWarpTriggerIdx < this._timeWarpTriggers.length) {
+      const trig = this._timeWarpTriggers[this._timeWarpTriggerIdx];
+      if (trig.x > playerX) break;
+      this._timeWarpTriggerIdx++;
+      if (!trig.spawnTriggered && !trig.touchTriggered) this._executeTimeWarpTrigger(trig);
+    }
+    if (playerY === null) return;
+    const half = 30 + (this._scene?._state?.isMini ? 18 : 30);
+    const half2 = 30 + (this._scene?._state2?.isMini ? 18 : 30);
+    for (const trig of this._timeWarpTriggers) {
+      if (!trig.touchTriggered || trig.spawnTriggered || this._timeWarpTouchActivated.has(trig.uid) ||
+          !this._isTriggerSaveObjectLive(trig.uid) || this._isTriggerToggledOff(trig)) continue;
+      if ((Math.abs(trig.x - playerX) <= half && Math.abs(trig.y - playerY) <= half) ||
+          (secondaryY !== null && Math.abs(trig.x - playerX) <= half2 && Math.abs(trig.y - secondaryY) <= half2)) {
+        this._timeWarpTouchActivated.add(trig.uid);
+        this._executeTimeWarpTrigger(trig);
+      }
+    }
+  }
+
+  saveTimeWarpState() {
+    return { value: this._timeWarp, index: this._timeWarpTriggerIdx, touched: [...this._timeWarpTouchActivated] };
+  }
+
+  restoreTimeWarpState(saved, playerX) {
+    if (!saved) { this.checkTimeWarpTriggers(playerX); return; }
+    this._timeWarp = saved.value;
+    this._timeWarpTriggerIdx = saved.index;
+    this._timeWarpTouchActivated = new Set(saved.touched);
+  }
+
   fastForwardTriggers(targetX, colorManager) {
     const triggers = this._colorTriggers.sort((a, b) => a.x - b.x);
 
@@ -1369,6 +1424,7 @@ window.LevelObject = class LevelObject {
       }
     }
 
+    this.checkTimeWarpTriggers(targetX);
     this.checkAnimationTriggers(targetX);
 
     if (Array.isArray(this._pickupTriggers)) {
@@ -2028,6 +2084,7 @@ window.LevelObject = class LevelObject {
     this.resetGroundState();
   }
   resetGroundState() {
+    this._portalFreeMode = false;
     this._flyGroundActive = false;
     this._groundTargetValue = 0;
     this._groundAnimating = false;
@@ -2056,7 +2113,14 @@ window.LevelObject = class LevelObject {
       ceilingY: floorY + height
     };
   }
+  setPortalFreeMode(enabled) {
+    this._portalFreeMode = !!enabled;
+    if (this._portalFreeMode && (this._flyGroundActive || this._flyCeilingY !== null || this.flyCameraTarget !== null)) {
+      this.setFlyMode(false, 0);
+    }
+  }
   setFlyMode(enabled, centerY, height = f, visualOnly = false, cameraHeight = height) {
+    if (enabled && this._portalFreeMode) return;
     if (enabled) {
       this.freeModeCamera = false;
       let bounds = this._computeFlyBounds(centerY, height, visualOnly);
@@ -2769,6 +2833,7 @@ window.LevelObject = class LevelObject {
     levelObj._eeObjectId = linkedObjectId;
     if (levelObj._raw) delete levelObj._raw._eeObjectId;
     const triggerBase = this._makeTriggerBase(levelObj, linkedObjectId);
+
 
     if (levelObj.id === 29 || levelObj.id === 30) {
       this._colorTriggers.push({
@@ -4028,6 +4093,7 @@ window.LevelObject = class LevelObject {
       const padH = objectDef.gridH * a * hitScaleY;
       const padObj = new Collider(jumpPadType, worldX, worldY, padW, padH, levelObj.rot || 0);
       padObj.padId = levelObj.id;
+      padObj.flipY = !!levelObj.flipY;
       registerCollider(padObj);
       this.objects.push(padObj);
       hasCollisionEntry = true;
@@ -4113,6 +4179,7 @@ window.LevelObject = class LevelObject {
       const orbH = objectDef.gridH * a * hitScaleY;
       const orbObj = new Collider(jumpRingType, worldX, worldY, orbW, orbH, levelObj.rot || 0);
       orbObj.orbId = levelObj.id;
+      orbObj.flipY = !!levelObj.flipY;
       orbObj.multiActivate = String(levelObj._raw?.[99] ?? levelObj._raw?.["99"] ?? "") === "1";
       orbObj.orbRotation = levelObj.rot || 0;
       orbObj._dashHoldTicks = 0;
@@ -4340,6 +4407,7 @@ window.LevelObject = class LevelObject {
       colTypeCounts[obj.type] = (colTypeCounts[obj.type] || 0) + 1;
     }
 
+    this._timeWarpTriggers.sort((a, b) => a.x - b.x);
     this._colorTriggers.sort((a, b) => a.x - b.x);
     this._enterEffectTriggers.sort((a, b) => a.x - b.x);
     this._moveTriggers.sort((a, b) => a.x - b.x);
@@ -6521,7 +6589,8 @@ window.LevelObject = class LevelObject {
     const iv = Math.max(0, Number(trig.interval) || 0);
     this._shakeState = {
       strength: str,
-      endTime: (this._scene?.time?.now ?? 0) + dur * 1000,
+      endTime: (this._scene?._physicsTick || 0) * u * 1000 + dur * 1000,
+      tickBased: true,
       interval: iv,
       lastStepTime: -Infinity
     };
@@ -6530,6 +6599,7 @@ window.LevelObject = class LevelObject {
   applyShakeToOffsets(nowMs) {
     const s = this._shakeState;
     if (!s) return;
+    if (s.tickBased) nowMs = (this._scene?._physicsTick || 0) * u * 1000;
     if (nowMs > s.endTime) {
       this._shakeState = null;
       this.shakeOffsetX = 0;
@@ -6707,6 +6777,10 @@ window.LevelObject = class LevelObject {
   }
 
   stepTouchTriggers(p1Holding, p1Pressed, p2Holding, p2Pressed, colorManager) {
+    const isHolding = Boolean(p1Holding || p2Holding);
+    const isPressed = Boolean((p1Pressed && !this._touchTriggerPressed1) || (p2Pressed && !this._touchTriggerPressed2));
+    this._touchTriggerPressed1 = Boolean(p1Pressed || (p1Holding && this._touchTriggerPressed1));
+    this._touchTriggerPressed2 = Boolean(p2Pressed || (p2Holding && this._touchTriggerPressed2));
     for (const trig of this._activeTouchTriggers) {
       if (!trig || !this._isTriggerSaveObjectLive(trig.uid)) continue;
       const useP1 = trig.playerFilter !== 2;
@@ -6736,6 +6810,8 @@ window.LevelObject = class LevelObject {
 
   resetTouchTriggers() {
     this._touchTriggerIdx = 0;
+    this._touchTriggerPressed1 = false;
+    this._touchTriggerPressed2 = false;
     for (const trig of this._activeTouchTriggers) {
       if (trig) trig._holding = false;
     }

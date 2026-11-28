@@ -93,7 +93,7 @@ class AudioManager {
     const loader = this._scene?.load;
     if (!loader || this._practiceSongLoading || this._scene.cache.audio.exists(key)) return;
     this._practiceSongLoading = true;
-    loader.audio(key, "assets/music/StayInsideMe.mp3");
+    loader.audio(key, "assets/sound/music/StayInsideMe.mp3");
     loader.once("filecomplete-audio-" + key, () => {
       this._practiceSongLoading = false;
       if (this._shouldUsePracticeSong()) this.startMusic();
@@ -121,14 +121,14 @@ class AudioManager {
 
     const currentLevel = Array.isArray(window.currentlevel) ? window.currentlevel : null;
     if (currentLevel && currentLevel[0] === songKey && currentLevel[4]) {
-      return "assets/music/" + currentLevel[4] + ".mp3";
+      return "assets/sound/music/" + currentLevel[4] + ".mp3";
     }
 
     const levelEntry = window.allLevels.find(level => level && level[0] === songKey);
     if (!levelEntry) return null;
 
     const fileName = levelEntry[4] || String(levelEntry[1] || songKey).replaceAll(" ", "");
-    return "assets/music/" + fileName + ".mp3";
+    return "assets/sound/music/" + fileName + ".mp3";
   }
   _loadMissingOfficialSong(songKey, startPosOffset = 0, fadeDuration = null) {
     const audioPath = this._getOfficialSongAudioPath(songKey);

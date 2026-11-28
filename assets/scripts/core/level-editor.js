@@ -1,4 +1,3 @@
-
 function _editorDecodeTextObjectString(value) {
   if (typeof _decodeTextObjectString === "function") return _decodeTextObjectString(value);
   if (value === undefined || value === null) return "";
@@ -61,7 +60,7 @@ class LevelEditor {
         this._cameraX += camSpeed;
     }
 
-    if (cursors.up.isDown) {
+    if (window._kbDown.has("ArrowUp")) {
         this._cameraY -= camSpeed;
     } else if (cursors.down.isDown) {
         this._cameraY += camSpeed;
@@ -257,27 +256,29 @@ class LevelEditor {
     });
 
     const tabX = (screenWidth / 2) - 475;
-    const tabYStart = screenHeight - 150;
-    const tabSpacing = 55;
+    const tabY = screenHeight - 100;
+    const tabScale = 1.15;
+    const tabGapX = 80 * tabScale;
+    const tabGapY = 88 * tabScale;
 
-    this._separatorLeft = this.add.image(tabX + 100, screenHeight - 100, "GJ_GameSheet03", "edit_vLine_001.png");
+    this._separatorLeft = this.add.image(tabX + tabGapX / 2 + 42 * tabScale + 12, screenHeight - 100, "GJ_GameSheet03", "edit_vLine_001.png");
     this._toolbox.add(this._separatorLeft);
 
     this._separatorRight = this.add.image(centerX + 375, screenHeight - 100, "GJ_GameSheet03", "edit_vLine_001.png");
     this._toolbox.add(this._separatorRight);
 
     const tabs = [
-        { id: "build", frame: "edit_buildBtn_001.png" },
-        { id: "edit", frame: "edit_editBtn_001.png" },
-        { id: "delete", frame: "edit_deleteBtn_001.png" }
+        { id: "build", frame: "buildBtnOff.png", x: tabX - tabGapX / 2, y: tabY - tabGapY / 2, dx: 0, dy: 0 },
+        { id: "edit", frame: "editBtnOff.png", x: tabX + tabGapX / 2, y: tabY - tabGapY / 2, dx: 5, dy: 0 },
+        { id: "delete", frame: "deleteBtnOff.png", x: tabX - tabGapX / 2, y: tabY + tabGapY / 2, dx: 0, dy: 0 }
     ];
 
     this._tabButtons = {};
-    tabs.forEach((tab, i) => {
-        const btn = this.add.image(tabX, tabYStart + (i * tabSpacing), "GJ_GameSheet03", tab.frame).setInteractive();
+    tabs.forEach(tab => {
+        const btn = this.add.image(tab.x + tab.dx, tab.y + tab.dy, "GJ_EditorSheet01", tab.frame).setScale(tabScale).setInteractive();
         this._toolbox.add(btn);
         this._tabButtons[tab.id] = btn;
-        this._makeBouncyButton(btn, 1, () => {
+        this._makeBouncyButton(btn, tabScale, () => {
             this._setEditorTab(tab.id);
         });
     });
@@ -672,6 +673,7 @@ class LevelEditor {
     this._level.resetFollowPlayerYTriggers?.();
     this._level.resetFollowTriggers?.();
     this._level.resetToggleTriggers?.();
+    this._level.resetAnimationTriggers?.();
     this._level.resetShakeTriggers?.();
     this._level.resetChannelBlending?.();
     this._level.resetPlayerVisibilityTriggers?.();
@@ -679,13 +681,16 @@ class LevelEditor {
     this._level.resetTouchTriggers?.();
     this._level.resetPickupTriggers?.();
     this._level.resetCountTriggers?.();
+    this._level.resetCollisionTriggers?.();
     this._level.resetInstantCountTriggers?.();
     this._level.resetGenericTriggers();
     this._level._sidewaysWorldX = 0;
     this._inSidewaysStep = false;
+    this._level.resetTimeWarpTriggers();
     this._level.checkToggleTriggers?.(0);
     this._level.checkPickupTriggers?.(0, this._colorManager);
     this._level.checkCountTriggers?.(0, this._colorManager);
+    this._level.checkCollisionTriggers?.(0);
     this._level.checkInstantCountTriggers?.(0, this._colorManager);
     this._level.checkOnDeathTriggers?.(0);
     this._level.checkTouchTriggers?.(0);
@@ -850,45 +855,21 @@ class LevelEditor {
 
 
   _hideEditorPlaytestGlowLayers() {
-    const hideForPlayer = (player) => {
-        if (!player) return;
-
-        const glowLayers = [
-            player._playerGlowLayer,
-            player._shipGlowLayer,
-            player._ballGlowLayer,
-            player._waveGlowLayer,
-            player._spiderGlowLayer,
-            player._robotGlowLayer,
-            player._birdGlowLayer
-        ];
-
-        if (!window.showEditorGlow) {
-            for (const layer of glowLayers) {
-                if (layer?.sprite) layer.sprite.setVisible(false);
-            }
-        }
-
-        if (player._dashAnimationSprite) {
-            player._dashAnimationSprite.setVisible(false);
-        }
+    if (!this._editorPlaytestActive) return;
+    const sync = (player) => {
+        if (!player || player.p.isDead || player._hidden) return;
+        player._applyPlayerTints();
+        player._syncModeIcons();
     };
-
-    hideForPlayer(this._player);
-    hideForPlayer(this._player2);
+    sync(this._player);
+    if (this._isDual) sync(this._player2);
   }
-
 
   _hideEditorPlaytestPlayer() {
     const hidePlayer = (player) => {
         if (!player) return;
-        player.setCubeVisible(false);
-        player.setShipVisible(false);
-        player.setBallVisible(false);
-        player.setWaveVisible(false);
-        player.setBirdVisible(false);
-        player.setSpiderVisible(false);
-        player.setRobotVisible(false);
+        player._applyHidden();
+        for (const emitter of [player._particleEmitter, player._flyParticleEmitter, player._flyParticle2Emitter, player._shipDragEmitter, player._landEmitter1, player._landEmitter2]) emitter?.killAll?.();
         player._hitboxTrail = [];
         if (player._hitboxGraphics?.clear) player._hitboxGraphics.clear();
     };
@@ -932,6 +913,12 @@ class LevelEditor {
                 layer.sprite.scaleX *= zoom;
                 layer.sprite.scaleY *= zoom;
             }
+            for (const flame of player?._swingFlames || []) {
+                flame.x = playerScreenX + (flame.x - playerScreenX) * zoom;
+                flame.y = anchorY + (flame.y - anchorY) * zoom;
+                flame.scaleX *= zoom;
+                flame.scaleY *= zoom;
+            }
             if (player?._dashAnimationSprite) {
                 player._dashAnimationSprite.x = playerScreenX + ((player._dashAnimationSprite.x - playerScreenX) * zoom);
                 player._dashAnimationSprite.y = anchorY + ((player._dashAnimationSprite.y - anchorY) * zoom);
@@ -945,8 +932,6 @@ class LevelEditor {
             scalePlayer(this._player2, (b(this._state2.y) * zoom) - this._cameraY);
         }
     }
-
-    this._hideEditorPlaytestGlowLayers();
   }
 
 
@@ -1148,6 +1133,7 @@ class LevelEditor {
     this._player2.setBallVisible(false);
     this._player2.setWaveVisible(false);
     this._player2.setBirdVisible(false);
+    this._player2.setSwingVisible(false);
     this._player2.setSpiderVisible(false);
     this._player2.setRobotVisible(false);
 
@@ -1260,17 +1246,21 @@ class LevelEditor {
     this._state.upKeyDown = true;
     this._state.upKeyPressed = true;
     this._state.queuedHold = true;
+    this._state._orbActivationConsumedForPress = false;
     if (this._isDual && this._state2 && !this._state2.isDead) {
         this._state2.upKeyDown = true;
         this._state2.upKeyPressed = true;
         this._state2.queuedHold = true;
+        this._state2._orbActivationConsumedForPress = false;
     }
 
     const primaryGravityBefore = !!this._state.gravityFlipped;
-    if (!this._state.isFlying && !this._state.isWave && !this._state.isUfo && this._state.canJump) {
+    if (!this._state.isFlying && !this._state.isWave && !this._state.isUfo && !this._state.isSwing && this._state.canJump) {
         this._player.updateJump(0);
     } else if (this._state.isUfo) {
-        this._player.updateJump(0);
+        if (!this._player._shouldPrioritizeUfoOrbInput?.()) {
+            this._player.updateJump(0);
+        }
     }
     const primaryGravityChanged = this._isDual && !!this._state.gravityFlipped !== primaryGravityBefore;
     let primaryGravitySynced = false;
@@ -1289,10 +1279,12 @@ class LevelEditor {
         const secondaryGravityBefore = !!this._state2.gravityFlipped;
         const secondaryBallInputGravity = this._state2.isBall && this._state2.upKeyPressed;
         const secondarySpiderInputGravity = this._state2.isSpider && this._state2.upKeyPressed;
-        if (!this._state2.isFlying && !this._state2.isWave && !this._state2.isUfo && this._state2.canJump) {
+        if (!this._state2.isFlying && !this._state2.isWave && !this._state2.isUfo && !this._state2.isSwing && this._state2.canJump) {
             this._player2.updateJump(0);
         } else if (this._state2.isUfo) {
-            this._player2.updateJump(0);
+            if (!this._player2._shouldPrioritizeUfoOrbInput?.()) {
+                this._player2.updateJump(0);
+            }
         }
         if (!!this._state2.gravityFlipped !== secondaryGravityBefore) {
             this._syncDualGlobalsFromSecondary?.({
@@ -1305,6 +1297,8 @@ class LevelEditor {
 
 
   _editorPlaytestRelease() {
+    this._state._spiderOrbInputLocked = false;
+    this._state2._spiderOrbInputLocked = false;
     this._state.robotTouchedPad = true;
     this._state2.robotTouchedPad = true;
     this._state.upKeyDown = false;
@@ -1313,6 +1307,10 @@ class LevelEditor {
     this._state2.upKeyDown = false;
     this._state2.upKeyPressed = false;
     this._state2.queuedHold = false;
+    this._state.queuedHold = false;
+    this._state._orbActivationConsumedForPress = false;
+    this._state2.queuedHold = false;
+    this._state2._orbActivationConsumedForPress = false;
   }
 
 
@@ -1340,13 +1338,13 @@ class LevelEditor {
   _updateEditorPlaytest(deltaTime) {
     if (!this._editorPlaytestActive || this._editorPlaytestPaused) return;
 
-    this._updateEditorPlaytestInput();
     this._audio.update(deltaTime / 1000);
+    deltaTime *= this._level.timeWarp || 1;
     this._state.mirrored = false;
     this._state2.mirrored = false;
     this._bg.setFlipX(false);
     this._refreshEditorPlaytestGlowVisibility();
-    this._level.updateEndPortalY(-this._cameraY, this._state.isFlying || this._state.isWave || this._state.isUfo);
+    this._level.updateEndPortalY(-this._cameraY, this._state.isFlying || this._state.isWave || this._state.isUfo || this._state.isSwing);
 
     let quantizedDelta = this._quantizeDelta(deltaTime);
     let subSteps = quantizedDelta > 0 ? Math.max(1, Math.round(quantizedDelta * 4)) : 0;
@@ -1355,6 +1353,8 @@ class LevelEditor {
     const subStepDelta = subSteps > 0 ? quantizedDelta / subSteps : 0;
     const verticalDelta = subStepDelta * d;
     const horizontalDelta = subStepDelta * playerSpeed * d * (this._level?.direction < 0 ? -1 : 1);
+    const initialY = this._state.y;
+    const initialY2 = this._state2.y;
     const previousNoClip = window.noClip;
 
     window.noClip = false;
@@ -1369,11 +1369,14 @@ class LevelEditor {
             this._state.lastY = this._state.y;
             this._physicsFrame++;
             this._physicsTick = (this._physicsTick || 0) + 1;
+            this._updateEditorPlaytestInput();
             const dualInputState = {
                 upKeyDown: this._state.upKeyDown,
                 upKeyPressed: this._state.upKeyPressed,
-                queuedHold: this._state.queuedHold
+                queuedHold: this._state.queuedHold,
+                orbActivationConsumedForPress: !!this._state._orbActivationConsumedForPress
             };
+            const _bothBallsBefore = this._isDual && this._state.isBall && this._state2.isBall;
             const primaryGravityBefore = !!this._state.gravityFlipped;
             const primarySharedBefore = this._getDualSharedSignature?.(this._state);
             this._player.updateJump(verticalDelta);
@@ -1417,11 +1420,14 @@ class LevelEditor {
                         skipSpiderInputGravity: secondarySpiderInputGravity
                     });
                 }
+                if (!_bothBallsBefore && this._areDualBallsOverlapping()) {
+                    this._dualBallSpawnGravityLock = true;
+                }
                 this._resolveDualBallOverlap?.();
-                if (this._state2.isDead && !this._state.isDead) {
+                if (this._isDual && this._state2.isDead && !this._state.isDead) {
                     this._player.killPlayer();
                 }
-                if (this._state.isDead && !this._state2.isDead) {
+                if (this._isDual && this._state.isDead && !this._state2.isDead) {
                     this._player2.killPlayer();
                 }
                 this._ensureDualFlyBounds?.();
@@ -1429,7 +1435,7 @@ class LevelEditor {
 
             if (this._state.isDead) break;
 
-            if (!this._state.isFlying && !this._state.isWave && !this._state.isUfo) {
+            if (!this._state.isFlying && !this._state.isWave && !this._state.isUfo && !this._state.isSwing) {
                 if (this._state.isBall) {
                     const ballOnSurface = this._state.onGround || this._state.onCeiling;
                     this._player.updateBallRoll(horizontalDelta, ballOnSurface);
@@ -1442,7 +1448,7 @@ class LevelEditor {
                 }
             }
 
-            if (this._isDual && !this._state2.isDead && !this._state2.isFlying && !this._state2.isWave && !this._state2.isUfo) {
+            if (this._isDual && !this._state2.isDead && !this._state2.isFlying && !this._state2.isWave && !this._state2.isUfo && !this._state2.isSwing) {
                 if (this._state2.isBall) {
                     const ball2OnSurface = this._state2.onGround || this._state2.onCeiling;
                     this._player2.updateBallRoll(horizontalDelta, ball2OnSurface);
@@ -1467,6 +1473,161 @@ class LevelEditor {
                 this._player2._hitboxTrail.push({ x: this._playerWorldX, y: this._state2.y, rotation: this._player2._rotation, size: trailSize2, isWave: this._state2.isWave });
                 if (this._player2._hitboxTrail.length > 180) this._player2._hitboxTrail.shift();
             }
+            const playerX = this._playerWorldX;
+            const applyColorTrigger = (colorTrigger) => {
+                this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration, colorTrigger.copy, colorTrigger.opacity);
+                this._level.setChannelBlending?.(colorTrigger.index, !!colorTrigger.blending);
+                if (colorTrigger.tintGround) {
+                    this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration, colorTrigger.copy);
+                }
+            };
+            for (let colorTrigger of this._level.checkColorTriggers(playerX)) {
+                applyColorTrigger(colorTrigger);
+            }
+            if (this._level.checkTouchColorTriggers) {
+                for (let colorTrigger of this._level.checkTouchColorTriggers(playerX, this._state.y)) {
+                    applyColorTrigger(colorTrigger);
+                }
+                if (this._isDual && !this._state2.isDead) {
+                    for (let colorTrigger of this._level.checkTouchColorTriggers(playerX, this._state2.y)) {
+                        applyColorTrigger(colorTrigger);
+                    }
+                }
+            }
+
+            this._level.checkMoveTriggers(playerX);
+            this._level.checkSpawnTriggers(playerX);
+            if (this._level.checkTouchSpawnTriggers) {
+                this._level.checkTouchSpawnTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchSpawnTriggers(playerX, this._state2.y);
+                }
+            }
+            if (this._level.checkTouchMoveTriggers) {
+                this._level.checkTouchMoveTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchMoveTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.beginGroupTransformBatch();
+            this._level.stepMoveTriggers(subStepDelta / 60);
+            this._level.updateGenericTriggers(playerX, this._state.y, this._isDual && !this._state2.isDead ? this._state2.y : null, subStepDelta / 60, this._colorManager);
+            this._level.stepSpawnTriggers(subStepDelta / 60, this._colorManager);
+            this._level.checkAlphaTriggers(playerX);
+            if (this._level.checkTouchAlphaTriggers) {
+                this._level.checkTouchAlphaTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchAlphaTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.stepAlphaTriggers(subStepDelta / 60);
+            this._level.checkRotateTriggers(playerX);
+            this._level.stepRotateTriggers(subStepDelta / 60);
+            this._level.checkStopTriggers?.(playerX);
+            if (this._level.checkTouchStopTriggers) {
+                this._level.checkTouchStopTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchStopTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.checkFollowPlayerYTriggers?.(playerX);
+            if (this._level.checkTouchFollowPlayerYTriggers) {
+                this._level.checkTouchFollowPlayerYTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchFollowPlayerYTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.stepFollowPlayerYTriggers?.(subStepDelta / 60);
+            this._level.checkFollowTriggers?.(playerX);
+            if (this._level.checkTouchFollowTriggers) {
+                this._level.checkTouchFollowTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchFollowTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.stepFollowTriggers?.(subStepDelta / 60);
+            this._level.flushGroupTransformBatch();
+            this._level.checkToggleTriggers?.(playerX);
+            this._level.checkAnimationTriggers?.(playerX);
+            if (this._level.checkTouchAnimationTriggers) {
+                this._level.checkTouchAnimationTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchAnimationTriggers(playerX, this._state2.y);
+                }
+            }
+            if (this._level.checkTouchToggleTriggers) {
+                this._level.checkTouchToggleTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchToggleTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.checkShakeTriggers?.(playerX);
+            this._level.checkPlayerVisibilityTriggers?.(playerX);
+            this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state.y);
+            if (this._isDual && !this._state2.isDead) this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state2.y);
+            this._player?.setHidden?.(!!this._level.playerHidden);
+            if (this._isDual) this._player2?.setHidden?.(!!this._level.playerHidden);
+            if (this._level.checkTouchShakeTriggers) {
+                this._level.checkTouchShakeTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchShakeTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.checkOnDeathTriggers?.(playerX);
+            if (this._level.checkTouchOnDeathTriggers) {
+                this._level.checkTouchOnDeathTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchOnDeathTriggers(playerX, this._state2.y);
+                }
+            }
+            this._level.checkTouchTriggers?.(playerX);
+            if (this._level.checkTouchTouchTriggers) {
+                this._level.checkTouchTouchTriggers(playerX, this._state.y);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchTouchTriggers(playerX, this._state2.y);
+                }
+            }
+            const isHoldingInput = Boolean(this._state?.upKeyDown);
+            const isPressedInput = Boolean(this._state?.upKeyPressed);
+            let p2HoldingInput = false;
+            let p2PressedInput = false;
+            if (this._isDual && !this._state2?.isDead) {
+                p2HoldingInput = Boolean(this._state2?.upKeyDown);
+                p2PressedInput = Boolean(this._state2?.upKeyPressed);
+            }
+            if (!this._level.isTouchTriggerDualMode?.()) {
+                p2HoldingInput = false;
+                p2PressedInput = false;
+            }
+            this._level.stepTouchTriggers?.(isHoldingInput, isPressedInput, p2HoldingInput, p2PressedInput, this._colorManager);
+            this._level.checkPickupTriggers?.(playerX, this._colorManager);
+            if (this._level.checkTouchPickupTriggers) {
+                this._level.checkTouchPickupTriggers(playerX, this._state.y, this._colorManager);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchPickupTriggers(playerX, this._state2.y, this._colorManager);
+                }
+            }
+            this._level.checkCountTriggers?.(playerX, this._colorManager);
+            this._level.checkCollisionTriggers?.(playerX);
+            this._level.updateCollisionTriggers?.();
+            if (this._level.checkTouchCountTriggers) {
+                this._level.checkTouchCountTriggers(playerX, this._state.y, this._colorManager);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchCountTriggers(playerX, this._state2.y, this._colorManager);
+                }
+            }
+            this._level.checkInstantCountTriggers?.(playerX, this._colorManager);
+            if (this._level.checkTouchInstantCountTriggers) {
+                this._level.checkTouchInstantCountTriggers(playerX, this._state.y, this._colorManager);
+                if (this._isDual && !this._state2.isDead) {
+                    this._level.checkTouchInstantCountTriggers(playerX, this._state2.y, this._colorManager);
+                }
+            }
+            this._level.checkPulseTriggers(playerX);
+            this._level.stepPulseTriggers(subStepDelta / 60, this._colorManager);
+            this._level.checkTimeWarpTriggers(playerX, this._state.y, this._isDual && !this._state2.isDead ? this._state2.y : null);
+            this._colorManager.step(subStepDelta / 60);
+            this._level.applyShakeToOffsets?.(this.time.now);
         }
     } finally {
         window.noClip = previousNoClip;
@@ -1479,6 +1640,8 @@ class LevelEditor {
         return;
     }
 
+    this._state.lastY = initialY;
+    if (this._isDual) this._state2.lastY = initialY2;
     this._state.ignorePortals = false;
     this._state2.ignorePortals = false;
 
@@ -1499,138 +1662,13 @@ class LevelEditor {
     this._level.topContainer.x = -this._cameraX;
     this._level.topContainer.y = -this._cameraY;
 
-    const playerX = this._playerWorldX;
-    const applyColorTrigger = (colorTrigger) => {
-        this._colorManager.triggerColor(colorTrigger.index, colorTrigger.color, colorTrigger.duration, colorTrigger.copy, colorTrigger.opacity);
-        this._level.setChannelBlending?.(colorTrigger.index, !!colorTrigger.blending);
-        if (colorTrigger.tintGround) {
-            this._colorManager.triggerColor(gs, colorTrigger.color, colorTrigger.duration, colorTrigger.copy);
-        }
-    };
-    for (let colorTrigger of this._level.checkColorTriggers(playerX)) {
-        applyColorTrigger(colorTrigger);
-    }
-    if (this._level.checkTouchColorTriggers) {
-        for (let colorTrigger of this._level.checkTouchColorTriggers(playerX, this._state.y)) {
-            applyColorTrigger(colorTrigger);
-        }
-        if (this._isDual && !this._state2.isDead) {
-            for (let colorTrigger of this._level.checkTouchColorTriggers(playerX, this._state2.y)) {
-                applyColorTrigger(colorTrigger);
-            }
-        }
-    }
-
-    this._level.checkMoveTriggers(playerX);
-    this._level.checkSpawnTriggers(playerX);
-    if (this._level.checkTouchSpawnTriggers) {
-        this._level.checkTouchSpawnTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchSpawnTriggers(playerX, this._state2.y);
-        }
-    }
-    if (this._level.checkTouchMoveTriggers) {
-        this._level.checkTouchMoveTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchMoveTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.stepMoveTriggers(deltaTime / 1000);
-    this._level.updateGenericTriggers(playerX, this._state.y, this._isDual && !this._state2.isDead ? this._state2.y : null, deltaTime / 1000, this._colorManager);
-    this._level.stepSpawnTriggers(deltaTime / 1000, this._colorManager);
-    this._level.checkAlphaTriggers(playerX);
-    this._level.stepAlphaTriggers(deltaTime / 1000);
-    this._level.checkRotateTriggers(playerX);
-    this._level.stepRotateTriggers(deltaTime / 1000);
-    this._level.checkStopTriggers?.(playerX);
-    if (this._level.checkTouchStopTriggers) {
-        this._level.checkTouchStopTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchStopTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.checkFollowPlayerYTriggers?.(playerX);
-    if (this._level.checkTouchFollowPlayerYTriggers) {
-        this._level.checkTouchFollowPlayerYTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchFollowPlayerYTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.stepFollowPlayerYTriggers?.(deltaTime / 1000);
-    this._level.checkFollowTriggers?.(playerX);
-    if (this._level.checkTouchFollowTriggers) {
-        this._level.checkTouchFollowTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchFollowTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.stepFollowTriggers?.(deltaTime / 1000);
-    this._level.checkToggleTriggers?.(playerX);
-    if (this._level.checkTouchToggleTriggers) {
-        this._level.checkTouchToggleTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchToggleTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.checkShakeTriggers?.(playerX);
-    this._level.checkPlayerVisibilityTriggers?.(playerX);
-    this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state.y);
-    if (this._isDual && !this._state2.isDead) this._level.checkTouchPlayerVisibilityTriggers?.(playerX, this._state2.y);
-    this._player?.setHidden?.(!!this._level.playerHidden);
-    if (this._isDual) this._player2?.setHidden?.(!!this._level.playerHidden);
-    if (this._level.checkTouchShakeTriggers) {
-        this._level.checkTouchShakeTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchShakeTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.checkOnDeathTriggers?.(playerX);
-    if (this._level.checkTouchOnDeathTriggers) {
-        this._level.checkTouchOnDeathTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchOnDeathTriggers(playerX, this._state2.y);
-        }
-    }
-    this._level.checkTouchTriggers?.(playerX);
-    if (this._level.checkTouchTouchTriggers) {
-        this._level.checkTouchTouchTriggers(playerX, this._state.y);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchTouchTriggers(playerX, this._state2.y);
-        }
-    }
-    const isHoldingInput = Boolean(this._state?.upKeyDown || (this._isDual && !this._state2?.isDead && this._state2?.upKeyDown));
-    const isPressedInput = Boolean(this._state?.upKeyPressed || (this._isDual && !this._state2?.isDead && this._state2?.upKeyPressed));
-    this._level.stepTouchTriggers?.(isHoldingInput, isPressedInput, this._colorManager);
-    this._level.checkPickupTriggers?.(playerX, this._colorManager);
-    if (this._level.checkTouchPickupTriggers) {
-        this._level.checkTouchPickupTriggers(playerX, this._state.y, this._colorManager);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchPickupTriggers(playerX, this._state2.y, this._colorManager);
-        }
-    }
-    this._level.checkCountTriggers?.(playerX, this._colorManager);
-    if (this._level.checkTouchCountTriggers) {
-        this._level.checkTouchCountTriggers(playerX, this._state.y, this._colorManager);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchCountTriggers(playerX, this._state2.y, this._colorManager);
-        }
-    }
-    this._level.checkInstantCountTriggers?.(playerX, this._colorManager);
-    if (this._level.checkTouchInstantCountTriggers) {
-        this._level.checkTouchInstantCountTriggers(playerX, this._state.y, this._colorManager);
-        if (this._isDual && !this._state2.isDead) {
-            this._level.checkTouchInstantCountTriggers(playerX, this._state2.y, this._colorManager);
-        }
-    }
-    this._level.checkPulseTriggers(playerX);
-    this._level.stepPulseTriggers(deltaTime / 1000, this._colorManager);
-    this._colorManager.step(deltaTime / 1000);
     this._level.stepGroundAnimation(deltaTime / 1000);
     this._level.applyColorChannels(this._colorManager);
     this._bg.setTint(this._colorManager.getHex(fs));
     this._level.setGroundColor(this._colorManager.getHex(gs));
     this._level.updateVisibility(this._cameraX);
     this._level.updateObjectDebugIds();
+    window.BeastAnim.update(this, deltaTime);
     this._refreshEditorPlaytestGlowVisibility();
 
     if (this._state.isFlying || this._state.isSwing) {
@@ -1679,11 +1717,7 @@ class LevelEditor {
     Object.keys(this._tabButtons).forEach(id => {
         const isSelected = this._editorTab === id;
         const btn = this._tabButtons[id];
-        let frameName = btn.frame.name.replace("SBtn", "Btn");
-        if (isSelected) {
-            frameName = frameName.replace("Btn", "SBtn");
-        }
-        btn.setFrame(frameName);
+        btn.setFrame(`${id}Btn${isSelected ? "On" : "Off"}.png`);
     });
   }
 
@@ -2294,6 +2328,7 @@ class LevelEditor {
         syncTriggerPosition(this._level?._rotateTriggers);
         syncTriggerPosition(this._level?._pulseTriggers);
         syncTriggerPosition(this._level?._spawnTriggers);
+        syncTriggerPosition(this._level?._timeWarpTriggers);
     }
 
     const sortTriggers = (list) => {
@@ -2306,6 +2341,7 @@ class LevelEditor {
     sortTriggers(this._level?._rotateTriggers);
     sortTriggers(this._level?._pulseTriggers);
     sortTriggers(this._level?._spawnTriggers);
+    sortTriggers(this._level?._timeWarpTriggers);
 
     this._refreshEditorCollisionCaches();
   }
@@ -2322,9 +2358,26 @@ class LevelEditor {
 
         if (!saveObj) continue;
 
+        const objectDef = getObjectFromId(saveObj.id);
+        const offsetX = Number(objectDef?.editorOffsetX ?? objectDef?.offsetX) || 0;
+        const offsetY = Number(objectDef?.editorOffsetY ?? objectDef?.offsetY) || 0;
+        const oldRad = (saveObj.rot || 0) * Math.PI / 180;
+        const rad = degrees * Math.PI / 180;
+        const newRad = oldRad + rad;
+
+        const oldX = offsetX * Math.cos(oldRad) + offsetY * Math.sin(oldRad);
+        const oldY = -offsetX * Math.sin(oldRad) + offsetY * Math.cos(oldRad);
+        const pivotX = (saveObj.x - oldX) * 2;
+        const pivotY = b((saveObj.y - oldY) * 2);
+
+        saveObj.x += offsetX * Math.cos(newRad) + offsetY * Math.sin(newRad) - oldX;
+        saveObj.y += -offsetX * Math.sin(newRad) + offsetY * Math.cos(newRad) - oldY;
+
         saveObj.rot = (saveObj.rot || 0) + degrees;
 
         if (saveObj._raw) {
+            saveObj._raw["2"] = String(saveObj.x);
+            saveObj._raw["3"] = String(saveObj.y);
             saveObj._raw["6"] = String(saveObj.rot);
         }
 
@@ -2340,6 +2393,25 @@ class LevelEditor {
         if (sprites) {
             for (const s of sprites) {
                 if (!s) continue;
+                if (offsetX || offsetY) {
+                    for (const [xKey, yKey] of [["x", "y"], ["_eeWorldX", "_eeBaseY"], ["_origWorldX", "_origBaseY"], ["_eeInitialWorldX", "_eeInitialBaseY"], ["_eeMoveBaseWorldX", "_eeMoveBaseBaseY"]]) {
+                        if (s[xKey] === undefined || s[yKey] === undefined) continue;
+                        const x = s[xKey] - pivotX;
+                        const y = s[yKey] - pivotY;
+                        s[xKey] = pivotX + x * Math.cos(rad) - y * Math.sin(rad);
+                        s[yKey] = pivotY + x * Math.sin(rad) + y * Math.cos(rad);
+                    }
+                    if (s._eeVisOffX !== undefined || s._eeVisOffY !== undefined) {
+                        const x = s._eeVisOffX || 0;
+                        const y = s._eeVisOffY || 0;
+                        s._eeVisOffX = x * Math.cos(rad) - y * Math.sin(rad);
+                        s._eeVisOffY = x * Math.sin(rad) + y * Math.cos(rad);
+                    }
+                    if (s._eeInitialRotationRad !== undefined) {
+                        s._eeInitialRotationRad += rad;
+                    }
+                    this._level._refreshSpriteSection(s);
+                }
                 if (s._eeEditorTrigger) {
                     const triggerTargets = [];
                     if (s._eeTriggerSprite) triggerTargets.push(s._eeTriggerSprite);
@@ -4330,7 +4402,7 @@ class LevelEditor {
     if (!this.textures.exists(pickerSheet)) {
       if (this._colourPickerSheetLoading) return;
       this._colourPickerSheetLoading = true;
-      this.load.atlas(pickerSheet, "assets/sheets/" + pickerSheet + ".png?v=3", "assets/sheets/" + pickerSheet + ".json?v=3");
+      this.load.atlas(pickerSheet, "assets/ui-graphics/sheets/" + pickerSheet + ".png", "assets/ui-graphics/sheets/" + pickerSheet + ".json");
       this.load.once("filecomplete-atlasjson-" + pickerSheet, () => {
         this._colourPickerSheetLoading = false;
         this._openEditorColorPickerPopup(channelId, labelText, onColorChanged, pickerOptions);
@@ -5448,6 +5520,7 @@ class LevelEditor {
     updateTriggerList(this._level._rotateTriggers);
     updateTriggerList(this._level._pulseTriggers);
     updateTriggerList(this._level._spawnTriggers);
+    updateTriggerList(this._level._timeWarpTriggers);
 
     if (this._level.updateTriggerEditorVisuals) this._level.updateTriggerEditorVisuals();
   }
@@ -6293,6 +6366,7 @@ class LevelEditor {
     updateList(this._level?._rotateTriggers);
     updateList(this._level?._pulseTriggers);
     updateList(this._level?._spawnTriggers);
+    updateList(this._level?._timeWarpTriggers);
     this._level?.updateTriggerEditorVisuals?.();
   }
 
@@ -7192,6 +7266,7 @@ class LevelEditor {
     updateList(this._level?._rotateTriggers);
     updateList(this._level?._pulseTriggers);
     updateList(this._level?._spawnTriggers);
+    updateList(this._level?._timeWarpTriggers);
 
     if (this._level?.updateTriggerEditorVisuals) this._level.updateTriggerEditorVisuals();
   }
@@ -8657,7 +8732,7 @@ class LevelEditor {
             cb: async () => { 
                 this._showEditorPauseMenu(false);
                 this._stopEditorPlaytest?.();
-                this._saveEditorLevel();
+                if (!this._saveEditorLevel()) return;
                 const savedRecord = this._getCurrentEditorLevelRecord?.().level || null;
                 window._createdLevelReturnToView = {
                     createdId: savedRecord?.createdId ?? window.currentlevel?.[2] ?? window._onlineLevelId,
@@ -8673,7 +8748,7 @@ class LevelEditor {
         { 
             text: "Save and Exit", 
             cb: async () => { 
-                this._saveEditorLevel();
+                if (!this._saveEditorLevel()) return;
                 await returnToLevelView(true);
             } 
         },
@@ -8900,7 +8975,13 @@ _serializeObject(object) {
             createdLevels[levelIndex].song = this._editorPendingSongName || createdLevels[levelIndex].song;
         }
 
-        localStorage.setItem("created_levels", JSON.stringify(createdLevels));
+        try {
+            window.gameCache.setItemWithQuotaRecovery("created_levels", JSON.stringify(createdLevels));
+        } catch (err) {
+            console.error("Failed to save editor level", err);
+            alert("Could not save this level because browser storage is full. Free up browser storage and try again.");
+            return false;
+        }
 
         window._onlineLevelString = createdLevels[levelIndex].levelString;
         window._onlineLevelName = createdLevels[levelIndex].levelName;
@@ -8909,6 +8990,7 @@ _serializeObject(object) {
         this._editorPendingSongId = undefined;
         this._editorPendingSongName = undefined;
     }
+    return true;
   }
 
 
